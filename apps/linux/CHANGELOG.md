@@ -35,7 +35,7 @@ Anibeam is now spelled with a lowercase `b` and uses a new app ID, so you may ne
 
 ### Fixes & polish
 
-Fixes for multi-season episode tracking, season-pack folders, season matching and batch episode counts when getting episodes, long-running shows, Jikan outages, AniList syncing, casting, converted streams, Mac dock icons, keyboard navigation, and narrow-window layouts.
+Fixes for multi-season episode tracking, season-pack folders, batch episode counts when getting episodes, long-running shows, Jikan outages, AniList syncing, casting, converted streams, Mac dock icons, keyboard navigation, and narrow-window layouts.
 
 ## 2.4.0 · Quality of life · 2026-10-30
 
