@@ -229,7 +229,7 @@ frame-delete-watched =
     }
 frame-delete-all =
     { $count ->
-        [one] { $kind ->
+        [1] { $kind ->
             [film] Удалить фильм
            *[episode] Удалить серию
         }
@@ -1966,7 +1966,7 @@ downloads-subscription-stays = { $base } Подписка остаётся.
 downloads-cancel-heading = Отменить «{ $title }»?
 downloads-cancel-group-base =
     { $count ->
-        [one] Его загрузка остановится и будет удалена из { $client }.
+        [1] Его загрузка остановится и будет удалена из { $client }.
        *[other] Его загрузки ({ $count }) остановятся и будут удалены из { $client }.
     }
 downloads-files-so-far-it = то, что он уже скачал
@@ -1976,7 +1976,7 @@ downloads-keep-downloading = Продолжить загрузку
 downloads-remove-heading = Удалить «{ $title }»?
 downloads-remove-group-base =
     { $count ->
-        [one] Его торрент будет удалён из { $client }; файлы останутся, если не отметить флажок ниже.
+        [1] Его торрент будет удалён из { $client }; файлы останутся, если не отметить флажок ниже.
        *[other] Его торренты ({ $count }) будут удалены из { $client }; файлы останутся, если не отметить флажок ниже.
     }
 downloads-remove-detail-base =
@@ -2525,7 +2525,7 @@ show-forecast = { $percent }% для вас
 show-because-you-watched = Потому что вы смотрели
 show-hidden-loved =
     { $count ->
-        [one] Совпадает со скрытым тегом, который вам обычно нравится
+        [1] Совпадает со скрытым тегом, который вам обычно нравится
        *[other] Совпадает со скрытыми тегами, которые вам обычно нравятся: { $count }
     }
 show-you-gave-it = Ваша оценка: { $score }
@@ -3578,7 +3578,7 @@ recommended-hover-anilist-score = AniList { $score }
 recommended-hover-forecast = { $percent }%
 recommended-hover-hidden-tags =
     { $count ->
-        [one] Совпадает со скрытым тегом, который вам нравится
+        [1] Совпадает со скрытым тегом, который вам нравится
        *[other] Совпадает со скрытыми тегами, которые вам нравятся: { $count }
     }
 recommended-hover-because = Потому что вы смотрели

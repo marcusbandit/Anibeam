@@ -157,14 +157,14 @@ more-stream-status-original = Le fichier d'origine, toujours
 more-stream-status-converted = Converti en { $quality }
 more-sites-status-none = Aucune liste de sources
 more-sites-status-on = { $sites ->
-    [one] 1 source active
+    [one] { $sites } source active
    *[other] { $sites } sources actives
 }
 more-sites-status-on-from = { $sites ->
-    [one] 1 source active
+    [one] { $sites } source active
    *[other] { $sites } sources actives
 }, { $repos ->
-    [one] d'une liste
+    [1] d'une liste
    *[other] de { $repos } listes
 }
 more-conn-status-unchecked = Pas encore vérifiée
@@ -1206,7 +1206,7 @@ repos-install = Installer
 repos-update = Mettre à jour
 repos-edit-note = Une clé ou un jeton saisi dans l'adresse est déplacé dans le coffre de ce téléphone.
 repos-edit-note-keys = Laissez chaque { "{key}" } dans l'adresse tel quel ; sa valeur reste sur ce téléphone.
-repos-change-its = Changer { $keys }
+repos-change-its = Modifier { $keys }
 repos-check-repos = Vérifier les mises à jour des listes de sources
 repos-check-sites = Vérifier les sources
 repos-add-site-label = Ajouter un site à la main

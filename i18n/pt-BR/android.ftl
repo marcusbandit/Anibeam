@@ -157,14 +157,14 @@ more-stream-status-original = O arquivo original, sempre
 more-stream-status-converted = Convertido para { $quality }
 more-sites-status-none = Nenhuma lista de fontes ainda
 more-sites-status-on = { $sites ->
-    [one] 1 fonte ativa
+    [1] 1 fonte ativa
    *[other] { $sites } fontes ativas
 }
 more-sites-status-on-from = { $sites ->
-    [one] 1 fonte ativa
+    [1] 1 fonte ativa
    *[other] { $sites } fontes ativas
 }, { $repos ->
-    [one] de 1 lista
+    [1] de 1 lista
    *[other] de { $repos } listas
 }
 more-conn-status-unchecked = Ainda não verificado
