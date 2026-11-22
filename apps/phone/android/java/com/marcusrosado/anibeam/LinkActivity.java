@@ -10,11 +10,12 @@ import android.os.Bundle;
  * NativeActivity, which never hands a new intent to the native side, so a link tapped while
  * the app runs would be lost. This one keeps the link, brings the app's activity forward
  * (singleTask starts it or reuses the one running) and goes away. The app takes the link
- * with take() when it comes to the front, and decides there what the link may do: nothing
- * here reads it.
+ * with take() when it comes to the front or its clock sees one waiting, and decides there
+ * what the link may do: nothing here reads it.
  */
 public class LinkActivity extends Activity {
-    private static String pending;
+    /** Read without the lock by the app's clock each second, to see whether to take(). */
+    private static volatile String pending;
 
     @Override
     protected void onCreate(Bundle state) {

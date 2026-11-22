@@ -36,6 +36,8 @@ i-slint-core = { version = "=1.18.1", default-features = false }
 serde_json = "1"
 # Reads the anibeam://add-repo links a browser opens the app with (src/link.rs).
 url = "2"
+# Decodes the link's url value the way the desktop does, keeping a literal +.
+percent-encoding = "2"
 rustix = { version = "1", features = ["fs"] }
 
 [target.'cfg(target_os = "android")'.dependencies]

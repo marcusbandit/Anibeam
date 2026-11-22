@@ -3,9 +3,9 @@
 //! started; the list is added when the person taps Trust there, never by the link.
 //!
 //! On Android a browser hands the link to `LinkActivity.java`, which keeps it and brings
-//! the app forward. The app takes it when it comes to the front and the core is open.
-
-use std::sync::atomic::{AtomicBool, Ordering};
+//! the app forward. The app takes it when it comes to the front, and the clock looks for one
+//! each second as well, since an app already in front (split screen) may not be resumed
+//! again; a link that comes before the core is open waits for it.
 
 /// Why a link was refused, worded when it is shown.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,9 +34,19 @@ pub fn parse(link: &str) -> Result<String, Refusal> {
     if !link.scheme().eq_ignore_ascii_case("anibeam") || link.host_str() != Some("add-repo") {
         return Err(Refusal::Unreadable);
     }
-    let Some((_, address)) = link.query_pairs().find(|(k, _)| k == "url") else {
+    // Percent-decoded the way the desktop reads it (apps/linux/src/args.rs), not form
+    // decoded, so a literal + stays a + and both apps get the same address from one link.
+    let Some(raw) = link
+        .query()
+        .unwrap_or("")
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("url="))
+    else {
         return Err(Refusal::NoUrl);
     };
+    let address = percent_encoding::percent_decode_str(raw)
+        .decode_utf8()
+        .map_err(|_| Refusal::Unreadable)?;
     let address = address.trim();
     if address.is_empty() {
         return Err(Refusal::NoUrl);
@@ -48,26 +58,27 @@ pub fn parse(link: &str) -> Result<String, Refusal> {
     if parsed.host_str().is_none_or(str::is_empty) {
         return Err(Refusal::Unreadable);
     }
+    // https://good.example@other.example/ reads as the first and goes to the second, so a
+    // login part is refused, as the desktop does
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(Refusal::Unreadable);
+    }
     Ok(address.to_string())
 }
-
-/// Whether a link may be waiting: at launch, and each time the app comes to the front.
-static LOOK: AtomicBool = AtomicBool::new(true);
 
 /// The app came to the front: a link may have brought it.
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn resumed() {
-    LOOK.store(true, Ordering::Release);
     poll();
 }
 
 /// Takes a waiting link once the core is open, and opens what it asks for. Called on the UI
-/// loop, from the clock and on resume; a link that comes before the core waits for it.
+/// loop, from the clock each second and on resume. Looking costs one static field read
+/// (`take_link`), and a link stays where it is until it is taken.
 pub fn poll() {
-    if !LOOK.load(Ordering::Acquire) || crate::local::core().is_none() {
+    if crate::local::core().is_none() {
         return;
     }
-    LOOK.store(false, Ordering::Release);
     let Some(link) = crate::platform::take_link() else {
         return;
     };
@@ -89,6 +100,40 @@ mod tests {
             parse("anibeam://add-repo?url=https%3A%2F%2Fexample.com%2Fa%2Findex.json%3Fv%3D2")
                 .as_deref(),
             Ok("https://example.com/a/index.json?v=2")
+        );
+    }
+
+    #[test]
+    fn a_plus_in_the_address_stays_a_plus() {
+        assert_eq!(
+            parse("anibeam://add-repo?url=https%3A%2F%2Fexample.com%2Fa+b.json").as_deref(),
+            Ok("https://example.com/a+b.json")
+        );
+        assert_eq!(
+            parse("anibeam://add-repo?from=guide&url=https://example.com/c%2Bd.json").as_deref(),
+            Ok("https://example.com/c+d.json")
+        );
+    }
+
+    #[test]
+    fn an_address_with_a_login_part_is_refused() {
+        assert_eq!(
+            parse("anibeam://add-repo?url=https%3A%2F%2Fgood.example%40other.example%2Frepo.json"),
+            Err(Refusal::Unreadable)
+        );
+        assert_eq!(
+            parse("anibeam://add-repo?url=https%3A%2F%2Fme%3Asecret%40example.com%2Frepo.json"),
+            Err(Refusal::Unreadable)
+        );
+        assert_eq!(
+            parse("anibeam://add-repo?url=https%3A%2F%2F%3Asecret%40example.com%2Frepo.json"),
+            Err(Refusal::Unreadable)
+        );
+        // An @ in the path is not a login part
+        assert_eq!(
+            parse("anibeam://add-repo?url=https%3A%2F%2Fexample.com%2F%40me%2Frepo.json")
+                .as_deref(),
+            Ok("https://example.com/@me/repo.json")
         );
     }
 

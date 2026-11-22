@@ -155,6 +155,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-io-surface",
  "objc2-metal 0.3.2",
+ "percent-encoding",
  "rustix 1.1.5",
  "serde",
  "serde_json",
