@@ -536,6 +536,7 @@ core-presence-no-room = Cette invitation Discord n'a pas encore de salon. Demand
 
 core-trackers-no-client-id = Aucun identifiant client défini pour { $tracker }.
 core-trackers-mal-reconnect = Reconnectez MyAnimeList dans les réglages.
+core-trackers-mal-sign-in-again = Reconnectez-vous à MyAnimeList. La connexion de la version précédente ne fonctionne plus.
 core-trackers-mal-wants-secret = MyAnimeList exige le secret client de cette appli. Ajoutez-le sous Comptes dans les réglages d'Anibeam, ou enregistrez l'appli avec le type « other ».
 core-trackers-token-reply-unreadable = impossible de lire la réponse du jeton : { $error }
 core-trackers-token-reply-no-token = la réponse du jeton ne contenait aucun jeton d'accès

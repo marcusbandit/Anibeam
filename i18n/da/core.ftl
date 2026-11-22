@@ -536,6 +536,7 @@ core-presence-no-room = Den Discord-invitation har intet rum endnu. Bed dem star
 
 core-trackers-no-client-id = Intet klient-id sat for { $tracker }.
 core-trackers-mal-reconnect = Forbind MyAnimeList igen i Indstillinger.
+core-trackers-mal-sign-in-again = Log ind med MyAnimeList igen. Login fra den tidligere version virker ikke længere.
 core-trackers-mal-wants-secret = MyAnimeList kræver denne apps klienthemmelighed. Tilføj den under Konti i Anibeams indstillinger, eller registrer appen med App Type "other".
 core-trackers-token-reply-unreadable = kunne ikke læse svaret med token: { $error }
 core-trackers-token-reply-no-token = svaret indeholdt ingen adgangstoken

@@ -563,6 +563,7 @@ core-presence-no-room = この Discord の招待にはまだルームがあり�
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = { $tracker }のクライアントIDが設定されていません。
 core-trackers-mal-reconnect = 設定でMyAnimeListを再連携してください。
+core-trackers-mal-sign-in-again = MyAnimeListにもう一度ログインしてください。以前のバージョンのログインは使えなくなりました。
 core-trackers-mal-wants-secret = MyAnimeListにはこのアプリのクライアントシークレットが必要です。Anibeamの設定の「アカウント」で追加するか、App Typeを「other」にしてアプリを登録してください。
 # $error is the parser's own message.
 core-trackers-token-reply-unreadable = トークンの応答を読み取れませんでした: { $error }
