@@ -529,8 +529,9 @@ impl Core {
             crate::phone::rekeep_rules(&lifting.services, lifted);
         });
         // A MyAnimeList account pinned to the app id 2.5.0 shipped with is
-        // signed out and left to sign in again with this build's (#1408).
-        // Off this thread: its tokens are a keyring round trip. A build
+        // signed out and left to sign in again with this build's (#1408),
+        // and a delete of that app's secret still owed is tried again.
+        // Off this thread: both are keyring round trips. A build
         // still carrying that id would sign its own account out every
         // launch, so it leaves the rows alone.
         let services = self.services.clone();

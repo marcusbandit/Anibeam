@@ -219,25 +219,12 @@ pub fn effective_credentials(
     services: &Services,
     t: Tracker,
 ) -> Result<(String, Option<String>), CoreError> {
-    let mut row = services.store.read(|c| load_row(c, t))?.unwrap_or_default();
-    if t == Tracker::Mal
-        && row.stored_client_id().as_deref() == Some(RETIRED_MAL_CLIENT_ID)
-        && bundled_client_id(t) != Some(RETIRED_MAL_CLIENT_ID)
-    {
-        // A launch whose keyring failed left the retired app pinned with its
-        // secret ([`forget_retired_client_id`]). Neither is sent: the secret
-        // goes now, or the connect stops here, then the id comes off.
-        services.secrets().delete(&secret_key(t))?;
-        services.store.write(move |c| {
-            c.execute(
-                "UPDATE tracker_accounts SET client_id = NULL
-                  WHERE tracker = ?1 AND profile_id = ?2 AND client_id = ?3",
-                params![t.as_str(), OWNER, RETIRED_MAL_CLIENT_ID],
-            )?;
-            Ok(())
-        })?;
-        row.client_id = None;
-    }
+    // The secret pasted for the retired app may still be in a keyring the
+    // launch could not reach ([`clear_retired_secret`]). It is tried again
+    // here, and while it is still owed the stored secret is not read at all:
+    // it belongs to an app this build no longer signs in with.
+    let retired_secret_owed = t == Tracker::Mal && clear_retired_secret(services)?;
+    let row = services.store.read(|c| load_row(c, t))?.unwrap_or_default();
     let client_id = row
         .stored_client_id()
         .or_else(|| bundled_client_id(t).map(str::to_string))
@@ -250,10 +237,14 @@ pub fn effective_credentials(
                 ),
             )
         })?;
-    let stored_secret = services
-        .secrets()
-        .get(&secret_key(t), row.secret_store)?
-        .map(|(value, _)| value);
+    let stored_secret = if retired_secret_owed {
+        None
+    } else {
+        services
+            .secrets()
+            .get(&secret_key(t), row.secret_store)?
+            .map(|(value, _)| value)
+    };
     let client_secret = pick_secret(
         &client_id,
         stored_secret,
@@ -326,6 +317,9 @@ pub fn set_credentials_against(
     let client_id = client_id.trim().to_string();
     let is_bundled = bundled_id == Some(client_id.as_str());
     let removed = matches!(client_secret.map(str::trim), Some(""));
+    // Any secret saved or removed here is the user's own, so a secret left
+    // by the retired app is no longer owed a delete ([`clear_retired_secret`]).
+    let secret_touched = t == Tracker::Mal && client_secret.is_some();
     let store = match client_secret.map(str::trim) {
         Some("") => {
             services.secrets().delete(&secret_key(t))?;
@@ -355,6 +349,9 @@ pub fn set_credentials_against(
              ON CONFLICT(profile_id, tracker) DO UPDATE SET client_id = excluded.client_id",
             params![t.as_str(), client_id],
         )?;
+        if secret_touched {
+            settings::remove(tx, settings::MAL_RETIRED_SECRET_OWED)?;
+        }
         // Only when a secret was actually written: the column is the one
         // record of where this tracker's secrets are, and a save that
         // wrote none must not claim to have moved them.
@@ -409,68 +406,70 @@ fn delete_tokens(services: &Services, t: Tracker) -> Result<(), CoreError> {
 }
 
 /// Forgets every MAL account pinned to `retired`, in every profile: the
-/// sign-in, the progress cache and the id off the row, and when the owner's
-/// row was one of them, the tokens and the pasted secret, which belonged to
-/// that app as well. The account then signs in with the id this build
-/// carries. Says whether there was one. Only the owner's account leaves a
-/// notice for the shell ([`notice`]): a guest's reset is not the owner's
-/// to be told about.
+/// sign-in, the progress cache and the id off the row. When the owner's row
+/// was one of them it leaves a notice for the shell ([`notice`]) and owes a
+/// delete of the pasted secret, which belonged to that app as well
+/// ([`clear_retired_secret`]); a guest's reset is not the owner's to be told
+/// about. The account then signs in with the id this build carries. Says
+/// whether any row was reset.
 ///
 /// The rows are picked and signed out in one transaction, so a sign-in that
-/// lands meanwhile is not undone, and the keyring is cleared after it, so
-/// that sign-in's new keys are not either. A keyring that fails puts the
-/// retired id back on the owner's still signed-out row: the leftover secret
-/// would otherwise go out with this build's id, and the pin makes the next
-/// launch try again; a Connect before then clears it first
-/// ([`effective_credentials`]). Once everything is cleared nothing matches, so later
-/// launches find nothing to do.
+/// lands meanwhile is not undone. The owner's tokens are deleted after it,
+/// and only when that row was signed in when it was picked: a row pinned to
+/// an id MAL never accepted holds no tokens worth dropping, and a sign-in
+/// landing after the commit keeps its new ones. Once a row is reset nothing
+/// matches it again, so the notice is raised once; it stays until it is
+/// closed with the x, or MyAnimeList connects.
+///
+/// The owed secret is tried on every launch, rows or not, until a delete
+/// reaches the store that holds it.
 pub fn forget_retired_client_id(services: &Services, retired: &str) -> Result<bool, CoreError> {
     let t = Tracker::Mal;
     let retired = retired.to_string();
-    let pinned = retired.clone();
-    let profiles = services.store.tx(move |tx| {
-        let profiles = {
+    let (reset, owner_connected) = services.store.tx(move |tx| {
+        let picked = {
             let mut stmt = tx.prepare(
-                "SELECT profile_id FROM tracker_accounts WHERE tracker = ?1 AND client_id = ?2 ORDER BY profile_id",
+                "SELECT profile_id, connected_at IS NOT NULL FROM tracker_accounts
+                  WHERE tracker = ?1 AND client_id = ?2 ORDER BY profile_id",
             )?;
-            stmt
-                .query_map(params![t.as_str(), pinned], |r| r.get::<_, i64>(0))?
-                .collect::<Result<Vec<_>, _>>()?
+            stmt.query_map(params![t.as_str(), retired], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, bool>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?
         };
-        for &profile in &profiles {
+        for &(profile, _) in &picked {
             sign_out(tx, t, profile)?;
         }
         tx.execute(
             "UPDATE tracker_accounts SET client_id = NULL WHERE tracker = ?1 AND client_id = ?2",
-            params![t.as_str(), pinned],
+            params![t.as_str(), retired],
         )?;
-        if profiles.contains(&OWNER) {
+        let owner = picked.iter().find(|(profile, _)| *profile == OWNER);
+        if owner.is_some() {
             settings::set(tx, settings::MAL_SIGN_IN_AGAIN, &true)?;
+            settings::set(tx, settings::MAL_RETIRED_SECRET_OWED, &true)?;
         }
-        Ok(profiles)
+        Ok((
+            !picked.is_empty(),
+            owner.is_some_and(|(_, connected)| *connected),
+        ))
     })?;
-    if profiles.is_empty() {
-        return Ok(false);
+    if owner_connected && let Err(e) = delete_tokens(services, t) {
+        services.bus.warn(
+            Stage::Trackers,
+            format!("could not clear the retired MyAnimeList app's tokens: {e}"),
+            EventBody::Notice,
+        );
     }
-    if profiles.contains(&OWNER) {
-        let tokens = delete_tokens(services, t);
-        let secret = services.secrets().delete(&secret_key(t));
-        if let Err(e) = tokens.and(secret) {
-            services.bus.warn(
-                Stage::Trackers,
-                format!("could not clear the retired MyAnimeList app's keys, trying again next launch: {e}"),
-                EventBody::Notice,
-            );
-            // Only a row nothing has signed in to or pinned since.
-            services.store.write(move |c| {
-                c.execute(
-                    "UPDATE tracker_accounts SET client_id = ?2
-                      WHERE tracker = ?1 AND profile_id = ?3 AND client_id IS NULL AND connected_at IS NULL",
-                    params![t.as_str(), retired, OWNER],
-                )?;
-                Ok(())
-            })?;
-        }
+    if let Err(e) = clear_retired_secret(services) {
+        services.bus.warn(
+            Stage::Trackers,
+            format!("could not check the retired MyAnimeList app's secret: {e}"),
+            EventBody::Notice,
+        );
+    }
+    if !reset {
+        return Ok(false);
     }
     services.bus.debug(
         Stage::Trackers,
@@ -490,21 +489,77 @@ pub fn forget_retired_client_id(services: &Services, retired: &str) -> Result<bo
     Ok(true)
 }
 
+/// Deletes the secret pasted for the retired MyAnimeList app while one is
+/// owed ([`settings::MAL_RETIRED_SECRET_OWED`]), and says whether it is
+/// still owed afterwards. The debt is paid only by a delete that reached
+/// the store that could hold it: a Secret Service that answered, or a
+/// facade built file-only by choice, where no keyring exists. With no
+/// Secret Service reachable a delete touches only the file store and
+/// succeeds, while a keyring copy may survive, so the debt stays and the
+/// next launch or sign-in tries again. A keyring that fails is logged and
+/// never an error; only the database's own failures are.
+pub fn clear_retired_secret(services: &Services) -> Result<bool, CoreError> {
+    let owed = services.store.read(|c| {
+        Ok(settings::get::<bool>(c, settings::MAL_RETIRED_SECRET_OWED)?.unwrap_or(false))
+    })?;
+    if !owed {
+        return Ok(false);
+    }
+    let secrets = services.secrets();
+    match secrets.delete(&secret_key(Tracker::Mal)) {
+        Ok(()) if secrets.is_file_only() || secrets.keyring_unavailable() == Some(false) => {
+            services
+                .store
+                .write(|c| settings::remove(c, settings::MAL_RETIRED_SECRET_OWED))?;
+            Ok(false)
+        }
+        Ok(()) => {
+            services.bus.debug(
+                Stage::Trackers,
+                "no keyring reachable to clear the retired MyAnimeList app's secret, trying again later",
+                EventBody::Notice,
+            );
+            Ok(true)
+        }
+        Err(e) => {
+            services.bus.warn(
+                Stage::Trackers,
+                format!(
+                    "could not clear the retired MyAnimeList app's secret, trying again later: {e}"
+                ),
+                EventBody::Notice,
+            );
+            Ok(true)
+        }
+    }
+}
+
 /// `GetTrackerNotice`: the line a launch left for the user, if one is owed.
 /// Read rather than sent on the bus, so a window that subscribes after the
 /// launch's cleanup still shows it, and read without taking it, so a toast
-/// that never got seen is shown again next time. It goes when MyAnimeList
-/// connects or the user acts on it ([`dismiss_notice`]).
+/// that never got seen is shown again next time. It goes when it is closed
+/// with the x ([`dismiss_notice`]), or MyAnimeList connects; an owner whose
+/// MyAnimeList is connected, say by an import, is never shown it.
 pub fn notice(services: &Services) -> Result<Reply, CoreError> {
-    let pending = services
-        .store
-        .read(|c| Ok(settings::get::<bool>(c, settings::MAL_SIGN_IN_AGAIN)?.unwrap_or(false)))?;
+    let pending = services.store.read(|c| {
+        let owed = settings::get::<bool>(c, settings::MAL_SIGN_IN_AGAIN)?.unwrap_or(false);
+        let connected = c
+            .query_row(
+                "SELECT connected_at IS NOT NULL FROM tracker_accounts
+                  WHERE tracker = ?1 AND profile_id = ?2",
+                params![Tracker::Mal.as_str(), OWNER],
+                |r| r.get::<_, bool>(0),
+            )
+            .optional()?
+            .unwrap_or(false);
+        Ok(owed && !connected)
+    })?;
     let message =
         pending.then(|| anibeam_contract::i18n::tr("core-trackers-mal-sign-in-again", &[]));
     Ok(Reply::TrackerNotice { message })
 }
 
-/// `DismissTrackerNotice`: the user acted on the notice or closed it.
+/// `DismissTrackerNotice`: the user closed the notice with the x.
 pub fn dismiss_notice(services: &Services) -> Result<Reply, CoreError> {
     services
         .store
