@@ -919,3 +919,42 @@ pub fn bars(argb: u32) {
         Some(jni::objects::JValue::Int(argb as i32)),
     );
 }
+
+/// The anibeam:// link a browser opened the app with, once: `LinkActivity.java` keeps it
+/// until it is taken here.
+pub fn take_link() -> Option<String> {
+    let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
+    if raw == 0 {
+        return None;
+    }
+    let r = with_env(|env, _app| {
+        use jni::objects::{JObject, JString, JValue};
+        env.with_local_frame(
+            8,
+            |env| -> Result<Option<String>, Box<dyn std::error::Error>> {
+                let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
+                let class = app_class(env, activity, "LinkActivity")?;
+                let link = env
+                    .call_static_method(
+                        &class,
+                        "take",
+                        "(Landroid/app/Activity;)Ljava/lang/String;",
+                        &[JValue::Object(activity)],
+                    )?
+                    .l()?;
+                if link.is_null() {
+                    return Ok(None);
+                }
+                let link = JString::from(link);
+                Ok(Some(env.get_string(&link)?.into()))
+            },
+        )
+    });
+    match r {
+        Ok(link) => link,
+        Err(e) => {
+            crate::local::log(&format!("LinkActivity.take: {e}"));
+            None
+        }
+    }
+}

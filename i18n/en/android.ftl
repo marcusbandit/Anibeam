@@ -1389,6 +1389,10 @@ repos-add-repo = Add source list
 repos-trust-title = Trust this source list?
 repos-fingerprint = Key fingerprint
 repos-trust-warning = Its sources decide where your searches go. Only trust source lists from people you trust.
+# Shown when an anibeam://add-repo link from a web page cannot be followed.
+repos-link-no-url = This link has no source list address in it.
+repos-link-unreadable = This link's source list address could not be read.
+repos-link-not-https = This link was not followed: a source list address has to start with https://.
 # Button
 repos-trust = Trust
 # Button that opens a page. { $url } is its address.

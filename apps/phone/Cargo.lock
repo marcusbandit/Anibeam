@@ -160,6 +160,7 @@ dependencies = [
  "serde_json",
  "slint",
  "slint-build",
+ "url",
 ]
 
 [[package]]

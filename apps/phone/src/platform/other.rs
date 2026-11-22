@@ -179,3 +179,8 @@ pub fn line_colours() -> Option<(u32, u32)> {
 pub fn bars(argb: u32) {
     let _ = argb;
 }
+
+/// No link opens the app here.
+pub fn take_link() -> Option<String> {
+    None
+}

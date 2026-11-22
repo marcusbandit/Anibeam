@@ -237,6 +237,13 @@ export struct AiringMenu {
 // to another.
 export global Nav {
     in-out property <int> page;
+    // An anibeam://add-repo link opened Search sites, or onboarding's sites step, over what
+    // the person was looking at (src/link.rs): Back returns there. Forgotten once they move
+    // on by themselves.
+    in-out property <bool> link-back;
+    in-out property <int> link-page;
+    in-out property <int> link-section: -1;
+    in-out property <int> link-step;
 }
 
 export global AppData {
@@ -343,6 +350,9 @@ export global AppData {
     in-out property <int> step;
     // How many steps onboarding has; onboarding.slint and control over adb read it.
     out property <int> onboarding-steps: 8;
+    // The step that asks which source lists to search (onboarding.slint's pages), where an
+    // anibeam://add-repo link lands during the first run.
+    out property <int> onboarding-sites: 6;
     in property <string> anilist-state;
     in property <string> mal-state;
     // The last sign-in to AniList or MAL failed.

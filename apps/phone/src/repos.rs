@@ -10,7 +10,7 @@ use anibeam_core::{
 };
 use slint::{ComponentHandle, ModelRc, VecModel, Weak};
 
-use crate::{AppWindow, AuthRow, EndpointRow, RepoData, RepoRow};
+use crate::{AppData, AppWindow, AuthRow, EndpointRow, Nav, RepoData, RepoRow, Settings};
 
 /// What a tap on a row of the endpoint list stands for.
 #[derive(Clone)]
@@ -111,6 +111,9 @@ struct Repos {
     /// What the last check found, by host.
     health: HashMap<String, Health>,
     preview: Option<EndpointRepoPreview>,
+    /// Counts the previews asked for and cancelled: an answer to one asked before the last
+    /// Cancel, or Back from a link, is dropped rather than put up where nobody looks.
+    asked: u64,
     rows: Vec<Row>,
     /// The endpoint list, kept and updated row by row: a row that did not change keeps its
     /// element, so an open form's field keeps what was typed when the list is read again.
@@ -153,6 +156,7 @@ pub fn install(window: &AppWindow) {
             catalog: None,
             health: HashMap::new(),
             preview: None,
+            asked: 0,
             rows: Vec::new(),
             lines: std::rc::Rc::new(VecModel::default()),
             asking: None,
@@ -171,6 +175,7 @@ pub fn install(window: &AppWindow) {
     d.on_trust(|| with(Repos::trust));
     d.on_cancel(|| {
         with(|r| {
+            r.asked += 1;
             r.preview = None;
             r.data(|d| {
                 d.set_previewing(false);
@@ -201,6 +206,53 @@ pub fn install(window: &AppWindow) {
     d.on_dismiss(|| with(Repos::dismiss));
     d.on_open_link(|url| crate::platform::open_url(&url));
     d.on_add_custom(|name, url| with(|r| r.add_custom(name.to_string(), url.to_string())));
+}
+
+/// An anibeam://add-repo link came (src/link.rs): Search sites opens, or onboarding's sites
+/// step during the first run, with the address filled in and its preview started, or with
+/// why the link was refused. Nothing is trusted until the person taps Trust. Where they were
+/// is kept, so Back goes there.
+pub fn open_link(link: Result<String, crate::link::Refusal>) {
+    with(|r| {
+        let Some(w) = r.window.upgrade() else {
+            return;
+        };
+        let nav = w.global::<Nav>();
+        let app = w.global::<AppData>();
+        let settings = w.global::<Settings>();
+        // A second link while the first is still up keeps the first one's way back.
+        if !nav.get_link_back() {
+            nav.set_link_page(nav.get_page());
+            nav.set_link_section(settings.get_section());
+            nav.set_link_step(app.get_step());
+            nav.set_link_back(true);
+        }
+        if app.get_onboarding() {
+            app.set_step(app.get_onboarding_sites());
+        } else {
+            w.invoke_go(3);
+            settings.set_lit("".into());
+            // 3 is Search sites (more.slint's Settings.section).
+            settings.set_section(3);
+        }
+        r.asked += 1;
+        r.preview = None;
+        r.data(|d| d.set_previewing(false));
+        match link {
+            Ok(url) => {
+                r.data(|d| d.set_url(url.clone().into()));
+                r.add(url);
+            }
+            Err(refusal) => {
+                let text = refusal.text();
+                r.busy(false);
+                r.data(|d| {
+                    d.set_url("".into());
+                    d.set_error(text.into());
+                });
+            }
+        }
+    });
 }
 
 /// The language changed: the rows, the preview and the form's note are worded again.
@@ -458,8 +510,13 @@ impl Repos {
         }
         self.busy(true);
         self.data(|d| d.set_error("".into()));
-        let started = spawn(Call::AddEndpointRepo { url }, |r, answer| {
+        self.asked += 1;
+        let asked = self.asked;
+        let started = spawn(Call::AddEndpointRepo { url }, move |r, answer| {
             r.busy(false);
+            if r.asked != asked {
+                return;
+            }
             match answer {
                 Ok(Reply::EndpointRepoPreview { preview }) => {
                     let line = preview_line(&preview);
