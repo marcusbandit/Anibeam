@@ -1,37 +1,106 @@
 <section>
-  <h2 id="install">Install it</h2>
-  <p>Get the installer for your computer from the <a href="../../download/">download page</a>. Linux, Mac and Windows each have one, and Android has an app of its own.</p>
+  <h2 id="install">Download and install</h2>
+  <p>Grab Anibeam for your device from the <a href="../../download/">download page</a>. Desktop builds are available for Linux, Windows, and Apple silicon Macs, and there is a standalone phone app for Android and iPhone.</p>
+  <p>If you use Linux or macOS and prefer the terminal, this one-line installer picks the right package for your system automatically:</p>
+  <div class="term"><span class="prompt">$</span><code><span class="sh-cmd">curl</span> <span class="sh-flag">-fsSL</span> <span class="sh-url">https://anibeam.app/install.sh</span> <span class="sh-op">|</span> <span class="sh-cmd">sh</span></code><button type="button" class="copy" data-copy="curl -fsSL https://anibeam.app/install.sh | sh">Copy</button></div>
+
+  <details class="wiki-fold">
+    <summary>macOS: opening Anibeam for the first time</summary>
+    <div class="wiki-fold-body">
+      <p>Because Anibeam is a free open-source build that is not notarized with Apple, macOS will block the very first launch.</p>
+      <ol class="steps">
+        <li>Drag <b>Anibeam</b> into your <b>Applications</b> folder and try opening it once.</li>
+        <li>Open macOS <span class="where"><b>System Settings</b><b>Privacy &amp; Security</b></span>, scroll down to the notice about Anibeam, and click <b class="ui">Open Anyway</b>.</li>
+      </ol>
+      <p>If you prefer a terminal command instead:</p>
+      <div class="term"><span class="prompt">$</span><code><span class="sh-cmd">xattr</span> <span class="sh-flag">-dr</span> com.apple.quarantine /Applications/Anibeam.app</code><button type="button" class="copy" data-copy="xattr -dr com.apple.quarantine /Applications/Anibeam.app">Copy</button></div>
+    </div>
+  </details>
+
+  <details class="wiki-fold">
+    <summary>Windows: getting past the SmartScreen warning</summary>
+    <div class="wiki-fold-body">
+      <p>The Windows installer installs for your user account without asking for admin rights, and is not code-signed. If Windows Defender SmartScreen shows a blue warning window, click <b class="ui">More info</b> and then <b class="ui">Run anyway</b>.</p>
+      <p>A portable <code>.zip</code> is also available on the download page if you would rather unzip and run Anibeam without installing it.</p>
+    </div>
+  </details>
+
+  <details class="wiki-fold">
+    <summary>Linux: package managers and AppImage notes</summary>
+    <div class="wiki-fold-body">
+      <p>The <a href="../../download/#terminal">download page</a> has ready-to-copy commands for <b>Arch</b> (AUR), <b>Ubuntu and Debian</b> (apt), and <b>Fedora</b> (dnf). Those installs update through your normal system updates.</p>
+      <p>If you downloaded the <b>AppImage</b> instead, mark it executable and launch it:</p>
+      <div class="term"><span class="prompt">$</span><code><span class="sh-cmd">chmod</span> <span class="sh-flag">+x</span> ./Anibeam-*.AppImage <span class="sh-op">&amp;&amp;</span> ./Anibeam-*.AppImage</code><button type="button" class="copy" data-copy="chmod +x ./Anibeam-*.AppImage &amp;&amp; ./Anibeam-*.AppImage">Copy</button></div>
+      <p>If your distro says FUSE is missing, install <code>libfuse2</code> (or <code>libfuse2t64</code> on Ubuntu 24.04+) or run the AppImage with <code>--appimage-extract-and-run</code>.</p>
+    </div>
+  </details>
+
+  <p>Looking to install on Android or iPhone? See the <a href="../phone/#install">Phone app and streaming</a> guide.</p>
 </section>
 
 <section>
-  <h2 id="setup">The first setup</h2>
-  <p>The first time Anibeam opens, it walks you through a short setup. Every step has <b class="ui">Skip for now</b>, so nothing has to be done today.</p>
+  <h2 id="setup">The first-time setup</h2>
+  <p>The first time you open Anibeam, a short guided walkthrough helps you get set up in about a minute. Every step is optional and can be skipped or changed later.</p>
   <ol class="steps">
-    <li>Press <b class="ui">Choose folder</b> and pick the folder your anime lives in. With no folder yet, <b class="ui">I don't have a folder yet</b> makes an empty Anime folder for you. <a href="../library/">Your library</a> has the details.</li>
-    <li>Connect AniList or MyAnimeList, and every episode you finish is marked there. <a href="../tracking/">AniList and MyAnimeList</a> walks through it.</li>
-    <li>Pick who fetches episodes: <b class="ui">Let Anibeam handle it</b> runs a torrent client of its own, <b class="ui">I already use qBittorrent</b> uses yours. Under <b class="ui">Download sources</b>, paste a source list's address and press <b class="ui">Add</b>, or leave it for later. See <a href="../sources/">Sources</a> and <a href="../downloads/">Downloads</a>.</li>
-    <li>Type the name friends see when you watch together.</li>
-    <li>Press <b class="ui">Open Anibeam</b>.</li>
+    <li><b>Pick your language:</b> Anibeam starts in your system language and supports 13 languages. Switch it at the top of the Welcome screen if you want a different one, then click <b class="ui">Get started</b>.</li>
+    <li><b>Choose your anime folder:</b> Click <b class="ui">Choose folder</b> and select the parent folder that holds your anime shows (for example, <code>Videos/Anime</code>). Don't have any anime files yet? Click <b class="ui">I don't have a folder yet</b> and Anibeam creates an empty <code>Anime</code> folder for you. Your library scans in the background while you continue.</li>
+    <li><b>Connect AniList or MyAnimeList (optional):</b> Click <b class="ui">Connect</b> next to whichever site you use, approve Anibeam in your browser, and every episode you finish will update your online list automatically. See <a href="../tracking/">AniList and MyAnimeList</a> for details.</li>
+    <li><b>Set up downloads (optional):</b> If you want to search for and download episodes inside Anibeam, paste a source list link under <b>Download sources</b> and click <b class="ui">Add</b> (not sure what that is? Read <a href="../sources/">Download sources</a> first). Below that, leave <b class="ui">Let Anibeam handle it</b> selected to use the built-in torrent client with zero setup, or pick <b class="ui">I already use qBittorrent</b> if you run your own.</li>
+    <li><b>Set your Watch together name (optional):</b> Type the display name friends will see when you watch episodes together in a synced room.</li>
+    <li><b>Click <b class="ui">Open Anibeam</b>:</b> You're ready to watch!</li>
   </ol>
+  <div class="callout callout-tip">
+    <span class="callout-title">Tip</span>
+    <p>Every step has a <b class="ui">Skip for now</b> button at the bottom. You can start with just a local folder (or nothing at all) and connect trackers or download sources whenever you feel like it.</p>
+  </div>
+</section>
+
+<section>
+  <h2 id="find-your-way">Find your way around Anibeam</h2>
+  <p>Anibeam keeps navigation simple with four main pages in the sidebar and two utility buttons at the bottom.</p>
+  <div class="wiki-grid">
+    <div class="wiki-box">
+      <h3>Home</h3>
+      <p>Your launchpad. Resume the show you were watching with one click, see episodes airing this week, check recently downloaded shows, and browse personalized recommendations.</p>
+    </div>
+    <div class="wiki-box">
+      <h3>Library</h3>
+      <p>Every show in your folders as poster cards. Use the tabs across the top to filter by <b>Series</b>, <b>Movies</b>, or <b>Watched</b>, view your <b>On my list</b> shows, explore <b>Stats</b>, or open <b>Fix matches</b>.</p>
+    </div>
+    <div class="wiki-box">
+      <h3>Airing</h3>
+      <p>Browse every anime airing this season (or jump to past and upcoming seasons), see what came out in the last 24 hours, add shows to your Planning list, or grab episodes directly.</p>
+    </div>
+    <div class="wiki-box">
+      <h3>Downloads</h3>
+      <p>Search your download sources by show or release name, paste magnet links, subscribe to airing shows so new episodes arrive automatically, and free up space by clearing watched files.</p>
+    </div>
+  </div>
+  <ul>
+    <li><b>Join room</b> (bottom of the sidebar, or press <kbd>Ctrl</kbd>+<kbd>J</kbd>): Start a Watch together room or enter a friend's 6-letter room code.</li>
+    <li><b>Settings</b> (gear icon at the bottom, or press <kbd>Ctrl</kbd>+<kbd>,</kbd>): Manage folders, accounts, themes, subtitles, keyboard shortcuts, downloads, and backups. Use the <b>Search settings</b> box at the top to jump straight to any option.</li>
+  </ul>
+  <div class="callout">
+    <span class="callout-title">Good to know</span>
+    <p>Press <kbd>?</kbd> anywhere in Anibeam (including inside the video player) to pop up a cheat sheet of every keyboard shortcut that works on the current screen.</p>
+  </div>
 </section>
 
 <section>
   <h2 id="again">Run the setup again</h2>
+  <p>Want to go through the guided setup again later?</p>
   <ol class="steps">
     <li>Open <span class="where"><b>Settings</b><b>About</b></span>.</li>
-    <li>Press <b class="ui">Run setup again</b>.</li>
+    <li>Click <b class="ui">Run setup again</b>.</li>
   </ol>
-  <p>Anything the setup asked can also be changed on its own in Settings.</p>
+  <p>You can also change any individual setting directly in its own Settings tab without rerunning the walkthrough.</p>
 </section>
 
 <section>
-  <h2 id="find-your-way">Find your way around</h2>
+  <h2 id="whats-next">Where to go next</h2>
   <ul>
-    <li><b>Home</b> has what you are watching and what comes next.</li>
-    <li><b>Library</b> has every show in your folders.</li>
-    <li><b>Airing</b> has the shows on air this season.</li>
-    <li><b>Downloads</b> searches your sources and follows shows as they air.</li>
-    <li><b>Join room</b> opens a room a friend sent you.</li>
-    <li><b>Settings</b> has everything else. Its search field finds a setting by name.</li>
+    <li>Have anime already on your hard drive? Read <a href="../library/">Your library</a> to make sure your folders scan cleanly.</li>
+    <li>Want to customize subtitles, auto-skip intros, or cast to your TV? Head to <a href="../playback/">Watching and casting</a>.</li>
+    <li>Ready to search and download episodes inside Anibeam? Start with <a href="../sources/">Download sources</a>, then <a href="../downloads/">Downloads</a>.</li>
   </ul>
 </section>
