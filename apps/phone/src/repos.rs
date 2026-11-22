@@ -114,6 +114,9 @@ struct Repos {
     /// Counts the previews asked for and cancelled: an answer to one asked before the last
     /// Cancel, or Back from a link, is dropped rather than put up where nobody looks.
     asked: u64,
+    /// The preview still being fetched, by its `asked` number: the busy state is its own
+    /// until its answer comes or a Cancel or a link drops it.
+    fetching: Option<u64>,
     rows: Vec<Row>,
     /// The endpoint list, kept and updated row by row: a row that did not change keeps its
     /// element, so an open form's field keeps what was typed when the list is read again.
@@ -157,6 +160,7 @@ pub fn install(window: &AppWindow) {
             health: HashMap::new(),
             preview: None,
             asked: 0,
+            fetching: None,
             rows: Vec::new(),
             lines: std::rc::Rc::new(VecModel::default()),
             asking: None,
@@ -177,6 +181,7 @@ pub fn install(window: &AppWindow) {
         with(|r| {
             r.asked += 1;
             r.preview = None;
+            r.drop_fetch();
             r.data(|d| {
                 d.set_previewing(false);
                 d.set_error("".into());
@@ -220,8 +225,14 @@ pub fn open_link(link: Result<String, crate::link::Refusal>) {
         let nav = w.global::<Nav>();
         let app = w.global::<AppData>();
         let settings = w.global::<Settings>();
-        // A second link while the first is still up keeps the first one's way back.
-        if !nav.get_link_back() {
+        // A second link while the first is still up keeps the first one's way back, and one
+        // that comes while the person is on the page already has nowhere else to go back to.
+        let here = if app.get_onboarding() {
+            app.get_step() == app.get_onboarding_sites()
+        } else {
+            nav.get_page() == 3 && settings.get_section() == 3
+        };
+        if !nav.get_link_back() && !here {
             nav.set_link_page(nav.get_page());
             nav.set_link_section(settings.get_section());
             nav.set_link_step(app.get_step());
@@ -237,6 +248,7 @@ pub fn open_link(link: Result<String, crate::link::Refusal>) {
         }
         r.asked += 1;
         r.preview = None;
+        r.drop_fetch();
         r.data(|d| d.set_previewing(false));
         match link {
             Ok(url) => {
@@ -245,7 +257,6 @@ pub fn open_link(link: Result<String, crate::link::Refusal>) {
             }
             Err(refusal) => {
                 let text = refusal.text();
-                r.busy(false);
                 r.data(|d| {
                     d.set_url("".into());
                     d.set_error(text.into());
@@ -329,6 +340,14 @@ impl Repos {
 
     fn busy(&self, busy: bool) {
         self.data(|d| d.set_busy(busy));
+    }
+
+    /// Forgets the preview being fetched, if one is, and the busy state it held: its answer
+    /// is dropped when it comes.
+    fn drop_fetch(&mut self) {
+        if self.fetching.take().is_some() {
+            self.busy(false);
+        }
     }
 
     /// Takes a catalog answer, or puts its error up.
@@ -513,10 +532,13 @@ impl Repos {
         self.asked += 1;
         let asked = self.asked;
         let started = spawn(Call::AddEndpointRepo { url }, move |r, answer| {
-            r.busy(false);
+            // An answer to a preview a Cancel, a link or a newer Add replaced leaves the busy
+            // state to the one that replaced it
             if r.asked != asked {
                 return;
             }
+            r.fetching = None;
+            r.busy(false);
             match answer {
                 Ok(Reply::EndpointRepoPreview { preview }) => {
                     let line = preview_line(&preview);
@@ -537,7 +559,9 @@ impl Repos {
                 }
             }
         });
-        if !started {
+        if started {
+            self.fetching = Some(asked);
+        } else {
             self.busy(false);
         }
     }

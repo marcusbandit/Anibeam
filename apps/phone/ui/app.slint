@@ -398,6 +398,9 @@ export component AppWindow inherits Window {
         if (AiringPick.open) { return 17; }
         if (DiskData.sheet != 0) { return 18; }
         if (MoveData.open) { return 19; }
+        // Not drawn over the page, but Back takes it next: it returns to where the link found
+        // the person
+        if (Nav.link-back && root.on-link) { return 22; }
         return 0;
     }
 
