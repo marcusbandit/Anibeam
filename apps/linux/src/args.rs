@@ -258,7 +258,11 @@ fn read_repo_url(url: &str) -> Result<RepoLink, RepoRefusal> {
     let (host, port) = match authority.strip_prefix('[') {
         Some(v6) => {
             let (inner, after) = v6.split_once(']').ok_or(RepoRefusal::NotAUrl)?;
-            if inner.is_empty() || !inner.chars().all(|c| c.is_ascii_hexdigit() || c == ':') {
+            // [::1]8443 is not a port; only nothing or :port may follow the bracket
+            if inner.is_empty()
+                || !inner.chars().all(|c| c.is_ascii_hexdigit() || c == ':')
+                || !(after.is_empty() || after.starts_with(':'))
+            {
                 return Err(RepoRefusal::NotAUrl);
             }
             (&authority[..inner.len() + 2], after)
@@ -270,12 +274,14 @@ fn read_repo_url(url: &str) -> Result<RepoLink, RepoRefusal> {
     };
     let port = port.strip_prefix(':').unwrap_or(port);
     let port_ok = port.bytes().all(|b| b.is_ascii_digit()) && !authority.ends_with(':');
+    // ASCII only: a lookalike letter, a Cyrillic U+0430 for the a of anibeam.app, would
+    // pass for the real host in the ask, which shows the host to tell lists apart
     let host_ok = host.starts_with('[')
         || (!host.is_empty()
             && !host.starts_with(['.', '-'])
             && host
                 .chars()
-                .all(|c| c.is_alphanumeric() || matches!(c, '-' | '.' | '_')));
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_')));
     let host_ok = host_ok && port_ok;
     if !host_ok {
         return Err(RepoRefusal::NotAUrl);
@@ -540,6 +546,19 @@ mod tests {
                 NotAUrl,
             ),
             ("anibeam://add-repo?url=javascript:alert(1)", NotAUrl),
+            (
+                "anibeam://add-repo?url=https://[::1]8443/repo.json",
+                NotAUrl,
+            ),
+            ("anibeam://add-repo?url=https://[::1]x/repo.json", NotAUrl),
+            (
+                "anibeam://add-repo?url=https://%D0%B0nibeam.app/repo.json",
+                NotAUrl,
+            ),
+            (
+                "anibeam://add-repo?url=https://\u{430}nibeam.app/repo.json",
+                NotAUrl,
+            ),
         ] {
             assert_eq!(repo_link(link), Some(Err(why)), "{link}");
             // The window opens and says why, rather than the launch failing in a terminal
