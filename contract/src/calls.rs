@@ -181,8 +181,8 @@ pub enum Call {
     /// (#1408), read without clearing it, so a window that opens after the
     /// launch's cleanup still finds it. Answers `TrackerNotice`.
     GetTrackerNotice,
-    /// The user acted on the tracker notice or closed it, so it is not owed
-    /// any more. Connecting MyAnimeList clears it as well.
+    /// The user closed the tracker notice with the x, so it is not owed any
+    /// more. MyAnimeList connecting clears it as well.
     DismissTrackerNotice,
     MarkEpisode {
         series: u64,

@@ -83,6 +83,9 @@ pub struct Secrets {
     /// `GetTrackers` asks about every key of every tracker; a disconnected
     /// tracker is exactly the case that would pay it forever.
     probed: Mutex<HashSet<String>>,
+    /// Built by [`Secrets::file_only`]: no keyring was ever wanted, so the
+    /// file store is the whole store rather than a fallback.
+    file_only: bool,
 }
 
 impl Secrets {
@@ -90,6 +93,10 @@ impl Secrets {
     /// D-Bus session or the disk beyond reading `secrets.json` if it is
     /// already there.
     pub fn init(path: PathBuf) -> Arc<Secrets> {
+        Secrets::build(path, false)
+    }
+
+    fn build(path: PathBuf, file_only: bool) -> Arc<Secrets> {
         let file = FileStore::new(path);
         let known = file.keys();
         Arc::new(Secrets {
@@ -119,6 +126,7 @@ impl Secrets {
             announced: AtomicBool::new(false),
             known: Mutex::new(known),
             probed: Mutex::new(HashSet::new()),
+            file_only,
         })
     }
 
@@ -128,10 +136,17 @@ impl Secrets {
     /// nothing to announce, since this was asked for rather than fallen
     /// back to.
     pub fn file_only(path: PathBuf) -> Arc<Secrets> {
-        let secrets = Secrets::init(path);
+        let secrets = Secrets::build(path, true);
         let _ = secrets.primary.set(None);
         secrets.announced.store(true, Ordering::SeqCst);
         secrets
+    }
+
+    /// Whether this was built by [`Secrets::file_only`], so no keyring can
+    /// hold a secret it does not see. A machine that merely turned out to
+    /// have no Secret Service answers false: its keyring may be back later.
+    pub fn is_file_only(&self) -> bool {
+        self.file_only
     }
 
     /// Makes the store choice if it has not been made, and returns true to

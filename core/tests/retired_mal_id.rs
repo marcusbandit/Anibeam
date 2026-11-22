@@ -308,42 +308,41 @@ fn saving_the_bundled_id_stores_none() {
     assert_eq!(stored(&core).as_deref(), Some("bundled"));
 }
 
-#[test]
-fn a_keyring_that_fails_leaves_the_owner_pinned_to_try_again() {
-    // A build that still bundles the retired id has nothing to steer away from.
-    if accounts::bundled_client_id(Tracker::Mal) == Some(RETIRED_MAL_CLIENT_ID) {
-        return;
-    }
-    let (dir, core, _c) = common::open_core();
-    seed(&core, RETIRED_MAL_CLIENT_ID, "guest-own-id");
-    store_secrets(&core);
-    // The file store rewrites through a .tmp sibling; a directory there
-    // makes every write, and so every delete, fail.
-    let tmp = CorePaths::under(dir.path())
+/// Whether a delete of the retired app's secret is still owed.
+fn owed(core: &Core) -> bool {
+    core.services()
+        .store
+        .read(|c| {
+            Ok(
+                store::settings::get::<bool>(c, store::settings::MAL_RETIRED_SECRET_OWED)?
+                    .unwrap_or(false),
+            )
+        })
+        .unwrap()
+}
+
+/// The owner's pasted MAL secret, read off the store itself rather than the
+/// facade's memory of which keys exist.
+fn secret(core: &Core) -> Option<String> {
+    core.services()
+        .secrets()
+        .get(&accounts::secret_key(Tracker::Mal), None)
+        .unwrap()
+        .map(|(value, _)| value)
+}
+
+/// Makes every write to the secrets file, and so every delete, fail: the
+/// file store rewrites through a .tmp sibling, and a directory sits there.
+fn break_secrets(dir: &std::path::Path) -> std::path::PathBuf {
+    let tmp = CorePaths::under(dir)
         .secrets_path()
         .with_extension("json.tmp");
     std::fs::create_dir(&tmp).unwrap();
-
-    assert!(accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
-    let owner = mal_rows(&core).into_iter().find(|r| r.0 == 1).unwrap();
-    assert_eq!(owner.1.as_deref(), Some(RETIRED_MAL_CLIENT_ID));
-    assert_eq!(owner.3, None, "signed out even though the keys stayed");
-    assert!(notice(&core).is_some());
-
-    // A Connect while the keyring still fails stops rather than send the
-    // retired id or its secret.
-    assert!(accounts::effective_credentials(core.services(), Tracker::Mal).is_err());
-
-    // The next launch, with the keyring back, finishes the job.
-    std::fs::remove_dir(&tmp).unwrap();
-    assert!(accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
-    assert_eq!(stored(&core), None);
-    assert!(!has_secret(&core, accounts::secret_key(Tracker::Mal)));
-    assert!(!accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
+    tmp
 }
 
 #[test]
-fn a_connect_after_a_failed_cleanup_clears_the_retired_app_first() {
+fn a_failed_delete_owes_the_secret_without_pinning_or_nagging_again() {
     // A build that still bundles the retired id has nothing to steer away from.
     if accounts::bundled_client_id(Tracker::Mal) == Some(RETIRED_MAL_CLIENT_ID) {
         return;
@@ -351,18 +350,127 @@ fn a_connect_after_a_failed_cleanup_clears_the_retired_app_first() {
     let (dir, core, _c) = common::open_core();
     seed(&core, RETIRED_MAL_CLIENT_ID, "guest-own-id");
     store_secrets(&core);
-    let tmp = CorePaths::under(dir.path())
-        .secrets_path()
-        .with_extension("json.tmp");
-    std::fs::create_dir(&tmp).unwrap();
+    let tmp = break_secrets(dir.path());
+
+    assert!(accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
+    assert_eq!(mal_rows(&core)[0], (1, None, None, None));
+    assert!(owed(&core), "the secret is owed a delete");
+    assert!(notice(&core).is_some());
+
+    // Closed with the x, it stays closed on the next launch, though the
+    // delete fails again.
+    assert_eq!(core.call(Call::DismissTrackerNotice).unwrap(), Reply::Ok);
+    assert!(!accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
+    assert_eq!(notice(&core), None);
+    assert!(owed(&core));
+    assert_eq!(secret(&core).as_deref(), Some("secret"));
+
+    // A Connect meanwhile signs in with the bundled id and never sends the
+    // retired app's secret; with no bundled id there is nothing to sign in
+    // with at all.
+    match (
+        accounts::bundled_client_id(Tracker::Mal),
+        accounts::effective_credentials(core.services(), Tracker::Mal),
+    ) {
+        (Some(bundled), Ok((id, sent))) => {
+            assert_eq!(id, bundled);
+            assert_ne!(sent.as_deref(), Some("secret"));
+        }
+        (None, Err(_)) => {}
+        other => panic!("{other:?}"),
+    }
+    assert!(owed(&core));
+
+    // The next launch, with the store working, pays the debt.
+    std::fs::remove_dir(&tmp).unwrap();
+    assert!(!accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
+    assert!(!owed(&core));
+    assert_eq!(secret(&core), None);
+    assert_eq!(notice(&core), None);
+}
+
+#[test]
+fn a_secret_pasted_while_one_is_owed_is_the_users_own() {
+    // A build that still bundles the retired id has nothing to steer away from.
+    if accounts::bundled_client_id(Tracker::Mal) == Some(RETIRED_MAL_CLIENT_ID) {
+        return;
+    }
+    let (dir, core, _c) = common::open_core();
+    seed(&core, RETIRED_MAL_CLIENT_ID, "guest-own-id");
+    store_secrets(&core);
+    let tmp = break_secrets(dir.path());
     accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap();
+    assert!(owed(&core));
     std::fs::remove_dir(&tmp).unwrap();
 
-    // The keyring is back before the next launch and the user clicks Connect.
-    if let Ok((id, secret)) = accounts::effective_credentials(core.services(), Tracker::Mal) {
-        assert_ne!(id, RETIRED_MAL_CLIENT_ID);
-        assert_ne!(secret.as_deref(), Some("secret"));
-    }
+    accounts::set_credentials_against(
+        core.services(),
+        Tracker::Mal,
+        "mine",
+        Some("pasted"),
+        accounts::bundled_client_id(Tracker::Mal),
+    )
+    .unwrap();
+    assert!(!owed(&core), "the stored secret is the user's now");
+    assert_eq!(
+        accounts::effective_credentials(core.services(), Tracker::Mal).unwrap(),
+        ("mine".to_string(), Some("pasted".to_string()))
+    );
+}
+
+#[test]
+fn the_notice_is_not_shown_once_mal_is_connected() {
+    let (_dir, core, _c) = common::open_core();
+    core.services()
+        .store
+        .write(|c| {
+            store::settings::set(c, store::settings::MAL_SIGN_IN_AGAIN, &true)?;
+            c.execute(
+                "INSERT INTO tracker_accounts (profile_id, tracker) VALUES (1, 'mal')",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(notice(&core).is_some());
+
+    // An import, say, connects MyAnimeList without a sign-in here.
+    core.services()
+        .store
+        .write(|c| {
+            c.execute(
+                "UPDATE tracker_accounts SET user_id = 1, username = 'owner', connected_at = 10
+                  WHERE tracker = 'mal' AND profile_id = 1",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(notice(&core), None);
+}
+
+/// A row pinned to an id MAL never accepted was never signed in, so the
+/// tokens in the keyring are not its to drop.
+#[test]
+fn an_unconnected_pinned_owner_keeps_the_tokens() {
+    let (_dir, core, _c) = common::open_core();
+    core.services()
+        .store
+        .write(|c| {
+            c.execute(
+                "INSERT INTO tracker_accounts (profile_id, tracker, client_id) VALUES (1, 'mal', ?1)",
+                [RETIRED_MAL_CLIENT_ID],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    store_secrets(&core);
+
+    assert!(accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
     assert_eq!(stored(&core), None);
-    assert!(!has_secret(&core, accounts::secret_key(Tracker::Mal)));
+    assert!(has_secret(&core, accounts::access_key(Tracker::Mal)));
+    assert!(has_secret(&core, accounts::refresh_key(Tracker::Mal)));
+    assert_eq!(secret(&core), None, "the retired app's secret goes");
+    assert!(!owed(&core));
+    assert!(notice(&core).is_some());
 }

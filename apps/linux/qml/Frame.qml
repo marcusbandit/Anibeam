@@ -584,10 +584,12 @@ FocusScope {
     // A line the launch left about a tracker account (#1408), read from the core rather
     // than an event so it lands whether the launch's cleanup ran before this window was up
     // or after. The cleanup says the trackers changed when it is done. Reading it leaves it
-    // owed, so a toast nobody saw comes back next launch; a finished MyAnimeList sign-in
-    // or the x clears it, and one session shows it once.
+    // owed, so a toast nobody saw comes back next launch; it goes when it is closed with
+    // the x, or MyAnimeList connects, and one session shows it once. Captures and drives
+    // never show it, for both the first call and every trackers change, as with What's new.
     property bool trackerNoticeShown: false
     function showTrackerNotice() {
+        if (Shell.shoot !== "" || Shell.driveOut !== "") return
         if (frame.trackerNoticeShown) return
         var r = Door.call("GetTrackerNotice", {})
         if (r.error || !r.reply.message) return
