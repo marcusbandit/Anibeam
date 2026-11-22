@@ -997,7 +997,21 @@ async fn write_secrets(
         let Some(value) = value.filter(|v| !v.is_empty()) else {
             continue;
         };
+        let is_secret = key == secret_key(t);
         write_secret(services, key, value, hint).await?;
+        // The imported secret is the user's own: a retired one the launch
+        // still owed a delete is gone with it, and must not take this one.
+        if is_secret && t == Tracker::Mal {
+            services
+                .store
+                .write_async(|c| {
+                    anibeam_foundation::store::settings::remove(
+                        c,
+                        anibeam_foundation::store::settings::MAL_RETIRED_SECRET_OWED,
+                    )
+                })
+                .await?;
+        }
     }
     Ok((store, wrote))
 }
