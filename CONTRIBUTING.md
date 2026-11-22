@@ -255,12 +255,12 @@ A new kind is welcome when no existing one can read a source; open an issue for 
 The site itself comes from an endpoint repo the user attaches by URL
 (`docs/superpowers/specs/2026-10-24-endpoint-repos.md` has the format). Its definition says
 which kind to use and where to point it, and installing it is what tells the app how to handle
-that site. A new source goes in one of two places:
-
-- A PR to [`marcusbandit/anibeam-endpoints`](https://github.com/marcusbandit/anibeam-endpoints),
-  the owner's own repo. Its README says how to write a definition.
-- A repo of your own, signed with your own key, that anyone can add in Anibeam beside or
-  instead of the owner's.
+that site. Anibeam has no official list of sources and links to none, here, on the website
+or in the app. A new source goes in a repo of your own, signed with your own key, that anyone
+can add in Anibeam by its URL.
+[`marcusbandit/anibeam-endpoints-template`](https://github.com/marcusbandit/anibeam-endpoints-template)
+holds the schema, the checks and the signing workflow to start from, with example definitions
+only. Don't open a PR or issue here that links to a list of sources.
 
 Endpoints are not part of this project, and that is final. No PR here decides which sources
 exist, whether one is hidden or shown, or how a particular one is handled. A source that only
