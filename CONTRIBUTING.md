@@ -24,7 +24,8 @@ the branch, every commit, the PR title and the squash commit it becomes.
    on the branch, and every check green. Never amend and force-push a pushed
    branch.
 7. **Squash merge** with `gh pr merge --squash --delete-branch`. The PR title
-   becomes the one commit on main, with `(#N)` appended by GitHub.
+   becomes the one commit on main, with `(#N)` appended by GitHub. The owner's
+   PRs can merge themselves instead: see "Merging on its own" below.
 
 ## Types
 
@@ -304,6 +305,35 @@ When the PR works on Linux and is ready, put the `full ci` label on it. Full CI 
 and tests its head on Linux with the AppImage and distro smoke tests, Windows, macOS, the
 Arch tarball and the iPhone IPA. A push while the label is on builds again, so put it on
 last; take it off to push without a rebuild. Merge when Full CI is green on the head commit.
+
+### Merging on its own
+
+A PR from the owner's account with both the `automerge` and the `full ci` labels merges
+itself. `.github/workflows/ios-automerge.yml` runs `.github/ios-automerge.sh` from main
+whenever a PR workflow finishes or the `automerge` label lands. It squash merges the PR, titled
+with the PR title and `(#N)`, once:
+
+- it is ready for review and aimed at main;
+- every check and workflow run on its head commit has passed or skipped, counting only the
+  newest run of each workflow;
+- Full CI has built that head and passed. A Full CI run whose jobs all skipped, such as the
+  one another label starts, proves nothing; the newest run that built decides, and a Full CI
+  run still going means wait.
+
+A red check leaves the PR open, with no comment. Push a fix as a new commit: with `full ci`
+still on, the push builds the new head and the PR merges once that is green. Take `automerge`
+off to stop it merging.
+
+The merge uses the `NIGHTLY_TOKEN` secret when it is set: a fine-grained token on this repo
+with Contents and Workflows write, the same token the nightly publishes with. A merge made
+with it starts main's push workflows, the Site deploy and the nightly's build. Without it the
+workflow's own token merges, and GitHub starts no workflows for a push made with that token,
+so the site waits for the next deploy and the build for the next nightly. The workflow's own
+token also may not merge a PR that changes a file under `.github/workflows`; such a PR stays
+open until someone merges it by hand.
+
+The same workflow merges the iPhone and Mac contributors' PRs that only touch iPhone or Mac
+files (#909), without any label; the repo variable `IOS_AUTOMERGE_AUTHORS` lists them.
 
 ## Releases
 
