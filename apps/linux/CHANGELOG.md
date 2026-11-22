@@ -17,7 +17,15 @@ Write for people who use Anibeam, not as a commit log:
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
-## 2.6.0 · 2026-11-21
+## 2.5.1 · Source list links & download fixes · 2026-11-22
+
+We're glad to follow up 2.5.0 with one-tap source list links and a few fixes for downloads and season matching.
+
+- **One-tap source list links.** Opening an `anibeam://add-repo?url=...` link from a web page or guide opens Settings > Downloads and shows the list's address with Add and Cancel. Nothing is added until you press Add, and non-HTTPS links are refused.
+
+### Fixes & polish
+
+Get for a show's first season no longer picks a batch from another season, sequels named by a subtitle or a single mark keep their own releases instead of mixing with the first season's, and built-in download jobs no longer crash while reading the Linux keyring.
 
 ## 2.5.0 · Watch together · 2026-11-21
 
