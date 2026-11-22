@@ -212,9 +212,10 @@ impl AppInterface {
     fn activate(&self, platform_data: HashMap<String, OwnedValue>) {
         self.raise(&platform_data);
     }
-    /// An `anibeam://room/<code>` link joins that room (#846) and a magnet link opens
-    /// Downloads with it (#1391); the window comes up either way, and any other link is only
-    /// a raise.
+    /// An `anibeam://room/<code>` link joins that room (#846), a magnet link opens
+    /// Downloads with it (#1391) and an `anibeam://add-repo` link asks in Settings, Downloads
+    /// before adding its source list (#1406); the window comes up either way, and any other
+    /// link is only a raise.
     fn open(&self, uris: Vec<String>, platform_data: HashMap<String, OwnedValue>) {
         // Discord launching the app for a join it is about to hand over (#966)
         if uris.iter().any(|u| crate::args::is_discord_link(u)) {
@@ -229,6 +230,19 @@ impl AppInterface {
         if let Some(link) = uris.iter().find(|u| crate::args::is_magnet(u)).cloned() {
             self.shell
                 .queue(move |shell| shell.magnet_link_opened(QString::from(&link)))
+                .ok();
+        }
+        // A source list link only asks; nothing is added until the person says so (#1406)
+        if let Some(link) = uris.iter().find(|u| crate::args::repo_link(u).is_some()) {
+            let (url, host, refused) = crate::bridge::shell::repo_link_words(Some(link));
+            self.shell
+                .queue(move |shell| {
+                    shell.repo_link_opened(
+                        QString::from(&url),
+                        QString::from(&host),
+                        QString::from(refused),
+                    )
+                })
                 .ok();
         }
         self.raise(&platform_data);

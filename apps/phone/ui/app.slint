@@ -334,6 +334,14 @@ export component AppWindow inherits Window {
         }
         keys.focus();
     }
+    // Still on what an anibeam://add-repo link opened (src/link.rs). Moved anywhere else by
+    // the person, Back forgets the way back to where they were.
+    property <bool> on-link: AppData.onboarding ? AppData.step == AppData.onboarding-sites : Nav.page == 3 && Settings.section == 3;
+    changed on-link => {
+        if (!root.on-link) {
+            Nav.link-back = false;
+        }
+    }
     changed find-view => { keys.focus(); }
     changed notes-shown => { keys.focus(); }
     // Split, a series opening or closing narrows or widens the page beside it, and its grid
@@ -390,6 +398,9 @@ export component AppWindow inherits Window {
         if (AiringPick.open) { return 17; }
         if (DiskData.sheet != 0) { return 18; }
         if (MoveData.open) { return 19; }
+        // Not drawn over the page, but Back takes it next: it returns to where the link found
+        // the person
+        if (Nav.link-back && root.on-link) { return 22; }
         return 0;
     }
 
@@ -453,6 +464,19 @@ export component AppWindow inherits Window {
             }
             if (MoveData.open) {
                 MoveData.later();
+                return accept;
+            }
+            // What an anibeam://add-repo link opened goes back to where the person was, and
+            // the list it showed is left untrusted.
+            if (Nav.link-back && root.on-link) {
+                Nav.link-back = false;
+                RepoData.cancel();
+                if (AppData.onboarding) {
+                    AppData.step = Nav.link-step;
+                } else {
+                    Settings.section = Nav.link-section;
+                    Nav.page = Nav.link-page;
+                }
                 return accept;
             }
             if (AppData.onboarding && AppData.step > 0) {

@@ -31,7 +31,7 @@ use crate::{AppData, AppWindow, FindData, Fold, Nav, PlayerData, Settings};
 
 /// What is open over the page, by the number app.slint's `over()` gives, from 1: the
 /// questions and sheets Back closes first, in its order. ShowData.sheet's sheets run 8 to 15.
-const OVER: [&str; 21] = [
+const OVER: [&str; 22] = [
     "player",
     "what's new",
     "mobile data question",
@@ -53,7 +53,11 @@ const OVER: [&str; 21] = [
     "list move sheet",
     "player's picker",
     "locked player",
+    "source list a link opened",
 ];
+/// `over()`'s number for the page an anibeam://add-repo link opened: Back leaves it for
+/// where the person was, but it covers nothing, so `go` still reaches the page.
+const LINK_OVER: i32 = 22;
 /// How long a finger stays down for a tap. A press and a lift in the same instant reach
 /// nothing inside a scroll area, which holds the press back to see whether it is a drag.
 const TAP: Duration = Duration::from_millis(60);
@@ -1183,7 +1187,7 @@ fn open_over(w: &AppWindow) -> Option<String> {
     if over == 21 {
         return Some("the player is locked over the page; unlock it first".into());
     }
-    if over > 0 {
+    if over > 0 && over != LINK_OVER {
         let name = usize::try_from(over)
             .ok()
             .and_then(|i| OVER.get(i - 1))
@@ -1660,6 +1664,13 @@ mod tests {
         w.global::<DiskData>().set_sheet(1);
         assert_eq!(named(&w).as_deref(), Some("disk sheet"));
         w.global::<DiskData>().set_sheet(0);
+        assert_eq!(named(&w), None);
+        // What a link opened, while Back would return from it, and not once they moved on
+        w.invoke_go(3);
+        w.global::<Settings>().set_section(3);
+        w.global::<Nav>().set_link_back(true);
+        assert_eq!(named(&w).as_deref(), Some("source list a link opened"));
+        w.global::<Settings>().set_section(-1);
         assert_eq!(named(&w), None);
     }
 

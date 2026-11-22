@@ -2647,7 +2647,9 @@ pub fn run(
 
     let clock = Timer::default();
     clock.start(TimerMode::Repeated, Duration::from_secs(1), || {
-        with_app(App::second)
+        with_app(App::second);
+        // A link that opened the app before the core did is taken once it is open.
+        crate::link::poll();
     });
     // The hinge and the crease, for the layout: a bend shows in a fifth of a second. A phone
     // with neither a hinge sensor nor window extensions stops the timer; one that has the

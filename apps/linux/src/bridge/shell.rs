@@ -55,6 +55,12 @@ pub mod qobject {
         /// The magnet link this run was started with, as given; empty when there was none
         /// (#1391).
         #[qproperty(QString, magnet_link)]
+        /// The source list an `anibeam://add-repo` link this run was started with names: its
+        /// address and host, or why it names none ("no-url", "not-a-url", "not-https"). All
+        /// three empty when there was no such link (#1406).
+        #[qproperty(QString, repo_link_url)]
+        #[qproperty(QString, repo_link_host)]
+        #[qproperty(QString, repo_link_refused)]
         type Shell = super::ShellRust;
 
         /// A second launch handed over an `anibeam://room/<code>` link: join that room.
@@ -63,6 +69,10 @@ pub mod qobject {
         /// A second launch handed over a magnet link: Downloads takes it (#1391).
         #[qsignal]
         fn magnet_link_opened(self: Pin<&mut Self>, link: QString);
+        /// A second launch handed over an `anibeam://add-repo` link: Settings, Downloads asks
+        /// before adding the list, or says why the link adds none (#1406).
+        #[qsignal]
+        fn repo_link_opened(self: Pin<&mut Self>, url: QString, host: QString, refused: QString);
         /// Who opens magnet links: "anibeam" when this run's entry is the default, "other"
         /// when another app or build is, "none" when nothing is, or empty where the desktop
         /// has no such setting.
@@ -248,6 +258,9 @@ pub struct ShellRust {
     settings_url: QString,
     room_link: QString,
     magnet_link: QString,
+    repo_link_url: QString,
+    repo_link_host: QString,
+    repo_link_refused: QString,
 }
 
 impl Default for ShellRust {
@@ -268,6 +281,7 @@ impl Default for ShellRust {
         } else {
             String::new()
         };
+        let repo = repo_link_words(a.link.as_deref());
         ShellRust {
             version: QString::from(anibeam_core::VERSION),
             // The rail and About show the version number alone, never the commit.
@@ -298,7 +312,20 @@ impl Default for ShellRust {
                     .as_str(),
             ),
             magnet_link: QString::from(crate::args::magnet_of(a.link.as_deref()).unwrap_or("")),
+            repo_link_url: QString::from(repo.0),
+            repo_link_host: QString::from(repo.1),
+            repo_link_refused: QString::from(repo.2),
         }
+    }
+}
+
+/// An `anibeam://add-repo` link as the three strings QML takes: address, host, and why it
+/// adds nothing. All empty for any other link.
+pub fn repo_link_words(link: Option<&str>) -> (String, String, &'static str) {
+    match link.and_then(crate::args::repo_link) {
+        Some(Ok(r)) => (r.url, r.host, ""),
+        Some(Err(why)) => (String::new(), String::new(), why.word()),
+        None => (String::new(), String::new(), ""),
     }
 }
 

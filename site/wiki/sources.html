@@ -148,7 +148,7 @@ https://example.com/rss?q={query}</pre>
           <div class="term"><span class="prompt">$</span><code><span class="sh-cmd">openssl</span> genpkey <span class="sh-flag">-algorithm</span> ed25519 <span class="sh-flag">-out</span> list-key.pem</code><button type="button" class="copy" data-copy="openssl genpkey -algorithm ed25519 -out list-key.pem">Copy</button></div>
         </li>
         <li>Write one JSON definition per source with a permanent <code>id</code>, display <code>name</code>, integer <code>version</code>, <code>kind</code>, and a <code>url</code> template containing <code>{query}</code>.</li>
-        <li>Validate and sign the index. You can copy the schema, validation script, and GitHub Actions signing workflow from <a href="https://github.com/marcusbandit/anibeam-endpoints">marcusbandit/anibeam-endpoints</a>.</li>
+        <li>Validate and sign the index. You can copy the schema, validation script, and GitHub Actions signing workflow from <a href="https://github.com/marcusbandit/anibeam-endpoints-template">marcusbandit/anibeam-endpoints-template</a>.</li>
         <li>Host the signed <code>repo.json</code> file over HTTPS (such as <code>https://example.com/anibeam/repo.json</code> or a GitHub raw file URL) and share the URL alongside your key's fingerprint.</li>
       </ol>
       <p>Example source definition:</p>
@@ -195,9 +195,4 @@ https://example.com/rss?q={query}</pre>
       </ul>
     </div>
   </details>
-</section>
-
-<section>
-  <h2 id="contribute">Contribute to the separate endpoints repository</h2>
-  <p>Anibeam's main repository never accepts pull requests that add or name download sites. To contribute a source definition to the separate community list, open a pull request on <a href="https://github.com/marcusbandit/anibeam-endpoints">marcusbandit/anibeam-endpoints</a>, where the README walks through writing and checking definitions.</p>
 </section>

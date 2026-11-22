@@ -919,3 +919,59 @@ pub fn bars(argb: u32) {
         Some(jni::objects::JValue::Int(argb as i32)),
     );
 }
+
+/// `LinkActivity`, looked up once: the clock asks it for a link every second.
+static LINK_CLASS: std::sync::OnceLock<jni::objects::GlobalRef> = std::sync::OnceLock::new();
+
+/// The anibeam:// link a browser opened the app with, once: `LinkActivity.java` keeps it
+/// until it is taken here. With none waiting this is one static field read.
+pub fn take_link() -> Option<String> {
+    let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
+    if raw == 0 {
+        return None;
+    }
+    let r = with_env(|env, _app| {
+        use jni::objects::{JClass, JObject, JString, JValue};
+        env.with_local_frame(
+            8,
+            |env| -> Result<Option<String>, Box<dyn std::error::Error>> {
+                let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
+                let class = match LINK_CLASS.get() {
+                    Some(class) => class,
+                    None => {
+                        let class = app_class(env, activity, "LinkActivity")?;
+                        let class = env.new_global_ref(class)?;
+                        LINK_CLASS.get_or_init(|| class)
+                    }
+                };
+                let class = <&JClass>::from(class.as_obj());
+                let waiting = env
+                    .get_static_field(class, "pending", "Ljava/lang/String;")?
+                    .l()?;
+                if waiting.is_null() {
+                    return Ok(None);
+                }
+                let link = env
+                    .call_static_method(
+                        class,
+                        "take",
+                        "(Landroid/app/Activity;)Ljava/lang/String;",
+                        &[JValue::Object(activity)],
+                    )?
+                    .l()?;
+                if link.is_null() {
+                    return Ok(None);
+                }
+                let link = JString::from(link);
+                Ok(Some(env.get_string(&link)?.into()))
+            },
+        )
+    });
+    match r {
+        Ok(link) => link,
+        Err(e) => {
+            crate::local::log(&format!("LinkActivity.take: {e}"));
+            None
+        }
+    }
+}
