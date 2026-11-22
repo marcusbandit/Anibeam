@@ -1,21 +1,32 @@
-name: iOS automerge
+name: Automerge
 
-# Merges the iPhone and Mac contributors' PRs on their own (#909): .github/ios-automerge.sh
-# holds the rules. A PR that only touches iPhone or Mac files squash merges once its checks
-# pass; any other is its author's to merge, and this leaves it alone (#916).
+# Merges PRs on their own: .github/ios-automerge.sh holds the rules.
 #
-# The contributors are the repo variable IOS_AUTOMERGE_AUTHORS (logins, separated by commas
-# or spaces); while it is unset this does nothing. A finished PR workflow looks at the PRs it
-# names, a PR marked ready or moved onto main looks at itself, since its checks may all have
-# passed already, and a run by hand looks at every open one. The script always comes from the default
-# branch and never runs a PR's code. A merge made with this token starts no push workflows
-# on main; the nightly builds it as usual.
+# - The owner's PR labelled `automerge` and `full ci` (#1414) squash merges once every check on
+#   its head has passed and Full CI has built that head and passed. A Full CI run whose jobs
+#   all skipped, such as one another label started, does not count.
+# - An iPhone and Mac contributor's PR (#909) that only touches iPhone or Mac files squash
+#   merges once its checks pass; any other is its author's to merge, and this leaves it alone
+#   (#916). The contributors are the repo variable IOS_AUTOMERGE_AUTHORS (logins, separated by
+#   commas or spaces); while it is unset, only the owner's labelled PRs merge here.
+#
+# A finished PR workflow looks at the PRs it names, the `automerge` label landing or a PR
+# marked ready or moved onto main looks at itself, since its checks may all have passed
+# already, and a run by hand looks at every open one. The script always comes from the
+# default branch and never runs a PR's code.
+#
+# The owner's PRs merge with the NIGHTLY_TOKEN secret when it is set, a fine-grained token
+# with Contents and Workflows write on this repo, so the merge starts main's push workflows
+# (the Site deploy, the nightly's build) and may merge a PR that changes a workflow. Without
+# it, or when it may not merge, the workflow's own token merges: that merge starts no push
+# workflows on main, and it is refused for a PR that changes a file under .github/workflows.
 on:
   workflow_run:
-    workflows: [Android, Arch, CI, iOS, Linux, macOS, Windows, Site, Strings, "No sites", "PR build", "PR issue"]
+    workflows: [Android, Arch, CI, "Full CI", iOS, Linux, macOS, Windows, Site, Strings, "No sites",
+      "PR build", "PR issue", "PR labels", "Issue state"]
     types: [completed]
   pull_request_target:
-    types: [ready_for_review, edited]
+    types: [labeled, ready_for_review, edited]
   workflow_dispatch:
 
 permissions:
@@ -28,11 +39,12 @@ permissions:
 # named. Two runs racing on one PR are harmless, since the second merge is refused.
 
 jobs:
-  ios-automerge:
-    # A finished push to main names no PR.
+  automerge:
+    # A finished push to main names no PR, and only the `automerge` label landing can make a
+    # PR ready to merge.
     if: >-
-      vars.IOS_AUTOMERGE_AUTHORS != ''
-      && (github.event_name != 'workflow_run' || github.event.workflow_run.pull_requests[0] != null)
+      (github.event_name != 'workflow_run' || github.event.workflow_run.pull_requests[0] != null)
+      && (github.event.action != 'labeled' || github.event.label.name == 'automerge')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -45,7 +57,9 @@ jobs:
       - name: Merge what is ready
         env:
           GH_TOKEN: ${{ github.token }}
+          MERGE_TOKEN: ${{ secrets.NIGHTLY_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
           AUTHORS: ${{ vars.IOS_AUTOMERGE_AUTHORS }}
           PRS: >-
             ${{ github.event.pull_request.number
