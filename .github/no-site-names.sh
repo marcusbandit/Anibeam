@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-names='nyaa|animetosho|tosho|erai|erai-raws|subsplease|sukebei|1337x|knaben|limetorrents|everythingmoe|ddos-guard|anirena|eztv|eztvx|anibeam-endpoints(?!-template)'
+names='nyaa|animetosho|tosho|erai|erai-raws|subsplease|sukebei|1337x|knaben|limetorrents|everythingmoe|ddos-guard|anirena|eztv|eztvx|anibeam[-_]endpoints(?!-template(?![a-z0-9-]))'
 
 # A name counts unless a lower-case letter or a digit runs on into it: tracker_nyaa_kind,
 # nyaaSource and SubspleaseQuirks are hits, surfaceRaised is another word. The name itself

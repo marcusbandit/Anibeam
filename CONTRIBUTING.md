@@ -253,7 +253,7 @@ It is named for that shape, never for a site, and it knows nothing about which s
 A new kind is welcome when no existing one can read a source; open an issue for it first.
 
 The site itself comes from an endpoint repo the user attaches by URL
-(`docs/superpowers/specs/2026-10-24-endpoint-repos.md` has the format). Its definition says
+(the template repo's README below has the format). Its definition says
 which kind to use and where to point it, and installing it is what tells the app how to handle
 that site. Anibeam has no official list of sources and links to none, here, on the website
 or in the app. A new source goes in a repo of your own, signed with your own key, that anyone
