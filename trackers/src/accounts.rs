@@ -219,7 +219,25 @@ pub fn effective_credentials(
     services: &Services,
     t: Tracker,
 ) -> Result<(String, Option<String>), CoreError> {
-    let row = services.store.read(|c| load_row(c, t))?.unwrap_or_default();
+    let mut row = services.store.read(|c| load_row(c, t))?.unwrap_or_default();
+    if t == Tracker::Mal
+        && row.stored_client_id().as_deref() == Some(RETIRED_MAL_CLIENT_ID)
+        && bundled_client_id(t) != Some(RETIRED_MAL_CLIENT_ID)
+    {
+        // A launch whose keyring failed left the retired app pinned with its
+        // secret ([`forget_retired_client_id`]). Neither is sent: the secret
+        // goes now, or the connect stops here, then the id comes off.
+        services.secrets().delete(&secret_key(t))?;
+        services.store.write(move |c| {
+            c.execute(
+                "UPDATE tracker_accounts SET client_id = NULL
+                  WHERE tracker = ?1 AND profile_id = ?2 AND client_id = ?3",
+                params![t.as_str(), OWNER, RETIRED_MAL_CLIENT_ID],
+            )?;
+            Ok(())
+        })?;
+        row.client_id = None;
+    }
     let client_id = row
         .stored_client_id()
         .or_else(|| bundled_client_id(t).map(str::to_string))
@@ -273,8 +291,9 @@ pub(crate) async fn credentials_async(
 
 // The calls ------------------------------------------------------------------
 
-/// The Trackers tab's Save. The id is stored whether or not the tracker is
-/// connected. The secret has three answers: absent keeps whatever is
+/// The Trackers tab's Save. The id is stored, except the bundled one on a
+/// signed-out account that holds none (see [`set_credentials_against`]).
+/// The secret has three answers: absent keeps whatever is
 /// already stored, so a user re-saving an id does not have to paste the
 /// secret again; empty (or only whitespace) removes the stored one, which
 /// is the only way to take back a secret pasted for an app that turned out
@@ -291,10 +310,12 @@ pub fn set_credentials(
 /// [`set_credentials`] with the build's bundled id passed in, so a test can
 /// name one. The bundled id is not stored for an account that holds no id
 /// and is not signed in: the Trackers tab shows it in the field when
-/// nothing else is there, so a Save of the secret alone would otherwise pin
+/// nothing else is there, so a Save that changes nothing would otherwise pin
 /// this build's id over the next build's (#1408). A signed-in account keeps
 /// whatever id it is given, and so does a row that already holds that id:
-/// its tokens were issued to that app, and only that app refreshes them.
+/// its tokens were issued to that app, and only that app refreshes them. A
+/// pasted secret keeps its id too: a secret belongs to one app, and stored
+/// without its id it would be sent with whatever id the next build carries.
 pub fn set_credentials_against(
     services: &Services,
     t: Tracker,
@@ -304,6 +325,7 @@ pub fn set_credentials_against(
 ) -> Result<Reply, CoreError> {
     let client_id = client_id.trim().to_string();
     let is_bundled = bundled_id == Some(client_id.as_str());
+    let removed = matches!(client_secret.map(str::trim), Some(""));
     let store = match client_secret.map(str::trim) {
         Some("") => {
             services.secrets().delete(&secret_key(t))?;
@@ -322,7 +344,11 @@ pub fn set_credentials_against(
             )
             .optional()?
             .unwrap_or((None, false));
-        let keep = !is_bundled || signed_in || held.as_deref() == Some(client_id.as_str());
+        let keep = !is_bundled
+            || signed_in
+            || store.is_some()
+            // A secret kept from an earlier Save stays with the id it came with.
+            || (!removed && held.as_deref() == Some(client_id.as_str()));
         let client_id = keep.then_some(client_id);
         tx.execute(
             "INSERT INTO tracker_accounts (tracker, client_id) VALUES (?1, ?2)
@@ -390,50 +416,62 @@ fn delete_tokens(services: &Services, t: Tracker) -> Result<(), CoreError> {
 /// notice for the shell ([`notice`]): a guest's reset is not the owner's
 /// to be told about.
 ///
-/// Nothing matches once this has run, so every later launch finds nothing
-/// to do. A keyring that fails does not hold the rows back: the account is
-/// signed out either way, so nothing uses the tokens left behind, and the
-/// failure is logged.
+/// The rows are picked and signed out in one transaction, so a sign-in that
+/// lands meanwhile is not undone, and the keyring is cleared after it, so
+/// that sign-in's new keys are not either. A keyring that fails puts the
+/// retired id back on the owner's still signed-out row: the leftover secret
+/// would otherwise go out with this build's id, and the pin makes the next
+/// launch try again; a Connect before then clears it first
+/// ([`effective_credentials`]). Once everything is cleared nothing matches, so later
+/// launches find nothing to do.
 pub fn forget_retired_client_id(services: &Services, retired: &str) -> Result<bool, CoreError> {
     let t = Tracker::Mal;
     let retired = retired.to_string();
-    let profiles = services.store.read(|c| {
-        let mut stmt = c.prepare(
-            "SELECT profile_id FROM tracker_accounts WHERE tracker = ?1 AND client_id = ?2 ORDER BY profile_id",
-        )?;
-        let ids = stmt
-            .query_map(params![t.as_str(), retired], |r| r.get::<_, i64>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(ids)
-    })?;
-    if profiles.is_empty() {
-        return Ok(false);
-    }
-    let owner = profiles.contains(&OWNER);
-    if owner {
-        let tokens = delete_tokens(services, t);
-        let secret = services.secrets().delete(&secret_key(t));
-        if let Err(e) = tokens.and(secret) {
-            services.bus.warn(
-                Stage::Trackers,
-                format!("could not clear the retired MyAnimeList app's keys: {e}"),
-                EventBody::Notice,
-            );
-        }
-    }
-    services.store.tx(move |tx| {
+    let pinned = retired.clone();
+    let profiles = services.store.tx(move |tx| {
+        let profiles = {
+            let mut stmt = tx.prepare(
+                "SELECT profile_id FROM tracker_accounts WHERE tracker = ?1 AND client_id = ?2 ORDER BY profile_id",
+            )?;
+            stmt
+                .query_map(params![t.as_str(), pinned], |r| r.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
         for &profile in &profiles {
             sign_out(tx, t, profile)?;
         }
         tx.execute(
             "UPDATE tracker_accounts SET client_id = NULL WHERE tracker = ?1 AND client_id = ?2",
-            params![t.as_str(), retired],
+            params![t.as_str(), pinned],
         )?;
-        if owner {
+        if profiles.contains(&OWNER) {
             settings::set(tx, settings::MAL_SIGN_IN_AGAIN, &true)?;
         }
-        Ok(())
+        Ok(profiles)
     })?;
+    if profiles.is_empty() {
+        return Ok(false);
+    }
+    if profiles.contains(&OWNER) {
+        let tokens = delete_tokens(services, t);
+        let secret = services.secrets().delete(&secret_key(t));
+        if let Err(e) = tokens.and(secret) {
+            services.bus.warn(
+                Stage::Trackers,
+                format!("could not clear the retired MyAnimeList app's keys, trying again next launch: {e}"),
+                EventBody::Notice,
+            );
+            // Only a row nothing has signed in to or pinned since.
+            services.store.write(move |c| {
+                c.execute(
+                    "UPDATE tracker_accounts SET client_id = ?2
+                      WHERE tracker = ?1 AND profile_id = ?3 AND client_id IS NULL AND connected_at IS NULL",
+                    params![t.as_str(), retired, OWNER],
+                )?;
+                Ok(())
+            })?;
+        }
+    }
     services.bus.debug(
         Stage::Trackers,
         "MyAnimeList signed out: the app id 2.5.0 used is retired",

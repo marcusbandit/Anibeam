@@ -266,7 +266,13 @@ fn saving_the_bundled_id_stores_none() {
     let services = core.services();
 
     // The Trackers tab sends the id its field shows, the bundled one when
-    // nothing else is stored, with the pasted secret.
+    // nothing else is stored. Alone it stores nothing.
+    accounts::set_credentials_against(services, Tracker::Mal, " bundled ", None, Some("bundled"))
+        .unwrap();
+    assert_eq!(stored(&core), None);
+
+    // With a pasted secret the id is kept: the secret belongs to that app,
+    // and a later build must not send it with its own id.
     accounts::set_credentials_against(
         services,
         Tracker::Mal,
@@ -275,10 +281,15 @@ fn saving_the_bundled_id_stores_none() {
         Some("bundled"),
     )
     .unwrap();
-    assert_eq!(stored(&core), None);
+    assert_eq!(stored(&core).as_deref(), Some("bundled"));
     assert!(has_secret(&core, accounts::secret_key(Tracker::Mal)));
 
-    // Remove secret re-saves the same id.
+    // A Save that keeps the secret keeps the id with it.
+    accounts::set_credentials_against(services, Tracker::Mal, "bundled", None, Some("bundled"))
+        .unwrap();
+    assert_eq!(stored(&core).as_deref(), Some("bundled"));
+
+    // Remove secret re-saves the same id, which goes with the secret.
     accounts::set_credentials_against(services, Tracker::Mal, "bundled", Some(""), Some("bundled"))
         .unwrap();
     assert_eq!(stored(&core), None);
@@ -295,4 +306,63 @@ fn saving_the_bundled_id_stores_none() {
     // A build with no bundled id stores whatever was given.
     accounts::set_credentials_against(services, Tracker::Mal, "bundled", None, None).unwrap();
     assert_eq!(stored(&core).as_deref(), Some("bundled"));
+}
+
+#[test]
+fn a_keyring_that_fails_leaves_the_owner_pinned_to_try_again() {
+    // A build that still bundles the retired id has nothing to steer away from.
+    if accounts::bundled_client_id(Tracker::Mal) == Some(RETIRED_MAL_CLIENT_ID) {
+        return;
+    }
+    let (dir, core, _c) = common::open_core();
+    seed(&core, RETIRED_MAL_CLIENT_ID, "guest-own-id");
+    store_secrets(&core);
+    // The file store rewrites through a .tmp sibling; a directory there
+    // makes every write, and so every delete, fail.
+    let tmp = CorePaths::under(dir.path())
+        .secrets_path()
+        .with_extension("json.tmp");
+    std::fs::create_dir(&tmp).unwrap();
+
+    assert!(accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
+    let owner = mal_rows(&core).into_iter().find(|r| r.0 == 1).unwrap();
+    assert_eq!(owner.1.as_deref(), Some(RETIRED_MAL_CLIENT_ID));
+    assert_eq!(owner.3, None, "signed out even though the keys stayed");
+    assert!(notice(&core).is_some());
+
+    // A Connect while the keyring still fails stops rather than send the
+    // retired id or its secret.
+    assert!(accounts::effective_credentials(core.services(), Tracker::Mal).is_err());
+
+    // The next launch, with the keyring back, finishes the job.
+    std::fs::remove_dir(&tmp).unwrap();
+    assert!(accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
+    assert_eq!(stored(&core), None);
+    assert!(!has_secret(&core, accounts::secret_key(Tracker::Mal)));
+    assert!(!accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
+}
+
+#[test]
+fn a_connect_after_a_failed_cleanup_clears_the_retired_app_first() {
+    // A build that still bundles the retired id has nothing to steer away from.
+    if accounts::bundled_client_id(Tracker::Mal) == Some(RETIRED_MAL_CLIENT_ID) {
+        return;
+    }
+    let (dir, core, _c) = common::open_core();
+    seed(&core, RETIRED_MAL_CLIENT_ID, "guest-own-id");
+    store_secrets(&core);
+    let tmp = CorePaths::under(dir.path())
+        .secrets_path()
+        .with_extension("json.tmp");
+    std::fs::create_dir(&tmp).unwrap();
+    accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap();
+    std::fs::remove_dir(&tmp).unwrap();
+
+    // The keyring is back before the next launch and the user clicks Connect.
+    if let Ok((id, secret)) = accounts::effective_credentials(core.services(), Tracker::Mal) {
+        assert_ne!(id, RETIRED_MAL_CLIENT_ID);
+        assert_ne!(secret.as_deref(), Some("secret"));
+    }
+    assert_eq!(stored(&core), None);
+    assert!(!has_secret(&core, accounts::secret_key(Tracker::Mal)));
 }

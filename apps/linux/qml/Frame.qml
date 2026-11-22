@@ -584,8 +584,8 @@ FocusScope {
     // A line the launch left about a tracker account (#1408), read from the core rather
     // than an event so it lands whether the launch's cleanup ran before this window was up
     // or after. The cleanup says the trackers changed when it is done. Reading it leaves it
-    // owed, so a toast nobody saw comes back next launch; Connect or the x clears it, and
-    // one session shows it once.
+    // owed, so a toast nobody saw comes back next launch; a finished MyAnimeList sign-in
+    // or the x clears it, and one session shows it once.
     property bool trackerNoticeShown: false
     function showTrackerNotice() {
         if (frame.trackerNoticeShown) return
@@ -593,7 +593,6 @@ FocusScope {
         if (r.error || !r.reply.message) return
         frame.trackerNoticeShown = true
         frame.toast(r.reply.message, 12, words.t("action-connect"), function() {
-            Door.call("DismissTrackerNotice", {})
             frame.openConnect("Mal")
         })
         toastBox.dismiss = function() { Door.call("DismissTrackerNotice", {}) }
