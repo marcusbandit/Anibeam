@@ -141,8 +141,10 @@ Panel {
             status: root.link ? root.link.url : ""
             Row {
                 spacing: theme.space(1.5)
+                // Waits while the field's own Add runs, since attach() takes one at a time
                 Button { objectName: "repo-link-add"; msg: "endpoint-repos-panel-add"; icon: "plus"; primary: true
-                         onClicked: { var u = root.link.url; frame.repoLink = null; attach.attach(u) } }
+                         enabled: !attach.busy
+                         onClicked: { if (attach.busy) return; var u = root.link.url; frame.repoLink = null; attach.attach(u) } }
                 Button { objectName: "repo-link-cancel"; msg: "action-cancel"; flat: true; onClicked: frame.repoLink = null }
             }
         }
