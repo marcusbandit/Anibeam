@@ -175,7 +175,7 @@ FocusScope {
         enabled: false
         function onFrameSwapped() { firstPaint.enabled = false; Dev.mark("first page painted") } // i18n: none
     }
-    Component.onCompleted: { frame.devApply(); frame.loadPage(); frame.takeTrackerNotice() }
+    Component.onCompleted: { frame.devApply(); frame.loadPage(); frame.showTrackerNotice() }
     // A hovered item destroyed by the navigation never fires its own exit handler, so a
     // tip or a menu opened on the leaving page would otherwise survive onto the next one.
     // The escape stack is cleared for the identical reason: a popover the leaving page
@@ -581,14 +581,24 @@ FocusScope {
         var r = Door.call("DiscordTakeJoin", {})
         if (!r.error && r.reply.code) frame.joinRoomLink(r.reply.code)
     }
-    // A line the launch left about a tracker account (#1408), taken from the core rather
+    // A line the launch left about a tracker account (#1408), read from the core rather
     // than an event so it lands whether the launch's cleanup ran before this window was up
-    // or after, and only once. The cleanup says the trackers changed when it is done.
-    function takeTrackerNotice() {
-        var r = Door.call("TakeTrackerNotice", {})
-        if (!r.error && r.reply.message) frame.toast(r.reply.message, 12, words.t("action-connect"), function() { frame.openConnect("Mal") })
+    // or after. The cleanup says the trackers changed when it is done. Reading it leaves it
+    // owed, so a toast nobody saw comes back next launch; Connect or the x clears it, and
+    // one session shows it once.
+    property bool trackerNoticeShown: false
+    function showTrackerNotice() {
+        if (frame.trackerNoticeShown) return
+        var r = Door.call("GetTrackerNotice", {})
+        if (r.error || !r.reply.message) return
+        frame.trackerNoticeShown = true
+        frame.toast(r.reply.message, 12, words.t("action-connect"), function() {
+            Door.call("DismissTrackerNotice", {})
+            frame.openConnect("Mal")
+        })
+        toastBox.dismiss = function() { Door.call("DismissTrackerNotice", {}) }
     }
-    Connections { target: Door; function onTrackersChanged() { frame.takeTrackerNotice() } }
+    Connections { target: Door; function onTrackersChanged() { frame.showTrackerNotice() } }
 
     // The tracker connect sheet, over everything: the Watching page's empty
     // list, the library's nudge and the Trackers panel all send the user here.
@@ -654,6 +664,8 @@ FocusScope {
             width: Math.min(parent.width - theme.space(8), toastRow.implicitWidth + theme.space(4))
             height: toastCol.implicitHeight + theme.space(1)
             property var action: null
+            // Run when the x closes the toast, for a toast that should not come back
+            property var dismiss: null
             property string detail: ""
             property bool detailOpen: false
             HoverHandler { id: toastHover }
@@ -698,7 +710,7 @@ FocusScope {
                     anchors.verticalCenter: parent.verticalCenter
                     small: true; flat: true; takesFocus: false
                     icon: "x"
-                    onClicked: toastBox.visible = false
+                    onClicked: { var d = toastBox.dismiss; toastBox.visible = false; if (d) d() }
                     Tooltip { msg: "action-close" }
                 }
             }
@@ -935,6 +947,7 @@ FocusScope {
         toastText.text = text
         toastAct.text = actionText || ""
         toastBox.action = action || null
+        toastBox.dismiss = null
         toastBox.visible = true
         toastTimer.interval = (seconds || (action ? 8 : 4)) * 1000
         toastTimer.restart()

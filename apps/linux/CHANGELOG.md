@@ -19,7 +19,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ## 2.5.1 · 2026-11-22
 
-Signing in to MyAnimeList works now. 2.5.0 shipped with a MyAnimeList app id that did not work, and this release carries one that does. If you tried to sign in with 2.5.0, Anibeam will ask you to sign in with MyAnimeList once more.
+Signing in to MyAnimeList works now. If MyAnimeList sign-in failed for you in 2.5.0, sign in again.
 
 ## 2.5.0 · Watch together · 2026-11-21
 

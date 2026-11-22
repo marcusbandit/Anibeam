@@ -289,9 +289,12 @@ pub fn set_credentials(
 }
 
 /// [`set_credentials`] with the build's bundled id passed in, so a test can
-/// name one. The bundled id itself is never stored: the Trackers tab shows
-/// it in the field when nothing else is there, so a Save of the secret
-/// alone would otherwise pin this build's id over the next build's (#1408).
+/// name one. The bundled id is not stored for an account that holds no id
+/// and is not signed in: the Trackers tab shows it in the field when
+/// nothing else is there, so a Save of the secret alone would otherwise pin
+/// this build's id over the next build's (#1408). A signed-in account keeps
+/// whatever id it is given, and so does a row that already holds that id:
+/// its tokens were issued to that app, and only that app refreshes them.
 pub fn set_credentials_against(
     services: &Services,
     t: Tracker,
@@ -299,8 +302,8 @@ pub fn set_credentials_against(
     client_secret: Option<&str>,
     bundled_id: Option<&str>,
 ) -> Result<Reply, CoreError> {
-    let client_id = client_id.trim();
-    let client_id = (bundled_id != Some(client_id)).then(|| client_id.to_string());
+    let client_id = client_id.trim().to_string();
+    let is_bundled = bundled_id == Some(client_id.as_str());
     let store = match client_secret.map(str::trim) {
         Some("") => {
             services.secrets().delete(&secret_key(t))?;
@@ -310,6 +313,17 @@ pub fn set_credentials_against(
         None => None,
     };
     services.store.tx(move |tx| {
+        let (held, signed_in) = tx
+            .query_row(
+                "SELECT client_id, connected_at IS NOT NULL FROM tracker_accounts
+                  WHERE tracker = ?1 AND profile_id = 1",
+                params![t.as_str()],
+                |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, bool>(1)?)),
+            )
+            .optional()?
+            .unwrap_or((None, false));
+        let keep = !is_bundled || signed_in || held.as_deref() == Some(client_id.as_str());
+        let client_id = keep.then_some(client_id);
         tx.execute(
             "INSERT INTO tracker_accounts (tracker, client_id) VALUES (?1, ?2)
              ON CONFLICT(profile_id, tracker) DO UPDATE SET client_id = excluded.client_id",
@@ -372,13 +386,14 @@ fn delete_tokens(services: &Services, t: Tracker) -> Result<(), CoreError> {
 /// sign-in, the progress cache and the id off the row, and when the owner's
 /// row was one of them, the tokens and the pasted secret, which belonged to
 /// that app as well. The account then signs in with the id this build
-/// carries. Says whether there was one, and leaves the notice for the
-/// shell to take ([`take_notice`]).
+/// carries. Says whether there was one. Only the owner's account leaves a
+/// notice for the shell ([`notice`]): a guest's reset is not the owner's
+/// to be told about.
 ///
 /// Nothing matches once this has run, so every later launch finds nothing
-/// to do. The keyring goes first: a secret left behind would be sent with
-/// the new id and refused, and a keyring that fails leaves the rows as they
-/// were, so the next launch tries again.
+/// to do. A keyring that fails does not hold the rows back: the account is
+/// signed out either way, so nothing uses the tokens left behind, and the
+/// failure is logged.
 pub fn forget_retired_client_id(services: &Services, retired: &str) -> Result<bool, CoreError> {
     let t = Tracker::Mal;
     let retired = retired.to_string();
@@ -394,9 +409,17 @@ pub fn forget_retired_client_id(services: &Services, retired: &str) -> Result<bo
     if profiles.is_empty() {
         return Ok(false);
     }
-    if profiles.contains(&OWNER) {
-        delete_tokens(services, t)?;
-        services.secrets().delete(&secret_key(t))?;
+    let owner = profiles.contains(&OWNER);
+    if owner {
+        let tokens = delete_tokens(services, t);
+        let secret = services.secrets().delete(&secret_key(t));
+        if let Err(e) = tokens.and(secret) {
+            services.bus.warn(
+                Stage::Trackers,
+                format!("could not clear the retired MyAnimeList app's keys: {e}"),
+                EventBody::Notice,
+            );
+        }
     }
     services.store.tx(move |tx| {
         for &profile in &profiles {
@@ -406,7 +429,9 @@ pub fn forget_retired_client_id(services: &Services, retired: &str) -> Result<bo
             "UPDATE tracker_accounts SET client_id = NULL WHERE tracker = ?1 AND client_id = ?2",
             params![t.as_str(), retired],
         )?;
-        settings::set(tx, settings::MAL_SIGN_IN_AGAIN, &true)?;
+        if owner {
+            settings::set(tx, settings::MAL_SIGN_IN_AGAIN, &true)?;
+        }
         Ok(())
     })?;
     services.bus.debug(
@@ -414,25 +439,39 @@ pub fn forget_retired_client_id(services: &Services, retired: &str) -> Result<bo
         "MyAnimeList signed out: the app id 2.5.0 used is retired",
         EventBody::Notice,
     );
-    emit_trackers_changed(services)?;
-    emit_series_changed(services, Some(t), format!("{} signed out", t.label()))?;
+    // The rows are written; a shell that misses the news still reads them.
+    let emitted = emit_trackers_changed(services)
+        .and_then(|()| emit_series_changed(services, Some(t), format!("{} signed out", t.label())));
+    if let Err(e) = emitted {
+        services.bus.warn(
+            Stage::Trackers,
+            format!("MyAnimeList signed out, but the change was not sent: {e}"),
+            EventBody::Notice,
+        );
+    }
     Ok(true)
 }
 
-/// `TakeTrackerNotice`: the line a launch left for the user, once. Taken
-/// rather than sent on the bus, so a window that subscribes after the
-/// launch's cleanup still shows it.
-pub fn take_notice(services: &Services) -> Result<Reply, CoreError> {
-    let pending = services.store.tx(|tx| {
-        let pending = settings::get::<bool>(tx, settings::MAL_SIGN_IN_AGAIN)?.unwrap_or(false);
-        if pending {
-            settings::remove(tx, settings::MAL_SIGN_IN_AGAIN)?;
-        }
-        Ok(pending)
-    })?;
+/// `GetTrackerNotice`: the line a launch left for the user, if one is owed.
+/// Read rather than sent on the bus, so a window that subscribes after the
+/// launch's cleanup still shows it, and read without taking it, so a toast
+/// that never got seen is shown again next time. It goes when MyAnimeList
+/// connects or the user acts on it ([`dismiss_notice`]).
+pub fn notice(services: &Services) -> Result<Reply, CoreError> {
+    let pending = services
+        .store
+        .read(|c| Ok(settings::get::<bool>(c, settings::MAL_SIGN_IN_AGAIN)?.unwrap_or(false)))?;
     let message =
         pending.then(|| anibeam_contract::i18n::tr("core-trackers-mal-sign-in-again", &[]));
     Ok(Reply::TrackerNotice { message })
+}
+
+/// `DismissTrackerNotice`: the user acted on the notice or closed it.
+pub fn dismiss_notice(services: &Services) -> Result<Reply, CoreError> {
+    services
+        .store
+        .write(|c| settings::remove(c, settings::MAL_SIGN_IN_AGAIN))?;
+    Ok(Reply::Ok)
 }
 
 /// Which tracker answers first. Every matched series can change what it

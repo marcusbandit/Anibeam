@@ -598,8 +598,9 @@ impl Core {
                 ));
             }
             Call::SetTrackChoice { .. } => return Ok(Reply::Ok),
-            // The notice is about the owner's account, so a guest never takes it.
-            Call::TakeTrackerNotice => return Ok(Reply::TrackerNotice { message: None }),
+            // The notice is about the owner's account, so a guest is never shown it.
+            Call::GetTrackerNotice => return Ok(Reply::TrackerNotice { message: None }),
+            Call::DismissTrackerNotice => return Ok(Reply::Ok),
             Call::SetNotInterested { .. } | Call::PruneNotInterested => {
                 return Err(CoreError::invalid(
                     "not_interested",
@@ -785,7 +786,8 @@ impl Core {
             }
             Call::DisconnectTracker { tracker } => accounts::disconnect(&self.services, tracker),
             Call::SetMainTracker { tracker } => accounts::set_main(&self.services, tracker),
-            Call::TakeTrackerNotice => accounts::take_notice(&self.services),
+            Call::GetTrackerNotice => accounts::notice(&self.services),
+            Call::DismissTrackerNotice => accounts::dismiss_notice(&self.services),
             Call::MarkEpisode { series, episode } => {
                 writes::mark(&self.trackers, series, episode).map(started)
             }

@@ -4,14 +4,30 @@
 
 mod common;
 
+use std::time::Duration;
+
 use anibeam_core::trackers::accounts::{self, RETIRED_MAL_CLIENT_ID};
 use anibeam_core::*;
 
-fn take_notice(core: &Core) -> Option<String> {
-    match core.call(Call::TakeTrackerNotice).unwrap() {
+fn notice(core: &Core) -> Option<String> {
+    match core.call(Call::GetTrackerNotice).unwrap() {
         Reply::TrackerNotice { message } => message,
         other => panic!("{other:?}"),
     }
+}
+
+/// The owner's MAL client id as stored, None when the row holds none.
+fn stored(core: &Core) -> Option<String> {
+    core.services()
+        .store
+        .read(|c| {
+            Ok(c.query_row(
+                "SELECT client_id FROM tracker_accounts WHERE tracker = 'mal' AND profile_id = 1",
+                [],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap()
 }
 
 /// `(profile, client_id, username, connected_at)` of one MAL row.
@@ -86,7 +102,7 @@ fn seed(core: &Core, owner_id: &str, guest_id: &str) {
 }
 
 #[test]
-fn an_account_pinned_to_the_retired_id_is_signed_out_and_told_once() {
+fn an_account_pinned_to_the_retired_id_is_signed_out_and_told_until_dismissed() {
     let (_dir, core, _c) = common::open_core();
     seed(&core, RETIRED_MAL_CLIENT_ID, RETIRED_MAL_CLIENT_ID);
     store_secrets(&core);
@@ -112,14 +128,16 @@ fn an_account_pinned_to_the_retired_id_is_signed_out_and_told_once() {
         other => panic!("{other:?}"),
     }
 
-    let notice = take_notice(&core).expect("a notice is owed");
-    assert!(notice.contains("MyAnimeList"), "{notice}");
-    assert_eq!(take_notice(&core), None, "the notice is taken once");
+    let line = notice(&core).expect("a notice is owed");
+    assert!(line.contains("MyAnimeList"), "{line}");
+    // Reading it leaves it owed: a toast nobody saw is shown next time.
+    assert_eq!(notice(&core), Some(line));
 
-    // Nothing matches any more, so the next launch does nothing and owes
-    // nothing.
+    // Nothing matches any more, so the next launch does nothing new.
     assert!(!accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
-    assert_eq!(take_notice(&core), None);
+
+    assert_eq!(core.call(Call::DismissTrackerNotice).unwrap(), Reply::Ok);
+    assert_eq!(notice(&core), None, "a dismissed notice is gone");
 }
 
 #[test]
@@ -145,7 +163,7 @@ fn an_account_with_its_own_id_is_left_alone() {
     assert_eq!(mal_entries(&core), 2);
     assert!(has_secret(&core, accounts::access_key(Tracker::Mal)));
     assert!(has_secret(&core, accounts::secret_key(Tracker::Mal)));
-    assert_eq!(take_notice(&core), None);
+    assert_eq!(notice(&core), None);
 }
 
 #[test]
@@ -166,23 +184,85 @@ fn only_a_guest_pinned_to_the_retired_id_keeps_the_owners_keyring() {
     assert_eq!(mal_entries(&core), 1);
     assert!(has_secret(&core, accounts::access_key(Tracker::Mal)));
     assert!(has_secret(&core, accounts::secret_key(Tracker::Mal)));
+    assert_eq!(
+        notice(&core),
+        None,
+        "a guest's reset does not tell the owner"
+    );
+}
+
+/// The launch itself runs the cleanup, off the calling thread, and says the
+/// trackers changed when it is done.
+#[test]
+fn starting_the_core_signs_out_an_account_pinned_to_the_retired_id() {
+    // A build that still carries the retired id leaves its own account be.
+    if accounts::bundled_client_id(Tracker::Mal) == Some(RETIRED_MAL_CLIENT_ID) {
+        return;
+    }
+    let (_dir, core, c) = common::open_core_with_http(anibeam_core::net::FakeHttp::new());
+    seed(&core, RETIRED_MAL_CLIENT_ID, "guest-own-id");
+    store_secrets(&core);
+
+    core.start().unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::TrackersChanged { state } if !state.mal.connected),
+        Duration::from_secs(10),
+    );
+
+    assert_eq!(mal_rows(&core)[0], (1, None, None, None));
+    assert!(!has_secret(&core, accounts::access_key(Tracker::Mal)));
+    assert!(notice(&core).is_some());
+    core.shutdown();
+}
+
+/// A signed-in account keeps the id it is given, the bundled one included:
+/// its tokens were issued to that app, and a later build with another
+/// bundled id must still refresh them with this one.
+#[test]
+fn a_signed_in_account_keeps_the_bundled_id_it_is_given() {
+    let (_dir, core, _c) = common::open_core();
+    core.services()
+        .store
+        .write(|c| {
+            c.execute(
+                "INSERT INTO tracker_accounts (profile_id, tracker, user_id, username, connected_at)
+                 VALUES (1, 'mal', 1, 'owner', 10)",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let services = core.services();
+
+    // Save with the secret, then Remove secret, both with the field showing
+    // the bundled id.
+    accounts::set_credentials_against(
+        services,
+        Tracker::Mal,
+        "bundled",
+        Some("pasted"),
+        Some("bundled"),
+    )
+    .unwrap();
+    assert_eq!(stored(&core).as_deref(), Some("bundled"));
+    accounts::set_credentials_against(services, Tracker::Mal, "bundled", Some(""), Some("bundled"))
+        .unwrap();
+    assert_eq!(stored(&core).as_deref(), Some("bundled"));
+
+    // Signed out, the row still holds that id, so a Save keeps it too.
+    core.call(Call::DisconnectTracker {
+        tracker: Tracker::Mal,
+    })
+    .unwrap();
+    accounts::set_credentials_against(services, Tracker::Mal, "bundled", None, Some("bundled"))
+        .unwrap();
+    assert_eq!(stored(&core).as_deref(), Some("bundled"));
 }
 
 #[test]
 fn saving_the_bundled_id_stores_none() {
     let (_dir, core, _c) = common::open_core();
-    let stored = |core: &Core| -> Option<String> {
-        core.services()
-            .store
-            .read(|c| {
-                Ok(c.query_row(
-                    "SELECT client_id FROM tracker_accounts WHERE tracker = 'mal' AND profile_id = 1",
-                    [],
-                    |r| r.get(0),
-                )?)
-            })
-            .unwrap()
-    };
     let services = core.services();
 
     // The Trackers tab sends the id its field shows, the bundled one when

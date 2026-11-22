@@ -177,10 +177,13 @@ pub enum Call {
     SetMainTracker {
         tracker: Tracker,
     },
-    /// The line a launch left for the user about their tracker accounts, once:
-    /// a window that opens after the launch's cleanup takes it here (#1408).
-    /// Answers `TrackerNotice`.
-    TakeTrackerNotice,
+    /// The line a launch left for the user about their tracker accounts
+    /// (#1408), read without clearing it, so a window that opens after the
+    /// launch's cleanup still finds it. Answers `TrackerNotice`.
+    GetTrackerNotice,
+    /// The user acted on the tracker notice or closed it, so it is not owed
+    /// any more. Connecting MyAnimeList clears it as well.
+    DismissTrackerNotice,
     MarkEpisode {
         series: u64,
         episode: f64,
@@ -970,7 +973,7 @@ pub enum Reply {
     Trackers {
         state: TrackerState,
     },
-    /// What `TakeTrackerNotice` found, in the user's language: none when
+    /// What `GetTrackerNotice` found, in the user's language: none when
     /// nothing is owed.
     TrackerNotice {
         message: Option<String>,

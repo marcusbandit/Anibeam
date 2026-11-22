@@ -42,9 +42,10 @@ pub const DISCORD_BLOCKED: &str = "discord_blocked";
 /// episode titles are still owed (#1065): asked for again at launch and on
 /// the first Jikan reply after an outage. A JSON list of ids.
 pub const JIKAN_OWED: &str = "jikan_owed";
-/// `true` once a launch has signed out a MyAnimeList account pinned to the
-/// app id 2.5.0 shipped with (#1408), until the shell takes the notice
-/// asking the user to sign in again or MyAnimeList connects.
+/// `true` once a launch has signed out the owner's MyAnimeList account
+/// pinned to the app id 2.5.0 shipped with (#1408), until the user acts on
+/// the notice asking them to sign in again, closes it, or MyAnimeList
+/// connects.
 pub const MAL_SIGN_IN_AGAIN: &str = "mal_sign_in_again";
 
 pub fn get<T: DeserializeOwned>(conn: &Connection, key: &str) -> Result<Option<T>, CoreError> {
