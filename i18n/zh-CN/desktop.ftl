@@ -1686,9 +1686,9 @@ endpoint-repos-panel-refreshing = 正在刷新
 endpoint-repos-panel-refresh = 刷新列表
 # A source list link (anibeam://add-repo) asks before adding, or says why it adds nothing
 endpoint-repos-panel-link-ask = 要从链接添加此来源列表吗？
-endpoint-repos-panel-link-no-url = 此链接没有可添加的来源列表。
-endpoint-repos-panel-link-not-a-url = 无法读取此链接中的来源列表地址，因此没有添加任何内容。
-endpoint-repos-panel-link-not-https = 此链接中的来源列表不是 https，因此 Anibeam 不会添加。
+endpoint-repos-panel-link-no-url = 此链接中没有来源列表地址。
+endpoint-repos-panel-link-not-a-url = 无法读取此链接中的来源列表地址。
+endpoint-repos-panel-link-not-https = 此链接中的来源列表地址未使用 https，因此没有添加任何内容。
 
 ## SourceAttach.qml
 

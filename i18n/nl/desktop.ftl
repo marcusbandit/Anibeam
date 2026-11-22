@@ -2182,10 +2182,10 @@ endpoint-repos-panel-name = Naam
 endpoint-repos-panel-refreshing = Vernieuwen
 endpoint-repos-panel-refresh = Lijsten vernieuwen
 # A source list link (anibeam://add-repo) asks before adding, or says why it adds nothing
-endpoint-repos-panel-link-ask = Deze bronlijst toevoegen vanuit een link?
-endpoint-repos-panel-link-no-url = Deze link noemt geen bronlijst om toe te voegen.
-endpoint-repos-panel-link-not-a-url = Het adres van de bronlijst in deze link is niet te lezen, dus er is niets toegevoegd.
-endpoint-repos-panel-link-not-https = De bronlijst in deze link gebruikt geen https, dus Anibeam voegt hem niet toe.
+endpoint-repos-panel-link-ask = Deze bronlijst uit de link toevoegen?
+endpoint-repos-panel-link-no-url = Deze link bevat geen adres van een bronlijst.
+endpoint-repos-panel-link-not-a-url = Het adres van de bronlijst in deze link kon niet worden gelezen.
+endpoint-repos-panel-link-not-https = Het adres van de bronlijst in deze link gebruikt geen https, dus er is niets toegevoegd.
 
 ## SourceAttach.qml
 
