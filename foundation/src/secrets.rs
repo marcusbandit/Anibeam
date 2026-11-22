@@ -106,6 +106,7 @@ impl Secrets {
             announced: AtomicBool::new(false),
             known: Mutex::new(known),
             probed: Mutex::new(HashSet::new()),
+            file_only,
         })
     }
 
@@ -126,7 +127,7 @@ impl Secrets {
             announced: AtomicBool::new(false),
             known: Mutex::new(known),
             probed: Mutex::new(HashSet::new()),
-            file_only,
+            file_only: false,
         })
     }
 
