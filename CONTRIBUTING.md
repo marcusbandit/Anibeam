@@ -318,7 +318,13 @@ with the PR title and `(#N)`, once:
   newest run of each workflow;
 - Full CI has built that head and passed. A Full CI run whose jobs all skipped, such as the
   one another label starts, proves nothing; the newest run that built decides, and a Full CI
-  run still going means wait.
+  run still going means wait. PR build, which the `test build` label gates, counts the same
+  way, so a red test build still blocks after another label lands.
+
+The order for a PR that should merge itself: `.github/local-ci.sh` passes, the PR opens with
+its category label, the code review pass (`code-review --comment`) runs and its findings are
+fixed or answered, and only then do `full ci` and `automerge` go on. Nothing has to watch it
+after that.
 
 A red check leaves the PR open, with no comment. Push a fix as a new commit: with `full ci`
 still on, the push builds the new head and the PR merges once that is green. Take `automerge`
