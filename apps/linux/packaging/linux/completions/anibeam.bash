@@ -11,11 +11,18 @@ _anibeam() {
     --page) COMPREPLY=($(compgen -W "home library series airing watching downloads metadata settings tokens" -- "$cur")); return ;;
     --props|--width|--height|--action) return ;;
   esac
-  # A watch together link: anibeam://room/<code>
-  if [[ $cur == a* ]] && [[ anibeam://room/ == "$cur"* ]]; then
-    COMPREPLY=("anibeam://room/")
-    compopt -o nospace 2>/dev/null
-    return
+  # An anibeam:// link: a watch together room (room/<code>) or a source list to add
+  # (add-repo?url=<address>)
+  if [[ $cur == a* ]]; then
+    local l
+    COMPREPLY=()
+    for l in "anibeam://room/" "anibeam://add-repo?url="; do
+      [[ $l == "$cur"* ]] && COMPREPLY+=("$l")
+    done
+    if (( ${#COMPREPLY[@]} )); then
+      compopt -o nospace 2>/dev/null
+      return
+    fi
   fi
   # A magnet link, which opens in Downloads
   if [[ $cur == m* ]] && [[ magnet:? == "$cur"* ]]; then

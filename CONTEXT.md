@@ -242,6 +242,10 @@ _Avoid_: metadata, parsed info
 A magnet link put straight into Downloads, pasted or typed into the search field or opened from the desktop's magnet handler. It searches nothing: its name (the `dn`) is read as a release title, the shows it matches are offered (the library's first, then AniList's, the best match picked) beside Film, and it downloads into the one picked. Once the torrent client knows its files, one with no video anywhere in it is said to be nothing Anibeam plays and moves to the person's Downloads folder, when the client keeps its files on this machine.
 _Avoid_: magnet search, quick add
 
+**Repo link**:
+An `anibeam://add-repo?url=<percent-encoded address>` link, written the way Mihon's extension repo links are, that a guide site hands out to add an endpoint repo in one tap. It only asks: the app shows the list's host and its address, and adds it the way its Settings field does only once the person says Add, so a web page never adds a list on its own. A link with no address, one whose address cannot be read, or one not on https adds nothing and says why (#1406).
+_Avoid_: install link, one-click add
+
 **On-demand endpoint**:
 An endpoint anirss starts only when a search needs it (a site reached through a search proxy: a podman pod behind Jackett), and keeps up while the sidecar holds its lease. The first search waits for it to come up, up to the endpoint's timeout; the page says so while it waits ("Starting <name>"), then "Searching <name>".
 _Avoid_: harness, container, lazy endpoint

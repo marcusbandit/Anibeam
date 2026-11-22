@@ -564,6 +564,19 @@ FocusScope {
     }
     function takePendingMagnet() { var link = frame.pendingMagnet; frame.pendingMagnet = ""; return link }
     Connections { target: Shell; function onMagnetLinkOpened(link) { frame.openMagnet(link) } }
+    // A source list link (#1406, anibeam://add-repo?url=...) from the command line or a second
+    // launch: Settings, Downloads, where the source lists panel asks before adding it. A web
+    // page can hand over the link but never the yes. `refused` says why a link adds nothing.
+    // The panel reads this and clears it on Add or Cancel; a newer link replaces an older one.
+    property var repoLink: null
+    function openRepoLink(url, host, refused) {
+        if (!url && !refused) return
+        frame.repoLink = { url: url, host: host, refused: refused }
+        var focus = words.t("endpoint-repos-panel-title")
+        if (nav.current.page === "settings" && page.item && page.item.open) { page.item.open("downloads", focus); return }
+        frame.go("settings", { tab: "downloads", focus: focus }, words.t("nav-settings"))
+    }
+    Connections { target: Shell; function onRepoLinkOpened(url, host, refused) { frame.openRepoLink(url, host, refused) } }
     // Discord (#966): an Ask to Join comes up as an island, and a Join or an accepted invite
     // takes the same road as a room link
     Connections {
@@ -724,6 +737,7 @@ FocusScope {
         // Started from a room link: join it once the first page is up
         if (Shell.roomLink !== "") Qt.callLater(function() { frame.joinRoomLink(Shell.roomLink) })
         if (Shell.magnetLink !== "") Qt.callLater(function() { frame.openMagnet(Shell.magnetLink) })
+        if (Shell.repoLinkUrl !== "" || Shell.repoLinkRefused !== "") Qt.callLater(function() { frame.openRepoLink(Shell.repoLinkUrl, Shell.repoLinkHost, Shell.repoLinkRefused) })
         Qt.callLater(frame.takeDiscordJoin)
         if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }

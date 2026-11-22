@@ -1734,6 +1734,11 @@ endpoint-repos-panel-by-hand = 手動で追加
 endpoint-repos-panel-name = 名前
 endpoint-repos-panel-refreshing = 更新中
 endpoint-repos-panel-refresh = リストを更新
+# A source list link (anibeam://add-repo) asks before adding, or says why it adds nothing
+endpoint-repos-panel-link-ask = リンクからこのソースリストを追加しますか？
+endpoint-repos-panel-link-no-url = このリンクには追加するソースリストがありません。
+endpoint-repos-panel-link-not-a-url = このリンクのソースリストのアドレスを読み取れないため、何も追加されませんでした。
+endpoint-repos-panel-link-not-https = このリンクのソースリストは https ではないため、Anibeam は追加しません。
 
 ## SourceAttach.qml
 
