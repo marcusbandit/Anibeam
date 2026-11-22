@@ -528,6 +528,25 @@ impl Core {
             #[cfg(feature = "phone")]
             crate::phone::rekeep_rules(&lifting.services, lifted);
         });
+        // A MyAnimeList account pinned to the app id 2.5.0 shipped with is
+        // signed out and left to sign in again with this build's (#1408).
+        // Off this thread: its tokens are a keyring round trip. A build
+        // still carrying that id would sign its own account out every
+        // launch, so it leaves the rows alone.
+        let services = self.services.clone();
+        self.services.handle.spawn_blocking(move || {
+            let retired = accounts::RETIRED_MAL_CLIENT_ID;
+            if accounts::bundled_client_id(Tracker::Mal) == Some(retired) {
+                return;
+            }
+            if let Err(e) = accounts::forget_retired_client_id(&services, retired) {
+                services.bus.warn(
+                    Stage::Trackers,
+                    format!("could not sign out the retired MyAnimeList app: {e}"),
+                    EventBody::Notice,
+                );
+            }
+        });
         // A started core says when a followed episode airs (#212); the CLI's,
         // never started, leaves that to the window.
         crate::aired::listen(&self.metadata);
@@ -579,6 +598,8 @@ impl Core {
                 ));
             }
             Call::SetTrackChoice { .. } => return Ok(Reply::Ok),
+            // The notice is about the owner's account, so a guest never takes it.
+            Call::TakeTrackerNotice => return Ok(Reply::TrackerNotice { message: None }),
             Call::SetNotInterested { .. } | Call::PruneNotInterested => {
                 return Err(CoreError::invalid(
                     "not_interested",
@@ -764,6 +785,7 @@ impl Core {
             }
             Call::DisconnectTracker { tracker } => accounts::disconnect(&self.services, tracker),
             Call::SetMainTracker { tracker } => accounts::set_main(&self.services, tracker),
+            Call::TakeTrackerNotice => accounts::take_notice(&self.services),
             Call::MarkEpisode { series, episode } => {
                 writes::mark(&self.trackers, series, episode).map(started)
             }

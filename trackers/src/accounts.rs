@@ -20,6 +20,7 @@ use anibeam_contract::*;
 use anibeam_foundation::prefs;
 use anibeam_foundation::secrets::{Secrets, StoreKind};
 use anibeam_foundation::services::Services;
+use anibeam_foundation::store::settings;
 use anibeam_foundation::time;
 use anibeam_library::cards;
 use anibeam_net::HttpResponse;
@@ -84,6 +85,16 @@ pub fn bundled_client_secret(t: Tracker) -> Option<&'static str> {
     }
     .filter(|secret| !secret.is_empty())
 }
+
+/// The MyAnimeList client id 2.5.0 was built with. MAL never accepted it,
+/// and a 2.5.0 account that tried to sign in kept it in its row, where it
+/// outranks the id a later build carries. Launch forgets every account
+/// still pinned to it ([`forget_retired_client_id`], #1408).
+pub const RETIRED_MAL_CLIENT_ID: &str = "d7d8dfe84f7929682300ad02ece7eaaf";
+
+/// The owner's profile, the only one whose tokens and secrets the keyring
+/// holds.
+const OWNER: i64 = 1;
 
 // The row --------------------------------------------------------------------
 
@@ -274,7 +285,22 @@ pub fn set_credentials(
     client_id: &str,
     client_secret: Option<&str>,
 ) -> Result<Reply, CoreError> {
-    let client_id = client_id.trim().to_string();
+    set_credentials_against(services, t, client_id, client_secret, bundled_client_id(t))
+}
+
+/// [`set_credentials`] with the build's bundled id passed in, so a test can
+/// name one. The bundled id itself is never stored: the Trackers tab shows
+/// it in the field when nothing else is there, so a Save of the secret
+/// alone would otherwise pin this build's id over the next build's (#1408).
+pub fn set_credentials_against(
+    services: &Services,
+    t: Tracker,
+    client_id: &str,
+    client_secret: Option<&str>,
+    bundled_id: Option<&str>,
+) -> Result<Reply, CoreError> {
+    let client_id = client_id.trim();
+    let client_id = (bundled_id != Some(client_id)).then(|| client_id.to_string());
     let store = match client_secret.map(str::trim) {
         Some("") => {
             services.secrets().delete(&secret_key(t))?;
@@ -308,30 +334,105 @@ pub fn set_credentials(
 /// to fix a bad token should not have to paste their client id back in.
 /// What goes is the account, the progress cache and the tokens.
 pub fn disconnect(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
-    services.store.tx(move |tx| {
-        tx.execute(
-            "UPDATE tracker_accounts SET user_id = NULL, username = NULL, expires_at = NULL, connected_at = NULL,
-                    synced_at = NULL, progress_fetched_at = NULL
-             WHERE tracker = ?1 AND profile_id = 1",
-            params![t.as_str()],
-        )?;
-        tx.execute(
-            "DELETE FROM tracker_entries WHERE tracker = ?1 AND profile_id = 1",
-            params![t.as_str()],
-        )?;
-        Ok(())
-    })?;
-    let secrets = services.secrets();
-    // Both are attempted whatever the first one says: a token left behind
-    // is a token that would be used again.
-    let access = secrets.delete(&access_key(t));
-    let refresh = secrets.delete(&refresh_key(t));
-    access.and(refresh)?;
+    services.store.tx(move |tx| sign_out(tx, t, OWNER))?;
+    delete_tokens(services, t)?;
     emit_trackers_changed(services)?;
     // Every card whose match carries this tracker's id loses the numbers
     // that came off it.
     emit_series_changed(services, Some(t), format!("{} disconnected", t.label()))?;
     Ok(Reply::Ok)
+}
+
+/// One profile's account and progress cache off its row. The credentials
+/// stay; [`disconnect`] keeps them by decision.
+fn sign_out(conn: &Connection, t: Tracker, profile: i64) -> Result<(), CoreError> {
+    conn.execute(
+        "UPDATE tracker_accounts SET user_id = NULL, username = NULL, expires_at = NULL, connected_at = NULL,
+                synced_at = NULL, progress_fetched_at = NULL
+         WHERE tracker = ?1 AND profile_id = ?2",
+        params![t.as_str(), profile],
+    )?;
+    conn.execute(
+        "DELETE FROM tracker_entries WHERE tracker = ?1 AND profile_id = ?2",
+        params![t.as_str(), profile],
+    )?;
+    Ok(())
+}
+
+/// The owner's tokens out of the keyring. Both are attempted whatever the
+/// first one says: a token left behind is a token that would be used again.
+fn delete_tokens(services: &Services, t: Tracker) -> Result<(), CoreError> {
+    let secrets = services.secrets();
+    let access = secrets.delete(&access_key(t));
+    let refresh = secrets.delete(&refresh_key(t));
+    access.and(refresh)
+}
+
+/// Forgets every MAL account pinned to `retired`, in every profile: the
+/// sign-in, the progress cache and the id off the row, and when the owner's
+/// row was one of them, the tokens and the pasted secret, which belonged to
+/// that app as well. The account then signs in with the id this build
+/// carries. Says whether there was one, and leaves the notice for the
+/// shell to take ([`take_notice`]).
+///
+/// Nothing matches once this has run, so every later launch finds nothing
+/// to do. The keyring goes first: a secret left behind would be sent with
+/// the new id and refused, and a keyring that fails leaves the rows as they
+/// were, so the next launch tries again.
+pub fn forget_retired_client_id(services: &Services, retired: &str) -> Result<bool, CoreError> {
+    let t = Tracker::Mal;
+    let retired = retired.to_string();
+    let profiles = services.store.read(|c| {
+        let mut stmt = c.prepare(
+            "SELECT profile_id FROM tracker_accounts WHERE tracker = ?1 AND client_id = ?2 ORDER BY profile_id",
+        )?;
+        let ids = stmt
+            .query_map(params![t.as_str(), retired], |r| r.get::<_, i64>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ids)
+    })?;
+    if profiles.is_empty() {
+        return Ok(false);
+    }
+    if profiles.contains(&OWNER) {
+        delete_tokens(services, t)?;
+        services.secrets().delete(&secret_key(t))?;
+    }
+    services.store.tx(move |tx| {
+        for &profile in &profiles {
+            sign_out(tx, t, profile)?;
+        }
+        tx.execute(
+            "UPDATE tracker_accounts SET client_id = NULL WHERE tracker = ?1 AND client_id = ?2",
+            params![t.as_str(), retired],
+        )?;
+        settings::set(tx, settings::MAL_SIGN_IN_AGAIN, &true)?;
+        Ok(())
+    })?;
+    services.bus.debug(
+        Stage::Trackers,
+        "MyAnimeList signed out: the app id 2.5.0 used is retired",
+        EventBody::Notice,
+    );
+    emit_trackers_changed(services)?;
+    emit_series_changed(services, Some(t), format!("{} signed out", t.label()))?;
+    Ok(true)
+}
+
+/// `TakeTrackerNotice`: the line a launch left for the user, once. Taken
+/// rather than sent on the bus, so a window that subscribes after the
+/// launch's cleanup still shows it.
+pub fn take_notice(services: &Services) -> Result<Reply, CoreError> {
+    let pending = services.store.tx(|tx| {
+        let pending = settings::get::<bool>(tx, settings::MAL_SIGN_IN_AGAIN)?.unwrap_or(false);
+        if pending {
+            settings::remove(tx, settings::MAL_SIGN_IN_AGAIN)?;
+        }
+        Ok(pending)
+    })?;
+    let message =
+        pending.then(|| anibeam_contract::i18n::tr("core-trackers-mal-sign-in-again", &[]));
+    Ok(Reply::TrackerNotice { message })
 }
 
 /// Which tracker answers first. Every matched series can change what it
@@ -563,6 +664,10 @@ pub(crate) async fn save_connection(
                         connected_at = excluded.connected_at, secret_store = excluded.secret_store",
                 params![t.as_str(), user_id, username, client_id, expires_at, connected_at, store.as_str()],
             )?;
+            // Signed in again: a notice asking for it is no longer owed.
+            if t == Tracker::Mal {
+                settings::remove(tx, settings::MAL_SIGN_IN_AGAIN)?;
+            }
             Ok(())
         })
         .await

@@ -175,7 +175,7 @@ FocusScope {
         enabled: false
         function onFrameSwapped() { firstPaint.enabled = false; Dev.mark("first page painted") } // i18n: none
     }
-    Component.onCompleted: { frame.devApply(); frame.loadPage() }
+    Component.onCompleted: { frame.devApply(); frame.loadPage(); frame.takeTrackerNotice() }
     // A hovered item destroyed by the navigation never fires its own exit handler, so a
     // tip or a menu opened on the leaving page would otherwise survive onto the next one.
     // The escape stack is cleared for the identical reason: a popover the leaving page
@@ -581,6 +581,14 @@ FocusScope {
         var r = Door.call("DiscordTakeJoin", {})
         if (!r.error && r.reply.code) frame.joinRoomLink(r.reply.code)
     }
+    // A line the launch left about a tracker account (#1408), taken from the core rather
+    // than an event so it lands whether the launch's cleanup ran before this window was up
+    // or after, and only once. The cleanup says the trackers changed when it is done.
+    function takeTrackerNotice() {
+        var r = Door.call("TakeTrackerNotice", {})
+        if (!r.error && r.reply.message) frame.toast(r.reply.message, 12, words.t("action-connect"), function() { frame.openConnect("Mal") })
+    }
+    Connections { target: Door; function onTrackersChanged() { frame.takeTrackerNotice() } }
 
     // The tracker connect sheet, over everything: the Watching page's empty
     // list, the library's nudge and the Trackers panel all send the user here.

@@ -177,6 +177,10 @@ pub enum Call {
     SetMainTracker {
         tracker: Tracker,
     },
+    /// The line a launch left for the user about their tracker accounts, once:
+    /// a window that opens after the launch's cleanup takes it here (#1408).
+    /// Answers `TrackerNotice`.
+    TakeTrackerNotice,
     MarkEpisode {
         series: u64,
         episode: f64,
@@ -965,6 +969,11 @@ pub enum Reply {
     },
     Trackers {
         state: TrackerState,
+    },
+    /// What `TakeTrackerNotice` found, in the user's language: none when
+    /// nothing is owed.
+    TrackerNotice {
+        message: Option<String>,
     },
     ListMove {
         rows: Vec<MoveRow>,
