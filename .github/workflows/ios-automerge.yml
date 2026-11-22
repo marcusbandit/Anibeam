@@ -47,22 +47,49 @@ jobs:
       && (github.event.action != 'labeled' || github.event.label.name == 'automerge')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      AUTHORS: ${{ vars.IOS_AUTOMERGE_AUTHORS }}
+      PRS: >-
+        ${{ github.event.pull_request.number
+        || join(github.event.workflow_run.pull_requests.*.number, ' ') }}
     steps:
+      # A cheap look before anything else, since this runs whenever a PR workflow finishes:
+      # a PR without the `automerge` label, not written by one of AUTHORS, has nothing here.
+      # A run by hand names no PR and looks at every open one. A PR it cannot read counts,
+      # so the script decides.
+      - name: Anything to merge
+        id: look
+        run: |
+          go=false
+          if [ -z "$PRS" ]; then
+            go=true
+          else
+            logins="$(jq -nc --arg a "$AUTHORS" '$a | [splits("[ ,]+")] | map(select(. != ""))')"
+            for pr in $PRS; do
+              if ! info="$(gh pr view "$pr" --json labels,author)" ||
+                jq -e --argjson logins "$logins" \
+                  'any(.labels[]; .name == "automerge") or (.author.login | IN($logins[]))' \
+                  <<<"$info" >/dev/null; then
+                go=true
+              fi
+            done
+          fi
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+          echo "go=$go for PRs: ${PRS:-every open one}"
+
       - uses: actions/checkout@v4
+        if: steps.look.outputs.go == 'true'
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: .github/ios-automerge.sh
           sparse-checkout-cone-mode: false
 
       - name: Merge what is ready
+        if: steps.look.outputs.go == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
           MERGE_TOKEN: ${{ secrets.NIGHTLY_TOKEN }}
-          GH_REPO: ${{ github.repository }}
           OWNER: ${{ github.repository_owner }}
-          AUTHORS: ${{ vars.IOS_AUTOMERGE_AUTHORS }}
-          PRS: >-
-            ${{ github.event.pull_request.number
-            || join(github.event.workflow_run.pull_requests.*.number, ' ') }}
           DRY_RUN: '0'
         run: .github/ios-automerge.sh
