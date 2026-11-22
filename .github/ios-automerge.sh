@@ -5,8 +5,8 @@
 #
 # - The owner's PR labelled `automerge` and `full ci` (#1414) is squash merged once every
 #   check and workflow run on its head commit has passed and Full CI has built that head
-#   and passed. A Full CI run whose jobs all skipped, such as one another label started,
-#   proves nothing and does not count. The squash commit is titled the way GitHub titles it
+#   and passed. A run of a label-gated workflow (Full CI, PR build) whose jobs all skipped,
+#   such as one another label started, proves nothing and does not count. The squash commit is titled the way GitHub titles it
 #   by default, the PR title plus " (#N)", with GitHub's default body.
 # - A PR by one of AUTHORS, the iPhone and Mac contributors (#909), is squash merged once
 #   every check and workflow run on its head commit has passed, when every file it changes
@@ -32,7 +32,11 @@ PRS="${PRS:-}"
 DRY_RUN="${DRY_RUN:-1}"
 MERGE_TOKEN="${MERGE_TOKEN:-}"
 SELF_PATH=".github/workflows/ios-automerge.yml"
+SELF_JOB="automerge"
 FULL_CI_PATH=".github/workflows/full-ci.yml"
+# Workflows that build only when their label lands or a push comes while it is on. Any other
+# label landing starts a run of them whose gate passes and whose other jobs all skip.
+GATED=("$FULL_CI_PATH" ".github/workflows/pr-build.yml")
 LABEL="automerge"
 FULL_CI_LABEL="full ci"
 
@@ -50,26 +54,27 @@ say() { echo "#$1: $2" >&2; }
 
 PASSED='IN("success", "skipped", "neutral")'
 
-# Picks the Full CI run that speaks for the commit and prints "<run id> built" or
-# "<run id> skipped", or nothing when Full CI never ran on it. The newest run whose platform
-# jobs ran speaks for it, so a run another label started later, whose jobs all skipped, can
-# neither hide a red build nor stand in for a missing one. With no such run, the newest run
-# speaks. A Full CI run still going may yet build, so it fails until it is done.
-full_ci_run() {
-  local runs="$1" ids id jobs
-  ids="$(jq -r --arg full "$FULL_CI_PATH" \
-    'map(select(.path == $full)) | sort_by([.created_at, .id]) | reverse | .[].id' <<<"$runs")"
+# Picks the run of the label-gated workflow PATH that speaks for the commit and prints
+# "<run id> built" or "<run id> skipped", or nothing when the workflow never ran on it. The
+# newest run that did more than its gate speaks for it, so a run another label started
+# later, whose jobs all skipped, can neither hide a red build nor stand in for a missing
+# one. With no such run, the newest run speaks. A run still going may yet build, so it fails
+# until it is done.
+gated_run() {
+  local path="$1" runs="$2" ids id jobs
+  ids="$(jq -r --arg path "$path" \
+    'map(select(.path == $path)) | sort_by([.created_at, .id]) | reverse | .[].id' <<<"$runs")"
   [ -n "$ids" ] || return 0
-  if jq -e --arg full "$FULL_CI_PATH" \
-    'any(.[]; .path == $full and .status != "completed")' <<<"$runs" >/dev/null; then
-    echo "    Full CI still running" >&2
+  if jq -e --arg path "$path" \
+    'any(.[]; .path == $path and .status != "completed")' <<<"$runs" >/dev/null; then
+    echo "    ${path##*/} still running" >&2
     return 1
   fi
   for id in $ids; do
     jobs="$(gh api --paginate "repos/$GH_REPO/actions/runs/$id/jobs?filter=latest&per_page=100" \
       --jq '.jobs[]')" || return 1
-    # The gate always runs; a run built when any other job did not skip. full-ci.yml keeps
-    # its gate job named gate for this.
+    # The gate always runs; a run built when any other job did not skip. full-ci.yml and
+    # pr-build.yml keep their gate job named gate for this.
     if jq -se 'any(.[]; .name != "gate" and .conclusion != "skipped")' <<<"$jobs" >/dev/null; then
       echo "$id built"
       return 0
@@ -80,11 +85,11 @@ full_ci_run() {
 
 # Every check run and workflow run that speaks for the commit finished as passed or skipped,
 # and there is at least one run: a push whose CI has not started is not passed. The newest
-# run of each workflow speaks for it, Full CI's as full_ci_run picks; a run it replaced,
-# such as one cancelled by a newer one, and that run's checks, no longer count. With the
-# second argument 1, Full CI must have built the commit as well.
+# run of each workflow speaks for it, a label-gated one's as gated_run picks; a run it
+# replaced, such as one cancelled by a newer one, and that run's checks, no longer count.
+# With the second argument 1, Full CI must have built the commit as well.
 checks_pass() {
-  local sha="$1" need_full="$2" checks all runs full full_id keep dropped bad
+  local sha="$1" need_full="$2" checks all runs gated path picked ids="" keep dropped bad
   checks="$(gh api --paginate "repos/$GH_REPO/commits/$sha/check-runs?per_page=100" \
     --jq '.check_runs[]')" || return 1
   all="$(gh api --paginate "repos/$GH_REPO/actions/runs?head_sha=$sha&per_page=100" \
@@ -95,20 +100,27 @@ checks_pass() {
     echo "    no workflow runs yet" >&2
     return 1
   fi
-  full="$(full_ci_run "$runs")" || return 1
-  if [ "$need_full" = 1 ] && [ "${full#* }" != built ]; then
-    echo "    Full CI has not built this commit" >&2
-    return 1
-  fi
-  full_id="${full%% *}"
-  keep="$(jq -c --arg full "$FULL_CI_PATH" --arg id "$full_id" '
-      (map(select(.path != $full)) | group_by(.workflow_id) | map(max_by([.created_at, .id])))
-      + map(select((.id | tostring) == $id))' <<<"$runs")"
-  # The check suites of the runs that no longer count, this workflow's own among them.
+  for path in "${GATED[@]}"; do
+    picked="$(gated_run "$path" "$runs")" || return 1
+    if [ "$path" = "$FULL_CI_PATH" ] && [ "$need_full" = 1 ] && [ "${picked#* }" != built ]; then
+      echo "    Full CI has not built this commit" >&2
+      return 1
+    fi
+    ids+="${picked%% *} "
+  done
+  gated="$(printf '%s\n' "${GATED[@]}" | jq -R . | jq -sc .)"
+  keep="$(jq -c --argjson gated "$gated" --arg ids "$ids" '
+      ($ids | split(" ") | map(select(. != ""))) as $picked
+      | (map(select(.path | IN($gated[]) | not)) | group_by(.workflow_id)
+          | map(max_by([.created_at, .id])))
+      + map(select((.id | tostring) | IN($picked[])))' <<<"$runs")"
+  # The check suites of the runs that no longer count, this workflow's own among them. Its
+  # own job is dropped by name too, whatever commit its run is filed under.
   dropped="$(jq -c --argjson kept "$(jq -c 'map(.check_suite_id)' <<<"$keep")" \
     'map(.check_suite_id) - $kept' <<<"$all")"
-  bad="$(jq -r --argjson dropped "$dropped" '
-      select(.check_suite.id as $s | $dropped | index($s) | not)
+  bad="$(jq -r --argjson dropped "$dropped" --arg self "$SELF_JOB" '
+      select(.name != $self)
+      | select(.check_suite.id as $s | $dropped | index($s) | not)
       | select(.status != "completed" or (.conclusion | '"$PASSED"' | not))
       | "\(.name) \(.status) \(.conclusion)"' <<<"$checks")"
   bad+=$'\n'"$(jq -r ".[] | select(.status != \"completed\" or (.conclusion | $PASSED | not))
