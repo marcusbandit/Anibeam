@@ -64,7 +64,9 @@ use anibeam_releases::facts;
 pub const ROLLS: &str = "download_rolls";
 
 /// A torrent counts as this roll's if the client stamped it up to this long
-/// before the roll was made (clock skew on a remote host).
+/// before the roll was made or the part handed over (clock skew on a remote
+/// host). A late single waits this long for its own torrent before it takes
+/// an older one.
 const BIND_SLACK_SECS: i64 = 300;
 /// A roll whose torrent never showed up in the client goes after this long.
 const UNBOUND_AGE_SECS: i64 = 3 * 24 * 3600;
@@ -220,8 +222,8 @@ pub struct Part {
     pub hash: String,
     /// Handed to the client. A held single is not, yet.
     pub added: bool,
-    /// When it was handed over; a part the client never lists goes after
-    /// a while counted from here.
+    /// When it was handed over, 0 while held; a part the client never lists
+    /// goes after a while counted from here.
     #[serde(default)]
     pub added_at: i64,
     /// One episode in the torrent, rather than a batch.
@@ -356,7 +358,7 @@ pub fn plan(
                 release: r.clone(),
                 hash: magnet::hash(&r.link).unwrap_or_default(),
                 added: n < ahead as usize,
-                added_at: now,
+                added_at: if n < ahead as usize { now } else { 0 },
                 single: true,
                 units: vec![Unit {
                     file: None,
@@ -687,10 +689,13 @@ pub fn first_window(roll: &Roll, part: usize, files: &[TorrentFile]) -> Option<V
 
 // Binding and finishing --------------------------------------------------------
 
-/// Binds each added part with no hash to its torrent: the earliest one added
-/// since the roll was made whose name matches the release and that no
-/// other part holds.
-pub fn bind(rolls: &mut [Roll], torrents: &[Torrent]) {
+/// Binds each added part with no hash to its torrent: one added since the roll
+/// was made whose name matches the release and that no other part holds. It
+/// takes the earliest the client stamped from the part's own handover on. A
+/// single handed over late that finds none there after a few minutes takes
+/// the latest one stamped before its handover: a torrent the client already
+/// had, or one from a client whose clock runs slow.
+pub fn bind(rolls: &mut [Roll], torrents: &[Torrent], now: i64) {
     let mut taken: HashSet<String> = rolls
         .iter()
         .flat_map(|r| &r.parts)
@@ -698,17 +703,25 @@ pub fn bind(rolls: &mut [Roll], torrents: &[Torrent]) {
         .map(|p| p.hash.clone())
         .collect();
     for r in rolls.iter_mut() {
+        let floor = r.created_at - BIND_SLACK_SECS;
         for p in r.parts.iter_mut().filter(|p| p.added && p.hash.is_empty()) {
-            // A held single handed over late looks from its own handover on
-            let since = p.added_at.max(r.created_at) - BIND_SLACK_SECS;
-            let found = torrents
-                .iter()
-                .filter(|t| {
+            let handover = p.added_at.max(r.created_at);
+            let since = handover - BIND_SLACK_SECS;
+            let matching = || {
+                torrents.iter().filter(|t| {
                     !taken.contains(&t.hash.to_lowercase())
-                        && t.added_on >= since
+                        && t.added_on >= floor
                         && same_release(&t.name, &p.release.title)
                 })
-                .min_by_key(|t| t.added_on);
+            };
+            let found = matching()
+                .filter(|t| t.added_on >= since)
+                .min_by_key(|t| t.added_on)
+                .or_else(|| {
+                    (now - handover > BIND_SLACK_SECS)
+                        .then(|| matching().max_by_key(|t| t.added_on))
+                        .flatten()
+                });
             if let Some(t) = found {
                 p.hash = t.hash.to_lowercase();
                 taken.insert(p.hash.clone());
@@ -950,8 +963,8 @@ pub async fn tick<C: RollClient>(
     };
     let here = client.files_here(&downloads.services);
     let mut rolls = before.clone();
-    bind(&mut rolls, torrents);
     let now = now_secs();
+    bind(&mut rolls, torrents, now);
     let mut drop = HashSet::new();
     let mut changed = false;
     for roll in rolls.iter_mut() {
@@ -1790,7 +1803,7 @@ mod tests {
         t2.hash = "NEW".into();
         t2.added_on = 1_001;
         let mut rolls = vec![r];
-        bind(&mut rolls, &[t1, t2]);
+        bind(&mut rolls, &[t1, t2], 0);
         assert_eq!(rolls[0].parts[0].hash, "new");
     }
 
@@ -1804,7 +1817,7 @@ mod tests {
         t.name = "Black Clover".into();
         t.added_on = 200;
         let mut rolls = vec![r];
-        bind(&mut rolls, &[t]);
+        bind(&mut rolls, &[t], 0);
         assert_eq!(rolls[0].parts[0].hash, "abc");
     }
 
@@ -1862,44 +1875,62 @@ mod tests {
         let titles: Vec<String> = (1..=40).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
         let items = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
         let day = 86_400;
-        // Picked four days ago; the first twelve were listed and the first is watched
+        let picked = now_secs() - 4 * day;
         let mut r = plan(
             &items,
             &DownloadOptions::default(),
             &RollingSettings::default(),
             None,
-            now_secs() - 4 * day,
+            picked,
         )
         .rolls
         .remove(0);
-        for p in r.parts.iter_mut().filter(|p| p.added) {
-            p.seen = true;
+        // Each its own link; the first twelve were listed under their hashes, and the
+        // first was watched and has left the client since
+        let listed = |hash: String, name: &str, added_on: i64| Torrent {
+            hash,
+            name: name.into(),
+            added_on,
+            ..crate::qbt::tests_torrent()
+        };
+        let mut torrents = Vec::new();
+        for (i, p) in r.parts.iter_mut().enumerate() {
+            p.release.link = format!("https://example.org/{i}.torrent");
+            if p.added {
+                p.hash = format!("{:040x}", i + 1);
+                p.seen = true;
+                if i > 0 {
+                    torrents.push(listed(p.hash.clone(), &p.release.title, picked));
+                }
+            }
         }
         r.parts[0].units[0].watched = true;
+        assert_eq!(r.parts[12].added_at, 0, "held, so never handed over");
         // The pass hands over the thirteenth, which the client has not listed yet
         teams.services.handle.block_on(async {
             add_rolls(&teams.services, vec![r]).await.unwrap();
-            tick(&teams.downloads, &Quiet, &[]).await;
+            tick(&teams.downloads, &Quiet, &torrents).await;
         });
         let rolls = load(&teams.services).unwrap();
         assert_eq!(rolls.len(), 1, "the roll was dropped");
         let r = &rolls[0];
+        assert!(r.parts[0].gone);
         assert!(r.parts[12].added);
+        assert!(
+            r.parts[12].added_at >= now_secs() - 60,
+            "stamped at the handover"
+        );
         assert!(!finished(r, now_secs() + 60));
         // A torrent that never shows still ends the roll in time
         assert!(finished(r, now_secs() + 4 * day));
         // The next pass binds it to the torrent the client took at the handover, not to an
         // older one of the same name from before it
-        let listed = |hash: String, added_on: i64| Torrent {
-            hash,
-            name: "[G] Show - 13.mkv".into(),
-            added_on,
-            ..crate::qbt::tests_torrent()
-        };
-        let torrents = [
-            listed("a".repeat(40), now_secs() - 2 * day),
-            listed("b".repeat(40), now_secs()),
-        ];
+        torrents.push(listed(
+            "a".repeat(40),
+            "[G] Show - 13.mkv",
+            now_secs() - 2 * day,
+        ));
+        torrents.push(listed("b".repeat(40), "[G] Show - 13.mkv", now_secs()));
         teams
             .services
             .handle
@@ -1907,7 +1938,45 @@ mod tests {
         let r = &load(&teams.services).unwrap()[0];
         assert_eq!(r.parts[12].hash, "b".repeat(40));
         assert!(r.parts[12].seen);
+        assert!((1..12).all(|i| r.parts[i].seen && !r.parts[i].gone));
         teams.shutdown();
+    }
+
+    #[test]
+    fn a_late_single_the_client_already_had_still_binds() {
+        let titles: Vec<String> = (1..=40).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
+        let items = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
+        let day = 86_400;
+        let mut r = plan(
+            &items,
+            &DownloadOptions::default(),
+            &RollingSettings::default(),
+            None,
+            day,
+        )
+        .rolls
+        .remove(0);
+        for p in r.parts.iter_mut().filter(|p| p.added) {
+            p.hash = "f".repeat(40);
+        }
+        // Handed over on day 10, to a client that already had it (or whose clock runs slow)
+        let handover = 10 * day;
+        r.parts[12].added = true;
+        r.parts[12].added_at = handover;
+        let t = |hash: &str, added_on: i64| Torrent {
+            hash: hash.into(),
+            name: "[G] Show - 13.mkv".into(),
+            added_on,
+            ..crate::qbt::tests_torrent()
+        };
+        let torrents = [t("OLDER", 2 * day), t("THERE", handover - 3_600)];
+        let mut rolls = vec![r];
+        // Right after the handover it waits for the new one to show
+        bind(&mut rolls, &torrents, handover + 60);
+        assert!(rolls[0].parts[12].hash.is_empty());
+        // Then it takes the one closest before the handover
+        bind(&mut rolls, &torrents, handover + 600);
+        assert_eq!(rolls[0].parts[12].hash, "there");
     }
 
     #[test]
