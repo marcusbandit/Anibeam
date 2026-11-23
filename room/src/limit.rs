@@ -4,8 +4,6 @@
 
 use std::net::{IpAddr, Ipv6Addr};
 
-use serde::{Deserialize, Serialize};
-
 use crate::proto::{ErrorCode, ServerMsg};
 
 /// The most messages one connection, or one member, may send in a second.
@@ -26,13 +24,10 @@ pub enum Verdict {
     Drop,
 }
 
-/// Counts messages in one second windows. A room keeps one in each member's
-/// stored place, under the keys it has always had there.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Counts messages in one second windows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Window {
-    #[serde(rename = "window_ms")]
     start_ms: u64,
-    #[serde(rename = "window_count")]
     count: u32,
 }
 
@@ -44,12 +39,23 @@ impl Window {
         }
     }
 
+    /// A window as a caller stored it: when it started and what it counted.
+    pub fn from_parts(start_ms: u64, count: u32) -> Window {
+        Window { start_ms, count }
+    }
+
+    /// When the window started and what it has counted, for a caller that
+    /// stores them.
+    pub fn parts(self) -> (u64, u32) {
+        (self.start_ms, self.count)
+    }
+
     /// Counts one message sent at `now_ms`.
     pub fn hit(&mut self, now_ms: u64) -> Verdict {
-        if now_ms >= self.start_ms + 1_000 || now_ms < self.start_ms {
+        if now_ms >= self.start_ms.saturating_add(1_000) || now_ms < self.start_ms {
             *self = Window::new(now_ms);
         }
-        self.count += 1;
+        self.count = self.count.saturating_add(1);
         if self.count <= RATE_PER_SEC {
             Verdict::Pass
         } else if self.count == RATE_PER_SEC + 1 {
@@ -110,6 +116,13 @@ mod tests {
             w.hit(5_000);
         }
         assert_eq!(w.hit(4_000), Verdict::Pass);
+    }
+
+    #[test]
+    fn a_window_near_the_end_of_the_clock_still_counts() {
+        let mut w = Window::from_parts(u64::MAX - 10, u32::MAX);
+        assert_eq!(w.hit(u64::MAX - 5), Verdict::Drop);
+        assert_eq!(w.parts(), (u64::MAX - 10, u32::MAX));
     }
 
     #[test]

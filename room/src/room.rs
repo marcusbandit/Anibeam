@@ -68,10 +68,10 @@ struct Slot {
     conn: Option<ConnId>,
     left_ms: Option<u64>,
     rejoin_key: String,
-    /// The member's rate, stored flat beside the rest as `window_ms` and
-    /// `window_count`.
-    #[serde(flatten)]
-    window: Window,
+    /// The member's rate window, kept as its two numbers so the stored
+    /// layout stays the room's own.
+    window_ms: u64,
+    window_count: u32,
     /// The public key the member's hello carried. A room stored before keys
     /// reads with none.
     #[serde(default)]
@@ -196,12 +196,8 @@ impl Room {
     pub fn targets(&self, to: &To) -> Vec<ConnId> {
         match *to {
             To::One(conn) => vec![conn],
-            To::All => self.present().filter_map(|s| s.conn).collect(),
-            To::AllBut(but) => self
-                .present()
-                .filter_map(|s| s.conn)
-                .filter(|c| *c != but)
-                .collect(),
+            To::All => self.conns().collect(),
+            To::AllBut(but) => self.conns().filter(|c| *c != but).collect(),
         }
     }
 
@@ -340,10 +336,10 @@ impl Room {
             name,
             proto,
             host_key,
+            client: _,
             rejoin_key,
             key,
             unpicked,
-            ..
         } = msg
         else {
             return vec![error(conn, ErrorCode::Proto, "hello must come first")];
@@ -391,7 +387,8 @@ impl Room {
                 slot.left_ms = None;
                 slot.name = name;
                 slot.key = clean_key(key);
-                slot.window = Window::new(now_ms);
+                slot.window_ms = now_ms;
+                slot.window_count = 0;
                 i
             }
             None => {
@@ -416,7 +413,8 @@ impl Room {
                     conn: Some(conn),
                     left_ms: None,
                     rejoin_key,
-                    window: Window::new(now_ms),
+                    window_ms: now_ms,
+                    window_count: 0,
                     key: clean_key(key),
                     progress: None,
                 });
@@ -460,8 +458,7 @@ impl Room {
             )];
         }
         let target = self
-            .slots
-            .iter()
+            .present()
             .find(|s| s.id == to && s.id != from)
             .and_then(|s| s.conn);
         match target {
@@ -514,7 +511,11 @@ impl Room {
     /// otherwise the message is dropped and these go out instead (one
     /// `rate_limited` per second at most).
     fn over_limit(&mut self, i: usize, conn: ConnId, now_ms: u64) -> Option<Vec<Out>> {
-        match self.slots[i].window.hit(now_ms) {
+        let slot = &mut self.slots[i];
+        let mut window = Window::from_parts(slot.window_ms, slot.window_count);
+        let verdict = window.hit(now_ms);
+        (slot.window_ms, slot.window_count) = window.parts();
+        match verdict {
             Verdict::Pass => None,
             Verdict::Refuse => Some(vec![one(conn, limit::refusal())]),
             Verdict::Drop => Some(Vec::new()),
@@ -562,9 +563,14 @@ impl Room {
         self.slots.iter().position(|s| s.conn == Some(conn))
     }
 
-    /// The members connected now, in the order they first joined.
+    /// The slots with a socket, the one place that decides who is present.
     fn present(&self) -> impl Iterator<Item = &Slot> {
         self.slots.iter().filter(|s| s.conn.is_some())
+    }
+
+    /// The sockets of the members present.
+    fn conns(&self) -> impl Iterator<Item = ConnId> {
+        self.slots.iter().filter_map(|s| s.conn)
     }
 
     fn is_connected(&self, id: MemberId) -> bool {
@@ -572,7 +578,7 @@ impl Room {
     }
 
     fn connected(&self) -> usize {
-        self.present().count()
+        self.conns().count()
     }
 }
 
