@@ -135,8 +135,8 @@ impl AiringStatus {
         }
     }
 
-    /// The status in any provider's spelling, read trimmed and in lower case, with each
-    /// run of whitespace and hyphens as one underscore.
+    /// The status in any provider's spelling, read trimmed and in ASCII lower case, with
+    /// each run of whitespace, hyphens and underscores as one underscore.
     pub fn from_provider(s: &str) -> Option<AiringStatus> {
         let normalised = normalise_status(s);
         match normalised.as_str() {
@@ -158,7 +158,7 @@ fn normalise_status(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut last_was_separator = false;
     for c in s.trim().chars() {
-        if c.is_whitespace() || c == '-' {
+        if c.is_whitespace() || c == '-' || c == '_' {
             if !last_was_separator {
                 out.push('_');
                 last_was_separator = true;
@@ -802,11 +802,15 @@ mod tests {
         }
         for (word, status) in [
             ("Currently Airing", Releasing),
+            ("Airing", Releasing),
             ("  ongoing ", Releasing),
             ("Finished Airing", Finished),
             ("Ended", Finished),
+            ("Completed", Finished),
             ("not-yet-released", NotYetReleased),
             ("Not  yet - aired", NotYetReleased),
+            ("NOT_ YET__RELEASED", NotYetReleased),
+            ("Upcoming", NotYetReleased),
             ("TBA", NotYetReleased),
             ("Canceled", Cancelled),
             ("On Hiatus", Hiatus),
