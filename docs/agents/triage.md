@@ -8,12 +8,12 @@ how an issue reaches triage, and how to reproduce one here.
 
 ## How an issue gets here
 
-On the owner's desktop, the "Issue triage" T3 scheduled task runs `~/.local/share/issue-triage/check.sh`
-every 10 minutes. Anibeam is opted in by its line in `repos.txt` beside the script, and
-`check.sh` says in its header exactly what it hands out. For each issue it reports, the task
-launches a thread titled `Triage: Anibeam #<n>` on Claude Opus, in a fresh worktree of
-`origin/main`, and that thread runs the skill. A later pass on the same issue goes to the same
-thread.
+On the owner's desktop, the agent loop (see Labels below) runs
+`~/.local/share/issue-triage/check.sh` every 10 minutes. Anibeam is opted in by its line in
+`repos.txt` beside the script, and `check.sh` says in its header exactly what it hands out. For
+each issue it reports, the loop starts a headless triage agent on Claude Opus in a worktree reset
+to `origin/main`, and that agent runs the skill. Every pass is a new session, so a later pass on
+the same issue knows only what the issue and its comments say.
 
 An open issue gets one pass when it is not from a bot and one of these holds:
 
@@ -43,19 +43,20 @@ cannot filter webhook deliveries yet, so every label change would start a run.
 | `needs more info` | triage | waiting on the reporter; `stale-needs-more-info.yml` closes the issue after 7 days with no comment since the label went on |
 | `via-triage` | the triage report form | filed by the reporter's own coding agent, which already looked at their machine |
 | `agent-ready` | the agent loop | a coding agent can take it alone; the loop hands it to an issue agent when the owner or a write collaborator filed it |
-| `needs-human` | the agent loop | the owner has to decide or do something before an agent can go on, or the loop could not sort the issue with confidence |
-| `unclear` | the agent loop | the issue does not say what is wrong or what done looks like |
+| `needs-human` | the agent loop | the owner has to decide or do something before an agent can go on, or the loop could not sort the issue with confidence; the loop sorts an issue once, so a person swaps in `agent-ready` by hand when it is ready |
+| `unclear` | the agent loop | the issue does not say what is wrong or what done looks like; the loop sorts an issue once, so editing the issue does not clear it, and a person swaps in `agent-ready` by hand |
 | `duplicate` | the agent loop | an open issue already asks for the same change |
-| `risky` | the agent loop | the loop rated the PR's head commit high risk, so it waits for the owner instead of merging on a clean review; the loop rates every new head commit and takes the label off when the rating drops |
+| `risky` | the agent loop | the loop rated the PR's head commit high risk, so it waits for the owner instead of merging on a clean review; a PR that touches `.github/`, a build or dependency file (`Cargo.toml`, `Cargo.lock`, `build.rs`, Gradle files, `PKGBUILD`, a `Makefile`) or a `migrations`, `packaging` or `installer` folder is high whatever else it does; the loop rates each new head commit of a ready PR and takes the label off when the rating drops, and a draft is not rated, so it keeps the label it had |
 | `bug`, `enhancement`, `question`, `documentation` | triage, or the bug form for `bug` | the one category an open issue carries |
 
 The agent loop runs on the owner's machine, outside this repo: it sorts each new issue with one
-of its four labels, hands `agent-ready` issues to an issue agent, and reviews every PR head
-commit before that agent may merge.
+of its four labels, hands `agent-ready` issues to an issue agent, starts the triage passes
+above, and reviews every PR head commit before that agent may merge.
 
 Colours and GitHub descriptions live in `.github/workflows/issue-labels.yml`, which recreates any of
-these labels when someone deletes it. The agent loop's five copy the text its `jev-label.py`
-and `jev-risk.py` force on every pass, so change a description there first.
+these labels when someone deletes it. The agent loop's five are the exception: the loop defines
+their colours and descriptions outside this repo and forces both back, so the workflow only copies
+them, and only the owner can change them.
 
 ## Reproducing in Anibeam
 
