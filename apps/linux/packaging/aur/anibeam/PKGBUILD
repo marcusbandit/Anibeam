@@ -34,8 +34,9 @@ prepare() {
   cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
 }
 
-build() {
-  _src
+# What build() and check() both export, in one list: a value that differs between them
+# makes the build scripts' rerun-if-env-changed rebuild the crate in check().
+_env() {
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR=target
   # The version comes from git describe when there is a checkout. A tarball has none, so
@@ -44,17 +45,21 @@ build() {
   export GIT_CEILING_DIRECTORIES="$srcdir"
   # A release built from source: the release icon, not the dev one a checkout gets.
   export ANIBEAM_ICON=release
-  export ANIBEAM_DISCORD_CLIENT_ID=$_discord_client_id
+  # A builder's own Discord application wins over the release one.
+  export ANIBEAM_DISCORD_CLIENT_ID="${ANIBEAM_DISCORD_CLIENT_ID:-$_discord_client_id}"
+}
+
+build() {
+  _src
+  _env
   cargo build --frozen --release -p anibeam
+  # option_env! keeps the id as a string, so a binary without it never shows presence.
+  grep -qa -- "$ANIBEAM_DISCORD_CLIENT_ID" target/release/anibeam
 }
 
 check() {
   _src
-  export RUSTUP_TOOLCHAIN=stable
-  export CARGO_TARGET_DIR=target
-  export GIT_CEILING_DIRECTORIES="$srcdir"
-  export ANIBEAM_ICON=release
-  export ANIBEAM_DISCORD_CLIENT_ID=$_discord_client_id
+  _env
   cargo test --frozen --release -p anibeam
 }
 

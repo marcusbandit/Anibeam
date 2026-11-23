@@ -1,2 +1,2 @@
 ### Fixed
-- Discord presence works in the AUR build
+- Discord presence works in the anibeam AUR package built from source
