@@ -66,8 +66,9 @@ impl Lang {
 
     /// The language a locale string asks for, in any of the shapes systems hand out:
     /// `da_DK.UTF-8`, `pt-BR`, `zh-Hans-CN`, `en_US@euro`. Only the language subtag
-    /// decides: every Portuguese gets Brazilian, every Chinese gets Simplified. A language
-    /// the app does not speak, and `C` or `POSIX`, give English.
+    /// decides, and it picks the first language in [`Lang::ALL`] whose tag starts with it:
+    /// every Portuguese gets Brazilian, every Chinese gets Simplified. A language the app
+    /// does not speak, and `C` or `POSIX`, give English.
     pub fn from_locale(locale: &str) -> Lang {
         let lang = locale
             .split(['.', '@'])
@@ -77,15 +78,18 @@ impl Lang {
             .next()
             .unwrap_or_default()
             .to_ascii_lowercase();
-        Lang::ALL
-            .into_iter()
-            .find(|l| l.code().split('-').next() == Some(lang.as_str()))
-            .unwrap_or(Lang::En)
+        LANGS
+            .iter()
+            .find(|info| info.code.split('-').next() == Some(lang.as_str()))
+            .map_or(Lang::En, |info| info.lang)
     }
 
     /// The language with this exact code from [`Lang::code`], as a saved setting holds it.
     pub fn from_code(code: &str) -> Option<Lang> {
-        Lang::ALL.into_iter().find(|l| l.code() == code)
+        LANGS
+            .iter()
+            .find(|info| info.code == code)
+            .map(|info| info.lang)
     }
 
     /// The mark between a number's whole part and its fraction: "1,5 GB" in Danish, German
@@ -139,9 +143,10 @@ macro_rules! num_arg {
 }
 num_arg!(i32, i64, u32, u64, usize, f32, f64);
 
-/// What the app keeps of one language: its tag, its name in itself, the locale chrono
+/// What the app keeps of one language: the language itself, its tag, its name in itself, the locale chrono
 /// names months and weekdays in, and its files, in the order they go into its bundle.
 struct Info {
+    lang: Lang,
     code: &'static str,
     name: &'static str,
     locale: chrono::Locale,
@@ -149,8 +154,9 @@ struct Info {
 }
 
 macro_rules! lang {
-    ($code:literal, $name:literal, $locale:ident) => {
+    ($lang:ident, $code:literal, $name:literal, $locale:ident) => {
         Info {
+            lang: Lang::$lang,
             code: $code,
             name: $name,
             locale: chrono::Locale::$locale,
@@ -172,21 +178,21 @@ macro_rules! lang {
     };
 }
 
-/// Every language, in [`Lang::ALL`]'s order.
-const LANGS: [Info; 13] = [
-    lang!("en", "English", en_GB),
-    lang!("da", "Dansk", da_DK),
-    lang!("de", "Deutsch", de_DE),
-    lang!("es", "Español", es_ES),
-    lang!("fr", "Français", fr_FR),
-    lang!("pt-BR", "Português (Brasil)", pt_BR),
-    lang!("it", "Italiano", it_IT),
-    lang!("nl", "Nederlands", nl_NL),
-    lang!("pl", "Polski", pl_PL),
-    lang!("ru", "Русский", ru_RU),
-    lang!("ja", "日本語", ja_JP),
-    lang!("ko", "한국어", ko_KR),
-    lang!("zh-CN", "简体中文", zh_CN),
+/// Every language, in [`Lang::ALL`]'s order, which a test holds each row to.
+static LANGS: [Info; Lang::ALL.len()] = [
+    lang!(En, "en", "English", en_GB),
+    lang!(Da, "da", "Dansk", da_DK),
+    lang!(De, "de", "Deutsch", de_DE),
+    lang!(Es, "es", "Español", es_ES),
+    lang!(Fr, "fr", "Français", fr_FR),
+    lang!(PtBr, "pt-BR", "Português (Brasil)", pt_BR),
+    lang!(It, "it", "Italiano", it_IT),
+    lang!(Nl, "nl", "Nederlands", nl_NL),
+    lang!(Pl, "pl", "Polski", pl_PL),
+    lang!(Ru, "ru", "Русский", ru_RU),
+    lang!(Ja, "ja", "日本語", ja_JP),
+    lang!(Ko, "ko", "한국어", ko_KR),
+    lang!(ZhCn, "zh-CN", "简体中文", zh_CN),
 ];
 
 type Bundle = FluentBundle<FluentResource>;
@@ -194,7 +200,8 @@ type Bundle = FluentBundle<FluentResource>;
 /// One language's bundle, built the first time it is asked for. A message that fails to
 /// parse is dropped and the rest of its file still loads; the catalog tests catch it.
 fn bundle(lang: Lang) -> &'static Bundle {
-    static BUNDLES: [OnceLock<Bundle>; 13] = [const { OnceLock::new() }; 13];
+    static BUNDLES: [OnceLock<Bundle>; Lang::ALL.len()] =
+        [const { OnceLock::new() }; Lang::ALL.len()];
     BUNDLES[lang.index()].get_or_init(|| {
         let id: LanguageIdentifier = lang.code().parse().unwrap_or_default();
         let mut bundle = FluentBundle::new_concurrent(vec![id]);
@@ -339,7 +346,9 @@ mod tests {
         assert_eq!(Lang::from_locale("da_DK.UTF-8"), Lang::Da);
         assert_eq!(Lang::from_locale("pt_BR"), Lang::PtBr);
         assert_eq!(Lang::from_locale("pt-PT"), Lang::PtBr);
+        assert_eq!(Lang::from_locale("pt"), Lang::PtBr);
         assert_eq!(Lang::from_locale("zh-Hans-CN"), Lang::ZhCn);
+        assert_eq!(Lang::from_locale("zh_TW.UTF-8"), Lang::ZhCn);
         assert_eq!(Lang::from_locale("ja"), Lang::Ja);
         assert_eq!(Lang::from_locale("DE-at"), Lang::De);
         assert_eq!(Lang::from_locale("en_US@euro"), Lang::En);
@@ -362,7 +371,15 @@ mod tests {
     fn every_language_is_at_its_place() {
         for (i, lang) in Lang::ALL.into_iter().enumerate() {
             assert_eq!(lang.index(), i);
+            assert_eq!(LANGS[i].lang, lang, "row {i} of LANGS");
         }
+        let codes = Lang::ALL.map(Lang::code);
+        assert_eq!(
+            codes,
+            [
+                "en", "da", "de", "es", "fr", "pt-BR", "it", "nl", "pl", "ru", "ja", "ko", "zh-CN"
+            ]
+        );
     }
 
     #[test]
