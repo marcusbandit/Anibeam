@@ -109,11 +109,20 @@ fn an_account_pinned_to_the_retired_id_is_signed_out_and_told_until_dismissed() 
 
     assert!(accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
 
+    // A second profile's row is never this cleanup's to touch (#863).
     assert_eq!(
         mal_rows(&core),
-        vec![(1, None, None, None), (2, None, None, None)]
+        vec![
+            (1, None, None, None),
+            (
+                2,
+                Some(RETIRED_MAL_CLIENT_ID.into()),
+                Some("guest".into()),
+                Some(10)
+            ),
+        ]
     );
-    assert_eq!(mal_entries(&core), 0);
+    assert_eq!(mal_entries(&core), 1);
     assert!(!has_secret(&core, accounts::access_key(Tracker::Mal)));
     assert!(!has_secret(&core, accounts::refresh_key(Tracker::Mal)));
     assert!(!has_secret(&core, accounts::secret_key(Tracker::Mal)));
@@ -167,28 +176,29 @@ fn an_account_with_its_own_id_is_left_alone() {
 }
 
 #[test]
-fn only_a_guest_pinned_to_the_retired_id_keeps_the_owners_keyring() {
+fn a_guest_pinned_to_the_retired_id_is_left_alone() {
     let (_dir, core, _c) = common::open_core();
     seed(&core, "my-own-id", RETIRED_MAL_CLIENT_ID);
     store_secrets(&core);
 
-    assert!(accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
+    assert!(!accounts::forget_retired_client_id(core.services(), RETIRED_MAL_CLIENT_ID).unwrap());
 
     assert_eq!(
         mal_rows(&core),
         vec![
             (1, Some("my-own-id".into()), Some("owner".into()), Some(10)),
-            (2, None, None, None),
+            (
+                2,
+                Some(RETIRED_MAL_CLIENT_ID.into()),
+                Some("guest".into()),
+                Some(10)
+            ),
         ]
     );
-    assert_eq!(mal_entries(&core), 1);
+    assert_eq!(mal_entries(&core), 2);
     assert!(has_secret(&core, accounts::access_key(Tracker::Mal)));
     assert!(has_secret(&core, accounts::secret_key(Tracker::Mal)));
-    assert_eq!(
-        notice(&core),
-        None,
-        "a guest's reset does not tell the owner"
-    );
+    assert_eq!(notice(&core), None, "a guest's row does not tell the owner");
 }
 
 /// The launch itself runs the cleanup, off the calling thread, and says the
@@ -250,14 +260,15 @@ fn a_signed_in_account_keeps_the_bundled_id_it_is_given() {
         .unwrap();
     assert_eq!(stored(&core).as_deref(), Some("bundled"));
 
-    // Signed out, the row still holds that id, so a Save keeps it too.
+    // Signed out with no secret, the bundled id it held goes: it would only
+    // outrank the id a later build carries.
     core.call(Call::DisconnectTracker {
         tracker: Tracker::Mal,
     })
     .unwrap();
     accounts::set_credentials_against(services, Tracker::Mal, "bundled", None, Some("bundled"))
         .unwrap();
-    assert_eq!(stored(&core).as_deref(), Some("bundled"));
+    assert_eq!(stored(&core), None);
 }
 
 #[test]
@@ -356,6 +367,14 @@ fn a_failed_delete_owes_the_secret_without_pinning_or_nagging_again() {
     assert_eq!(mal_rows(&core)[0], (1, None, None, None));
     assert!(owed(&core), "the secret is owed a delete");
     assert!(notice(&core).is_some());
+    // The Trackers tab does not offer the retired secret as the user's.
+    match core.call(Call::GetTrackers).unwrap() {
+        Reply::Trackers { state } => assert_eq!(
+            state.mal.has_client_secret,
+            accounts::bundled_client_secret(Tracker::Mal).is_some()
+        ),
+        other => panic!("{other:?}"),
+    }
 
     // Closed with the x, it stays closed on the next launch, though the
     // delete fails again.
@@ -447,10 +466,18 @@ fn the_notice_is_not_shown_once_mal_is_connected() {
         })
         .unwrap();
     assert_eq!(notice(&core), None);
+
+    // Signing out on purpose later does not bring it back.
+    core.call(Call::DisconnectTracker {
+        tracker: Tracker::Mal,
+    })
+    .unwrap();
+    assert_eq!(notice(&core), None);
 }
 
 /// A row pinned to an id MAL never accepted was never signed in, so the
-/// tokens in the keyring are not its to drop.
+/// tokens in the keyring are not its to drop, and no sign-in of its stopped
+/// working.
 #[test]
 fn an_unconnected_pinned_owner_keeps_the_tokens() {
     let (_dir, core, _c) = common::open_core();
@@ -472,5 +499,5 @@ fn an_unconnected_pinned_owner_keeps_the_tokens() {
     assert!(has_secret(&core, accounts::refresh_key(Tracker::Mal)));
     assert_eq!(secret(&core), None, "the retired app's secret goes");
     assert!(!owed(&core));
-    assert!(notice(&core).is_some());
+    assert_eq!(notice(&core), None);
 }

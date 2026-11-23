@@ -88,8 +88,9 @@ pub fn bundled_client_secret(t: Tracker) -> Option<&'static str> {
 
 /// The MyAnimeList client id 2.5.0 was built with. MAL never accepted it,
 /// and a 2.5.0 account that tried to sign in kept it in its row, where it
-/// outranks the id a later build carries. Launch forgets every account
-/// still pinned to it ([`forget_retired_client_id`], #1408).
+/// outranks the id a later build carries. Launch forgets the owner's
+/// account while it is still pinned to it ([`forget_retired_client_id`],
+/// #1408).
 pub const RETIRED_MAL_CLIENT_ID: &str = "d7d8dfe84f7929682300ad02ece7eaaf";
 
 /// The owner's profile, the only one whose tokens and secrets the keyring
@@ -165,17 +166,18 @@ pub(crate) async fn connected_async(
 /// the client secrets, so this belongs on a calling thread; a job asks
 /// through `state_async`.
 pub fn state(services: &Services) -> Result<TrackerState, CoreError> {
-    let (main, anilist, mal) = services.store.read(|c| {
+    let (main, anilist, mal, owed) = services.store.read(|c| {
         Ok((
             prefs::load_main_tracker(c)?,
             load_row(c, Tracker::Anilist)?,
             load_row(c, Tracker::Mal)?,
+            retired_secret_owed(c)?,
         ))
     })?;
     Ok(TrackerState {
         main,
-        anilist: account(services, Tracker::Anilist, anilist),
-        mal: account(services, Tracker::Mal, mal),
+        anilist: account(services, Tracker::Anilist, anilist, false),
+        mal: account(services, Tracker::Mal, mal, owed),
     })
 }
 
@@ -185,7 +187,7 @@ pub async fn state_async(services: &Arc<Services>) -> Result<TrackerState, CoreE
     through_services(services, state).await
 }
 
-fn account(services: &Services, t: Tracker, row: Option<Row>) -> TrackerAccount {
+fn account(services: &Services, t: Tracker, row: Option<Row>, secret_owed: bool) -> TrackerAccount {
     let row = row.unwrap_or_default();
     let bundled_id = bundled_client_id(t);
     let bundled_secret = bundled_client_secret(t);
@@ -201,7 +203,10 @@ fn account(services: &Services, t: Tracker, row: Option<Row>) -> TrackerAccount 
             .stored_client_id()
             .or_else(|| bundled_id.map(str::to_string))
             .unwrap_or_default(),
-        has_client_secret: services.secrets().has(&secret_key(t)) || bundled_secret.is_some(),
+        // A secret still owed a delete belongs to the retired app, and no
+        // sign-in sends it.
+        has_client_secret: (!secret_owed && services.secrets().has(&secret_key(t)))
+            || bundled_secret.is_some(),
         // Whether this build can sign in with nothing pasted at all. The id
         // is enough for both: AniList's implicit grant has no secret, and a
         // MAL app is a public client unless it was registered as "web", in
@@ -317,17 +322,31 @@ pub fn set_credentials_against(
     let client_id = client_id.trim().to_string();
     let is_bundled = bundled_id == Some(client_id.as_str());
     let removed = matches!(client_secret.map(str::trim), Some(""));
-    // Any secret saved or removed here is the user's own, so a secret left
-    // by the retired app is no longer owed a delete ([`clear_retired_secret`]).
-    let secret_touched = t == Tracker::Mal && client_secret.is_some();
+    // Held until the row is written, so the launch's cleanup of the retired
+    // secret never deletes one this Save just wrote ([`clear_retired_secret`]).
+    let _guard = (t == Tracker::Mal).then(mal_secret_lock);
+    let secrets = services.secrets();
     let store = match client_secret.map(str::trim) {
         Some("") => {
-            services.secrets().delete(&secret_key(t))?;
+            secrets.delete(&secret_key(t))?;
             None
         }
-        Some(secret) => Some(services.secrets().set(&secret_key(t), secret)?),
+        Some(secret) => Some(secrets.set(&secret_key(t), secret)?),
         None => None,
     };
+    // A secret saved or removed here is the user's own, so the retired
+    // app's is no longer owed a delete, but only once this write reached
+    // the store that may hold the retired copy: a write that fell back to
+    // the file leaves a keyring copy that a later read would find first.
+    let secret_paid = t == Tracker::Mal
+        && match (client_secret.map(str::trim), store) {
+            (Some(""), _) => delete_reached_keyring(secrets),
+            (Some(_), Some(kind)) => kind == StoreKind::Keyring || secrets.is_file_only(),
+            _ => false,
+        };
+    // A kept id needs a kept secret: a signed-out row holding the bundled id
+    // with no secret beside it would only outrank the next build's id.
+    let secret_kept = !removed && store.is_none() && secrets.has(&secret_key(t));
     services.store.tx(move |tx| {
         let (held, signed_in) = tx
             .query_row(
@@ -342,14 +361,14 @@ pub fn set_credentials_against(
             || signed_in
             || store.is_some()
             // A secret kept from an earlier Save stays with the id it came with.
-            || (!removed && held.as_deref() == Some(client_id.as_str()));
+            || (secret_kept && held.as_deref() == Some(client_id.as_str()));
         let client_id = keep.then_some(client_id);
         tx.execute(
             "INSERT INTO tracker_accounts (tracker, client_id) VALUES (?1, ?2)
              ON CONFLICT(profile_id, tracker) DO UPDATE SET client_id = excluded.client_id",
             params![t.as_str(), client_id],
         )?;
-        if secret_touched {
+        if secret_paid {
             settings::remove(tx, settings::MAL_RETIRED_SECRET_OWED)?;
         }
         // Only when a secret was actually written: the column is the one
@@ -371,7 +390,15 @@ pub fn set_credentials_against(
 /// to fix a bad token should not have to paste their client id back in.
 /// What goes is the account, the progress cache and the tokens.
 pub fn disconnect(services: &Services, t: Tracker) -> Result<Reply, CoreError> {
-    services.store.tx(move |tx| sign_out(tx, t, OWNER))?;
+    services.store.tx(move |tx| {
+        sign_out(tx, t, OWNER)?;
+        // Signed out on purpose: a notice saying the old sign-in stopped
+        // working would now be wrong.
+        if t == Tracker::Mal {
+            settings::remove(tx, settings::MAL_SIGN_IN_AGAIN)?;
+        }
+        Ok(())
+    })?;
     delete_tokens(services, t)?;
     emit_trackers_changed(services)?;
     // Every card whose match carries this tracker's id loses the numbers
@@ -405,62 +432,56 @@ fn delete_tokens(services: &Services, t: Tracker) -> Result<(), CoreError> {
     access.and(refresh)
 }
 
-/// Forgets every MAL account pinned to `retired`, in every profile: the
-/// sign-in, the progress cache and the id off the row. When the owner's row
-/// was one of them it leaves a notice for the shell ([`notice`]) and owes a
+/// Forgets the owner's MAL account when it is pinned to `retired`: the
+/// sign-in, the progress cache and the id off the row. A second profile's
+/// row is never touched (#863): it holds nothing in this keyring, and this
+/// build cannot sign it in again. When the owner's row is reset it owes a
 /// delete of the pasted secret, which belonged to that app as well
-/// ([`clear_retired_secret`]); a guest's reset is not the owner's to be told
-/// about. The account then signs in with the id this build carries. Says
-/// whether any row was reset.
+/// ([`clear_retired_secret`]), and, when that row was signed in, leaves a
+/// notice for the shell ([`notice`]). The account then signs in with the id
+/// this build carries. Says whether the row was reset.
 ///
-/// The rows are picked and signed out in one transaction, so a sign-in that
-/// lands meanwhile is not undone. The owner's tokens are deleted after it,
-/// and only when that row was signed in when it was picked: a row pinned to
-/// an id MAL never accepted holds no tokens worth dropping, and a sign-in
-/// landing after the commit keeps its new ones. Once a row is reset nothing
-/// matches it again, so the notice is raised once; it stays until it is
-/// closed with the x, or MyAnimeList connects.
+/// The tokens are deleted before the row is signed out, while nothing yet
+/// tells the shell to offer a new sign-in. The row is then picked again
+/// inside the transaction: a sign-in that landed meanwhile holds another
+/// id, so it is left alone. Once the row is reset nothing matches it again,
+/// so the notice is raised once; it stays until it is closed with the x, or
+/// MyAnimeList connects, or the owner signs out of it on purpose.
 ///
-/// The owed secret is tried on every launch, rows or not, until a delete
+/// The owed secret is tried on every launch, reset or not, until a delete
 /// reaches the store that holds it.
 pub fn forget_retired_client_id(services: &Services, retired: &str) -> Result<bool, CoreError> {
     let t = Tracker::Mal;
-    let retired = retired.to_string();
-    let (reset, owner_connected) = services.store.tx(move |tx| {
-        let picked = {
-            let mut stmt = tx.prepare(
-                "SELECT profile_id, connected_at IS NOT NULL FROM tracker_accounts
-                  WHERE tracker = ?1 AND client_id = ?2 ORDER BY profile_id",
-            )?;
-            stmt.query_map(params![t.as_str(), retired], |r| {
-                Ok((r.get::<_, i64>(0)?, r.get::<_, bool>(1)?))
-            })?
-            .collect::<Result<Vec<_>, _>>()?
-        };
-        for &(profile, _) in &picked {
-            sign_out(tx, t, profile)?;
-        }
-        tx.execute(
-            "UPDATE tracker_accounts SET client_id = NULL WHERE tracker = ?1 AND client_id = ?2",
-            params![t.as_str(), retired],
-        )?;
-        let owner = picked.iter().find(|(profile, _)| *profile == OWNER);
-        if owner.is_some() {
-            settings::set(tx, settings::MAL_SIGN_IN_AGAIN, &true)?;
-            settings::set(tx, settings::MAL_RETIRED_SECRET_OWED, &true)?;
-        }
-        Ok((
-            !picked.is_empty(),
-            owner.is_some_and(|(_, connected)| *connected),
-        ))
-    })?;
-    if owner_connected && let Err(e) = delete_tokens(services, t) {
+    let id = retired.to_string();
+    let connected = services.store.read(move |c| retired_owner(c, &id))?;
+    if connected == Some(true)
+        && let Err(e) = delete_tokens(services, t)
+    {
         services.bus.warn(
             Stage::Trackers,
             format!("could not clear the retired MyAnimeList app's tokens: {e}"),
             EventBody::Notice,
         );
     }
+    let id = retired.to_string();
+    let reset = services.store.tx(move |tx| {
+        let Some(connected) = retired_owner(tx, &id)? else {
+            return Ok(false);
+        };
+        sign_out(tx, t, OWNER)?;
+        tx.execute(
+            "UPDATE tracker_accounts SET client_id = NULL
+              WHERE tracker = ?1 AND profile_id = ?2 AND client_id = ?3",
+            params![t.as_str(), OWNER, id],
+        )?;
+        // An owner who never signed in with that app lost nothing, so is
+        // not told a sign-in stopped working.
+        if connected {
+            settings::set(tx, settings::MAL_SIGN_IN_AGAIN, &true)?;
+        }
+        settings::set(tx, settings::MAL_RETIRED_SECRET_OWED, &true)?;
+        Ok(true)
+    })?;
     if let Err(e) = clear_retired_secret(services) {
         services.bus.warn(
             Stage::Trackers,
@@ -489,25 +510,57 @@ pub fn forget_retired_client_id(services: &Services, retired: &str) -> Result<bo
     Ok(true)
 }
 
+/// Whether the owner's MAL row is pinned to `retired`, and if so whether it
+/// is signed in.
+fn retired_owner(c: &Connection, retired: &str) -> Result<Option<bool>, CoreError> {
+    Ok(c.query_row(
+        "SELECT connected_at IS NOT NULL FROM tracker_accounts
+          WHERE tracker = ?1 AND profile_id = ?2 AND client_id = ?3",
+        params![Tracker::Mal.as_str(), OWNER, retired],
+        |r| r.get::<_, bool>(0),
+    )
+    .optional()?)
+}
+
+/// Held across every write of the MyAnimeList secret and across the delete
+/// of the retired one, so the delete never lands on a secret the user saved
+/// or imported between its check and its write.
+fn mal_secret_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Whether a delete that returned Ok reached every store that could hold
+/// the key: a Secret Service that answered, or a facade built file-only by
+/// choice, where no keyring exists. With no Secret Service reachable a
+/// delete touches only the file store, while a keyring copy may survive.
+fn delete_reached_keyring(secrets: &Secrets) -> bool {
+    secrets.is_file_only() || secrets.keyring_unavailable() == Some(false)
+}
+
+/// Whether the retired MyAnimeList app's secret is still owed a delete
+/// ([`clear_retired_secret`]). While it is, nothing reads or reports the
+/// stored secret as the user's.
+pub fn retired_secret_owed(c: &Connection) -> Result<bool, CoreError> {
+    Ok(settings::get::<bool>(c, settings::MAL_RETIRED_SECRET_OWED)?.unwrap_or(false))
+}
+
 /// Deletes the secret pasted for the retired MyAnimeList app while one is
 /// owed ([`settings::MAL_RETIRED_SECRET_OWED`]), and says whether it is
 /// still owed afterwards. The debt is paid only by a delete that reached
-/// the store that could hold it: a Secret Service that answered, or a
-/// facade built file-only by choice, where no keyring exists. With no
-/// Secret Service reachable a delete touches only the file store and
-/// succeeds, while a keyring copy may survive, so the debt stays and the
-/// next launch or sign-in tries again. A keyring that fails is logged and
-/// never an error; only the database's own failures are.
+/// the store that could hold it ([`delete_reached_keyring`]); otherwise the
+/// debt stays and the next launch or sign-in tries again. A keyring that
+/// fails is logged and never an error; only the database's own failures
+/// are. The check, the delete and the payment hold [`mal_secret_lock`].
 pub fn clear_retired_secret(services: &Services) -> Result<bool, CoreError> {
-    let owed = services.store.read(|c| {
-        Ok(settings::get::<bool>(c, settings::MAL_RETIRED_SECRET_OWED)?.unwrap_or(false))
-    })?;
-    if !owed {
+    let _guard = mal_secret_lock();
+    if !services.store.read(retired_secret_owed)? {
         return Ok(false);
     }
     let secrets = services.secrets();
     match secrets.delete(&secret_key(Tracker::Mal)) {
-        Ok(()) if secrets.is_file_only() || secrets.keyring_unavailable() == Some(false) => {
+        Ok(()) if delete_reached_keyring(secrets) => {
             services
                 .store
                 .write(|c| settings::remove(c, settings::MAL_RETIRED_SECRET_OWED))?;
@@ -532,6 +585,41 @@ pub fn clear_retired_secret(services: &Services) -> Result<bool, CoreError> {
             Ok(true)
         }
     }
+}
+
+/// An imported client secret, written only when the store holds something
+/// else; says whether it wrote. For MyAnimeList it holds
+/// [`mal_secret_lock`], and pays the retired secret's debt only when the
+/// write reached the keyring or the facade is file-only: a secret that
+/// matches what is stored may be the retired one itself, carried by an
+/// export, and a write that fell back to the file leaves the keyring copy.
+/// The debt is paid even if the rest of the import fails afterwards: the
+/// write that paid it already replaced the retired copy. On the blocking
+/// pool, for the keyring's sake.
+pub async fn import_secret(
+    services: &Services,
+    t: Tracker,
+    value: String,
+    hint: Option<StoreKind>,
+) -> Result<bool, CoreError> {
+    let secrets = services.secrets.clone();
+    let store = services.store.clone();
+    let write = move || -> Result<bool, CoreError> {
+        let _guard = (t == Tracker::Mal).then(mal_secret_lock);
+        let key = secret_key(t);
+        if secrets
+            .get(&key, hint)?
+            .is_some_and(|(held, _)| held == value)
+        {
+            return Ok(false);
+        }
+        let kind = secrets.set(&key, &value)?;
+        if t == Tracker::Mal && (kind == StoreKind::Keyring || secrets.is_file_only()) {
+            store.write(|c| settings::remove(c, settings::MAL_RETIRED_SECRET_OWED))?;
+        }
+        Ok(true)
+    };
+    joined(services.handle.spawn_blocking(write).await)?
 }
 
 /// `GetTrackerNotice`: the line a launch left for the user, if one is owed.

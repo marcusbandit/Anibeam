@@ -43,14 +43,16 @@ pub const DISCORD_BLOCKED: &str = "discord_blocked";
 /// the first Jikan reply after an outage. A JSON list of ids.
 pub const JIKAN_OWED: &str = "jikan_owed";
 /// `true` once a launch has signed out the owner's MyAnimeList account
-/// pinned to the app id 2.5.0 shipped with (#1408), until the notice asking
-/// them to sign in again is closed with the x, or MyAnimeList connects.
+/// signed in with the app id 2.5.0 shipped with (#1408), until the notice
+/// asking them to sign in again is closed with the x, MyAnimeList connects,
+/// or the owner signs out of it on purpose.
 pub const MAL_SIGN_IN_AGAIN: &str = "mal_sign_in_again";
 /// `true` while the secret pasted for the app id 2.5.0 shipped with may
 /// still sit in the keyring (#1408): set by the launch that signed that
-/// account out, cleared once a delete of it reached the store that holds
-/// it, or when the user saves or removes a secret of their own. While it
-/// is set a sign-in never reads the stored secret.
+/// account out, cleared once a delete of it, or a secret of the user's own
+/// saved or imported over it, reached the store that may hold it. While it
+/// is set a sign-in never reads the stored secret, the Trackers tab does
+/// not report it and an export leaves it out.
 pub const MAL_RETIRED_SECRET_OWED: &str = "mal_retired_secret_owed";
 
 pub fn get<T: DeserializeOwned>(conn: &Connection, key: &str) -> Result<Option<T>, CoreError> {
