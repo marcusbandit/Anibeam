@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -67,11 +67,6 @@ pub struct JobCtx {
     progress: Arc<Mutex<Option<Progress>>>,
     throttle: Mutex<Throttle<Option<Progress>>>,
     changed: Mutex<Throttle<HashMap<u64, SeriesCard>>>,
-    /// Set by the runner, under the same locks the scheduled flushes drain
-    /// with, before the terminal event. A scheduled flush that observes
-    /// this checks it while holding that lock, so it can never emit after
-    /// the runner has already flushed and moved on to the terminal event.
-    finished: AtomicBool,
 }
 
 /// What a throttle holds between emits: the latest progress, or every card
@@ -229,10 +224,8 @@ impl JobCtx {
     /// last emit is a window old, or arms one flush for when it will be. A
     /// due emit takes what was already buffered along with the new value, so
     /// no older value is left behind for a flush to deliver stale after it.
-    /// The emit runs after the lock is let go, so no listener runs under it.
-    /// Once the job has finished nothing flushes any more, so a push from
-    /// something that outlived the body (a task it spawned) goes out at once
-    /// rather than waiting on a flush that would drop it.
+    /// A push from something that outlived the body (a task it spawned) is
+    /// throttled the same way and still goes out, after the terminal event.
     fn push<P: Pending>(
         self: &Arc<Self>,
         slot: fn(&JobCtx) -> &Mutex<Throttle<P>>,
@@ -241,14 +234,9 @@ impl JobCtx {
     ) {
         let mut t = recover(slot(self));
         add(&mut t.pending);
-        if self.finished.load(Ordering::SeqCst)
-            || t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL)
-        {
-            let due = t.take();
+        if t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL) {
             drop(t);
-            if let Some(due) = due {
-                emit(self, due);
-            }
+            self.flush(slot(self), emit);
             return;
         }
         if t.flush_scheduled {
@@ -259,33 +247,35 @@ impl JobCtx {
         let me = self.clone();
         self.runtime.spawn(async move {
             tokio::time::sleep(wait).await;
+            // Held through the emit: either this completes before `finish`
+            // takes the lock, or it runs after and finds only what was
+            // pushed once the body had ended.
             let mut t = recover(slot(&me));
             t.flush_scheduled = false;
-            if !me.finished.load(Ordering::SeqCst) {
-                me.drain(&mut t, emit);
+            if let Some(due) = t.take() {
+                emit(&me, due);
             }
         });
     }
 
-    /// Emits whatever a throttle holds, called with its lock held by the
-    /// scheduled flush and by `finish`: whichever takes the lock first
-    /// completes entirely, emit included, before the other can start, so a
-    /// scheduled flush can never land after the terminal event.
-    fn drain<P: Pending>(&self, t: &mut Throttle<P>, emit: fn(&JobCtx, P::Out)) {
-        if let Some(due) = t.take() {
+    /// Takes everything a throttle holds and emits it once the lock is let
+    /// go, so no listener runs under it.
+    fn flush<P: Pending>(&self, slot: &Mutex<Throttle<P>>, emit: fn(&JobCtx, P::Out)) {
+        let due = recover(slot).take();
+        if let Some(due) = due {
             emit(self, due);
         }
     }
 
     /// Called once by the runner, after the job's own future has completed
-    /// or been dropped, and before the terminal event: marks the job
-    /// finished so no scheduled flush can land after it, then flushes
-    /// whatever is still buffered, so a job never ends with a value still
-    /// waiting on a flush.
+    /// or been dropped, and before the terminal event: emits whatever the
+    /// throttles still hold, so a job never ends with a value waiting on a
+    /// flush. A scheduled flush emits with its lock held, so nothing the
+    /// body pushed lands after the terminal event. A push from another task
+    /// that races the body's end has no such order and may land after it.
     fn finish(&self) {
-        self.finished.store(true, Ordering::SeqCst);
-        self.drain(&mut recover(&self.throttle), JobCtx::emit_progress);
-        self.drain(&mut recover(&self.changed), JobCtx::emit_changed);
+        self.flush(&self.throttle, JobCtx::emit_progress);
+        self.flush(&self.changed, JobCtx::emit_changed);
     }
 }
 
@@ -295,35 +285,27 @@ fn stopped_line(kind: JobKind) -> Option<Words> {
     (!kind.chore()).then(|| Words::new(format!("{}.stopped", kind.words_id())))
 }
 
-fn finished_ref(id: u64, kind: JobKind) -> Option<JobRef> {
-    Some(JobRef {
-        id,
-        kind,
-        phase: JobPhase::Finished,
-    })
-}
-
 /// The terminal event of a job that was cancelled, or whose body was dropped
 /// before it finished: not news, so it stays in the developer log.
-fn emit_cancelled(bus: &EventBus, id: u64, kind: JobKind) {
-    bus.emit_said(
+fn emit_cancelled(ctx: &JobCtx) {
+    ctx.bus.emit_said(
         Level::Info,
-        kind.stage(),
+        ctx.kind.stage(),
         None,
-        format!("{} cancelled", kind.as_str()),
-        finished_ref(id, kind),
+        format!("{} cancelled", ctx.kind.as_str()),
+        Some(ctx.job_ref(JobPhase::Finished)),
         EventBody::JobCancelled,
     );
 }
 
 /// The terminal event of a job that failed.
-fn emit_failed(bus: &EventBus, id: u64, kind: JobKind, message: String, error: CoreError) {
-    bus.emit_said(
+fn emit_failed(ctx: &JobCtx, message: String, error: CoreError) {
+    ctx.bus.emit_said(
         Level::Error,
-        kind.stage(),
-        stopped_line(kind),
+        ctx.kind.stage(),
+        stopped_line(ctx.kind),
         message,
-        finished_ref(id, kind),
+        Some(ctx.job_ref(JobPhase::Finished)),
         EventBody::JobFailed { error },
     );
 }
@@ -336,8 +318,6 @@ fn emit_failed(bus: &EventBus, id: u64, kind: JobKind, message: String, error: C
 struct JobGuard {
     jobs: Arc<Jobs>,
     ctx: Arc<JobCtx>,
-    id: u64,
-    kind: JobKind,
     done: bool,
 }
 
@@ -347,15 +327,13 @@ impl Drop for JobGuard {
             return;
         }
         // What the throttles still hold goes out before the terminal event,
-        // as on the normal path, and no scheduled flush emits after it.
+        // as on the normal path, with no throttle lock held.
         self.ctx.finish();
-        recover(&self.jobs.running).remove(&self.id);
+        recover(&self.jobs.running).remove(&self.ctx.id);
         if std::thread::panicking() {
             emit_failed(
-                &self.jobs.bus,
-                self.id,
-                self.kind,
-                format!("{} panicked", self.kind.as_str()),
+                &self.ctx,
+                format!("{} panicked", self.ctx.kind.as_str()),
                 CoreError::internal("job panicked"),
             );
         } else {
@@ -365,7 +343,7 @@ impl Drop for JobGuard {
             // principle, a `select!` whose cancelled arm won before this
             // guard's `done` flag could be set). Either way the job did
             // not fail, it was cancelled.
-            emit_cancelled(&self.jobs.bus, self.id, self.kind);
+            emit_cancelled(&self.ctx);
         }
     }
 }
@@ -438,7 +416,6 @@ impl Jobs {
             progress,
             throttle: Mutex::default(),
             changed: Mutex::default(),
-            finished: AtomicBool::new(false),
         });
         self.bus.emit(
             Level::Debug,
@@ -461,8 +438,6 @@ impl Jobs {
             let mut guard = JobGuard {
                 jobs: jobs.clone(),
                 ctx: ctx.clone(),
-                id,
-                kind,
                 done: false,
             };
             let outcome = tokio::select! {
@@ -479,21 +454,15 @@ impl Jobs {
                         kind.stage(),
                         done.plain,
                         done.message,
-                        finished_ref(id, kind),
+                        Some(ctx.job_ref(JobPhase::Finished)),
                         done.body,
                     );
                 }
                 // `checkpoint`'s error is a cancel the body noticed itself.
                 Some(Err(e)) if e != CoreError::internal("cancelled") => {
-                    emit_failed(
-                        &jobs.bus,
-                        id,
-                        kind,
-                        format!("{} failed: {e}", kind.as_str()),
-                        e,
-                    );
+                    emit_failed(&ctx, format!("{} failed: {e}", kind.as_str()), e);
                 }
-                _ => emit_cancelled(&jobs.bus, id, kind),
+                _ => emit_cancelled(&ctx),
             }
         });
         (id, true)
@@ -923,10 +892,10 @@ mod tests {
     }
 
     /// Something that still holds the context after the body returned, a task
-    /// the body spawned say, is not throttled any more: nothing flushes for a
-    /// finished job, so what it pushes goes out at once instead of being lost.
+    /// the body spawned say, is throttled as before, and the latest of what
+    /// it pushes still goes out.
     #[test]
-    fn a_push_after_the_job_finished_still_goes_out() {
+    fn a_push_after_the_job_finished_is_throttled_and_still_goes_out() {
         let (_d, _rt, jobs, c) = setup();
         let (tx, rx) = std::sync::mpsc::channel();
         let id = jobs.start(JobKind::Scan, move |ctx| async move {
@@ -936,15 +905,25 @@ mod tests {
         });
         wait_for_finished(&c, id);
         let ctx = rx.recv().unwrap();
-        ctx.progress(1, Some(2), "late");
+        for i in 0..20 {
+            ctx.progress(1, Some(2), &format!("late {i}"));
+        }
         ctx.changed(card(7));
-        let late = of_job(&c, id);
-        assert!(
-            late.iter().any(
-                |e| matches!(&e.body, EventBody::JobProgress { label, .. } if label == "late")
-            ),
-            "{late:?}"
+        let arrived = c.wait_for(
+            |events| {
+                events.iter().any(
+                    |e| matches!(&e.body, EventBody::JobProgress { label, .. } if label == "late 19"),
+                )
+            },
+            Duration::from_secs(2),
         );
+        let late = of_job(&c, id);
+        assert!(arrived, "{late:?}");
+        let progress = late
+            .iter()
+            .filter(|e| matches!(e.body, EventBody::JobProgress { .. }))
+            .count();
+        assert!(progress <= 3, "{late:?}");
         assert!(
             late.iter().any(
                 |e| matches!(&e.body, EventBody::SeriesChanged { series } if series.iter().any(|s| s.id == 7))

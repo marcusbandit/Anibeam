@@ -22,8 +22,12 @@ pub const RING_SIZE: u64 = 2000;
 const TRIM_EVERY: u64 = 64;
 
 /// Drops every row older than the newest [`RING_SIZE`].
-const TRIM: &str =
-    "DELETE FROM events WHERE seq <= (SELECT seq FROM events ORDER BY seq DESC LIMIT 1 OFFSET ?1)";
+fn trim(c: &rusqlite::Connection) -> rusqlite::Result<usize> {
+    c.prepare_cached(
+        "DELETE FROM events WHERE seq <= (SELECT seq FROM events ORDER BY seq DESC LIMIT 1 OFFSET ?1)",
+    )?
+    .execute(params![RING_SIZE as i64])
+}
 
 /// Every call and every job emits through this. Persistence is
 /// fire-and-forget (`Store::post`), so `emit` never blocks on a database
@@ -75,7 +79,10 @@ impl EventBus {
     /// launch (`Core::earlier_starts`) sees the ring and no more.
     pub fn new(store: Arc<Store>) -> Result<Arc<EventBus>, CoreError> {
         let last: i64 = store.write(|c| {
-            c.execute(TRIM, params![RING_SIZE as i64])?;
+            // Housekeeping, so a failed trim is logged and the bus still opens.
+            if let Err(err) = trim(c) {
+                tracing::warn!("failed to trim the events ring: {err}");
+            }
             Ok(c.query_row("SELECT coalesce(max(seq), 0) FROM events", [], |r| r.get(0))?)
         })?;
         scrub_stored(&store)?;
@@ -252,7 +259,7 @@ impl EventBus {
             .plain_words
             .as_ref()
             .and_then(|w| serde_json::to_string(w).ok());
-        let trim = self
+        let due_trim = self
             .stored
             .fetch_add(1, Ordering::Relaxed)
             .is_multiple_of(TRIM_EVERY);
@@ -279,7 +286,7 @@ impl EventBus {
                 }
             }
             // Whatever the insert did, so a failed one never skips a batch's trim.
-            if trim && let Err(err) = c.execute(TRIM, params![RING_SIZE as i64]) {
+            if due_trim && let Err(err) = trim(c) {
                 tracing::warn!("failed to trim the events ring: {err}");
             }
         });
