@@ -349,6 +349,12 @@ home-hero-resume = Resume episode { $number }
 home-hero-play = Play episode { $number }
 home-hero-resume-unnumbered = Resume episode
 home-hero-play-unnumbered = Play episode
+home-hero-previous = Previous show
+home-hero-next = Next show
+home-card-episode = EP { $number }
+home-card-episode-season = S{ $season } EP { $number }
+# $episode is "EP 7" or "S2 EP 7"; $title is the episode's own title
+home-card-episode-titled = { $episode } · { $title }
 home-downloaded = Recently downloaded
 home-downloaded-fact = { $count } series with new files in the last 2 weeks
 home-week = This week

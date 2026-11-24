@@ -1,17 +1,20 @@
-// Home: the page the app opens on, ordered by what the app is for. First, the series to go
-// on with (an episode left half-way, or the next one on disk), set on a band in that
-// series' own colour, read off its poster. With a tracker connected, the series on hold
-// there follow Continue in the same row whenever Continue leaves room. Then the week:
-// seven day columns from today with the airing series' posters placed on the day their
-// next episode lands, and a Later column for the rest. Then the series with episodes
-// waiting, a row not started yet, and the library's genres as a way in. A series dropped
-// on the tracker is in none of those: it closes the page on a shelf of its own, a reminder
-// of what can leave the disk. Every shelf is a plain grid whose column count comes from the
+// Home: the page the app opens on, ordered by what the app is for. First the hero: the
+// series to go on with, one at a time in the series page head's look (the banner across the
+// window, the next episode's still, the logo or the title, one row of actions), stepping on
+// by itself after a stretch with no input, or by hand with its arrows and dots. Then Continue
+// as episode cards: the still of the episode to play, the show, the episode and how far into
+// it you stopped. A series on hold is in neither; it waits on a shelf of its own further down.
+// Then the week: seven day columns from today with the airing series' posters placed on the
+// day their next episode lands, and a Later column for the rest. Then the series with episodes
+// waiting, a row not started yet, and the library's genres as a way in. A series dropped on
+// the tracker is in none of those: it closes the page on a shelf of its own, a reminder of
+// what can leave the disk. Every shelf is a plain grid whose column count comes from the
 // width, and a shelf that could run long stops at a row or two with "See all".
 //
 // With no library yet Home holds the same empty state as Library and nothing else (#1006):
 // rows of the season's shows had nothing to do with the person who opened it.
 import QtQuick
+import QtQuick.Shapes
 import com.marcusrosado.Anibeam
 
 Item {
@@ -23,12 +26,13 @@ Item {
     function escapePressed() { return false }
     // The arrows with nothing focused go to the scroll's grid keys (Down lands on the hero's
     // button or the first card)
-    Keys.onPressed: function(event) { scroll.keyPressed(event) }
+    Keys.onPressed: function(event) { hero.lastInput = Date.now(); scroll.keyPressed(event) }
+    // The pointer moving anywhere on the page holds the hero's turn too
+    HoverHandler { onPointChanged: hero.lastInput = Date.now() }
 
     property real nowMs: Date.now()
     property var shelf: []        // the library, last viewed first
     property var airingRows: []   // releasing, on disk, not done with
-    property var resume: null     // { card, detail, episode, partial }
     property bool libraryEmpty: false
     // A read that failed shows Try again on the page, not a blank Home
     property bool loadFailed: false
@@ -46,22 +50,20 @@ Item {
     function watchedOf(c) { return c.watched !== null && c.watched !== undefined ? c.watched : 0 }
     function droppedOf(c) { return c.list_status === "Dropped" }
     function pausedOf(c) { return c.list_status === "Paused" }
-    // On hold is a list on a tracker, so with none connected none of it shows
-    readonly property bool tracked: !!Door.trackers && ((!!Door.trackers.anilist && Door.trackers.anilist.connected === true)
-                                                      || (!!Door.trackers.mal && Door.trackers.mal.connected === true))
 
-    // The hero: the series to go on with. An episode stopped short of its end comes first,
+    // Continue: the series to go on with. An episode stopped short of its end comes first,
     // else the series' next episode on disk; a series with neither is caught up and is
     // passed over for the next one.
     // A series counts as started when it was played here or when the tracker says it is
     // being watched with episodes seen, since plenty get watched somewhere else. They are
     // ordered by the later of the last play here and, while an episode is out and unseen,
     // the day that episode arrived: a new episode of a show being followed is the obvious
-    // next watch. The first is the hero, the rest the Continue row. At most sixteen series
-    // are read; a dropped one is never among them, and one on hold sits in its own group.
+    // next watch. The hero cycles through the first of them and Continue holds them all. At
+    // most sixteen series are read; a dropped one is never among them, and one on hold is
+    // left out too: it is on hold for a reason (#1464).
     function startedOf(c) {
         if (page.droppedOf(c) || c.list_status === "Completed") return false
-        if (page.tracked && page.pausedOf(c)) return false
+        if (page.pausedOf(c)) return false
         if (page.viewedAt(c) > 0) return true
         return page.watchedOf(c) > 0 && (c.list_status === "Watching" || c.list_status === "Repeating")
     }
@@ -94,8 +96,14 @@ Item {
         }
         return out
     }
-    property var continueList: []
-    function pickResume() { continueList = pickContinue(); return continueList.length ? continueList[0] : null }
+    property var continueList: []   // [{ card, detail, episode, partial }]
+    // The hero's turn: the first few of Continue, one at a time
+    readonly property var heroList: continueList.slice(0, 8)
+    readonly property var continueIds: {
+        var m = {}
+        for (var i = 0; i < continueList.length; i++) m[continueList[i].card.id] = true
+        return m
+    }
 
     function reload() {
         var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
@@ -107,7 +115,7 @@ Item {
         var n = r.reply.counts || {}
         // Hidden series are still a library, as Library counts them
         libraryEmpty = (n.all || 0) === 0 && (n.watched || 0) === 0 && (n.hidden || 0) === 0
-        resume = pickResume()
+        continueList = pickContinue()
         nowMs = Date.now()
     }
     // ---- Recommended for you (#779): the recommender's ranking held to one scope, best first.
@@ -165,8 +173,7 @@ Item {
         else openSeries(c)
     }
 
-    // ---- The lists. The hero's series shows in the hero and Continue, nowhere else.
-    readonly property int heroId: resume ? resume.card.id : -1
+    // ---- The lists. A series in Continue shows in the hero and Continue, nowhere else.
     readonly property var airingIds: {
         var m = {}
         for (var i = 0; i < airingRows.length; i++) m[airingRows[i].id] = true
@@ -365,30 +372,30 @@ Item {
     readonly property var catchUpList: {
         var month = 45 * 86400, now = nowMs / 1000
         return shelf.filter(function(c) {
-            if (c.id === page.heroId || page.airingIds[c.id] || page.droppedOf(c)) return false
+            if (page.continueIds[c.id] || page.airingIds[c.id] || page.droppedOf(c)) return false
             if (c.watched_state === "Behind") return true
             return page.viewedAt(c) > now - month && c.watched_state !== "CaughtUp"
         })
     }
-    // The series a file arrived in over the last fortnight, newest first
+    // The series a file arrived in over the last fortnight, newest first; one Continue holds
+    // already is left out, since its new episode is the card there (#1464)
     readonly property var downloadedList: {
         var since = nowMs / 1000 - 14 * 86400
-        return shelf.filter(function(c) { return c.downloaded_at && c.downloaded_at >= since })
+        return shelf.filter(function(c) { return c.downloaded_at && c.downloaded_at >= since && !page.continueIds[c.id] })
             .sort(function(a, b) { return b.downloaded_at - a.downloaded_at })
     }
     // Never started, best rated first
     readonly property var freshList: {
         var list = shelf.filter(function(c) {
-            return c.id !== page.heroId && !page.airingIds[c.id] && !page.droppedOf(c) && page.viewedAt(c) === 0
+            return !page.continueIds[c.id] && !page.airingIds[c.id] && !page.droppedOf(c) && page.viewedAt(c) === 0
                 && page.watchedOf(c) === 0 && (c.episodes_on_disk || 0) > 0
         })
         return list.sort(function(a, b) { return (b.community_score || 0) - (a.community_score || 0) })
     }
-    // On hold on the tracker: the ones with an episode on disk to play first, then the one
-    // touched here or given a new episode most lately
+    // On hold, on the tracker or on this device: the ones with an episode on disk to play
+    // first, then the one touched here or given a new episode most lately
     function lastTouchOf(c) { return Math.max(page.viewedAt(c), c.latest_activity_at || 0) }
     readonly property var holdList: {
-        if (!tracked) return []
         return shelf.filter(page.pausedOf).sort(function(a, b) {
             var pa = page.toWatchOf(a) > 0 ? 1 : 0, pb = page.toWatchOf(b) > 0 ? 1 : 0
             return pb - pa || page.lastTouchOf(b) - page.lastTouchOf(a)
@@ -444,6 +451,32 @@ Item {
             }
         }
         Item { id: actionSlot; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); width: childrenRect.width; height: childrenRect.height }
+    }
+
+    // A fact on the hero: a glass pill over the art, as on the series page head; `quiet`
+    // drops the fill for the genres
+    component HeroPill: Corner {
+        id: pill
+        property string icon: ""
+        property string text: ""
+        property bool quiet: false
+        property color ink: "#f4f6f8"
+        implicitWidth: pillContent.implicitWidth + theme.space(3) * 2
+        implicitHeight: theme.space(7)
+        radius: height / 2
+        smoothing: theme.cornerSmoothing
+        color: quiet ? "transparent" : Qt.rgba(0, 0, 0, 0.32)
+        borderColor: Qt.rgba(1, 1, 1, quiet ? 0.22 : 0.14)
+        borderWidth: 1
+        Accessible.role: Accessible.StaticText
+        Accessible.name: text
+        Row {
+            id: pillContent
+            anchors.centerIn: parent
+            spacing: theme.space(1.5)
+            Icon { visible: pill.icon !== ""; anchors.verticalCenter: parent.verticalCenter; glyph: pill.icon; color: pill.ink; size: theme.space(3.5) }
+            Label { anchors.verticalCenter: parent.verticalCenter; text: pill.text; role: "ui"; font.pointSize: theme.typeSmall; color: pill.ink }
+        }
     }
 
     // The newest episode number on disk, off the card's code (S02E03, EP 3)
@@ -861,89 +894,175 @@ Item {
         }
     }
 
-    // ---- Continue, with On hold after it in the same row: while Continue leaves room, the
-    // series on hold take the rest of the row after a double gap, under a heading of their
-    // own on the same line. A Continue that fills the row is the row, as it always was.
-    component ContinueRow: Column {
-        id: row
-        property var continueCards: []
-        property var holdCards: []
-        readonly property int cols: Math.max(1, Math.floor((width + page.gap) / (theme.posterWidth + page.gap)))
-        readonly property int lead: Math.min(continueCards.length, cols)
-        readonly property bool split: holdCards.length > 0 && continueCards.length < cols
-        readonly property int holdShown: split ? Math.min(holdCards.length, cols - lead) : 0
-        // The second gap between the groups comes out of the cards, an equal share each, so
-        // the row still ends at the page's edge with as many cards as any other
-        readonly property real cardWidth: Math.floor((width - page.gap * (cols - 1) - (split && lead > 0 ? page.gap : 0)) / cols)
-        readonly property real leadWidth: lead > 0 ? lead * cardWidth + (lead - 1) * page.gap : 0
-        readonly property real holdX: lead > 0 ? leadWidth + page.gap * 2 : 0
-        visible: lead > 0 || holdShown > 0
-        spacing: theme.space(3)
-        Item {
-            width: row.width
-            height: theme.space(12)
-            Heading {
-                visible: row.lead > 0
-                width: row.split ? row.leadWidth : row.width
-                text: words.t("home-continue")
-                fact: page.continueList.length ? words.t("home-continue-fact", { count: page.continueList.length }) : ""
-                action: Button {
-                    visible: !row.split && row.continueCards.length > row.lead
-                    msg: "action-see-all"
-                    small: true
-                    flat: true
-                    onClicked: frame.go("library", { arrange: "WatchState", box: "Watching" })
+    // ---- Continue (#1033): one card a series, the episode to go on with. The still of that
+    // episode at 16:9 (the banner, then the poster, where the record has none), how far into
+    // it you stopped as a thin bar along its foot, then the show and the episode. A click
+    // plays it from where it stopped; the series is in the right-click menu.
+    function episodeLabel(ep) {
+        if (!ep) return ""
+        var n = words.episodeNumber(ep.number)
+        var code = n === null ? "" : ep.season && ep.season > 1 ? words.t("home-card-episode-season", { season: ep.season, number: n })
+                                                                 : words.t("home-card-episode", { number: n })
+        var t = ep.title ? ep.title.trim() : ""
+        return code && t ? words.t("home-card-episode-titled", { episode: code, title: t }) : code || t || words.episodeName("", ep.number)
+    }
+    function resumeFrac(e) {
+        return e && e.partial && e.episode.resume && e.episode.resume.duration > 0 ? Math.min(1, e.episode.resume.position / e.episode.resume.duration) : 0
+    }
+    function minutesLeft(e) {
+        return e && e.partial ? Math.max(1, Math.round((e.episode.resume.duration - e.episode.resume.position) / 60)) : 0
+    }
+    function playEntry(e) { if (e && e.episode) page.playFile(e.episode.file, e.card.title) }
+    component EpisodeCard: Item {
+        id: ecard
+        property var entry: null
+        readonly property bool gridStop: true
+        objectName: "continue-" + (card.id || 0)
+        readonly property var card: entry ? entry.card : ({})
+        readonly property var ep: entry ? entry.episode : null
+        readonly property string still: ep && ep.still ? ep.still : ""
+        // Without a still, the show's own art in the same frame
+        readonly property string art: still || (entry && entry.detail && entry.detail.banner ? entry.detail.banner : "") || card.poster || ""
+        readonly property real frac: page.resumeFrac(entry)
+        height: thumb.height + theme.space(2.5) + text.height
+        activeFocusOnTab: true
+        Keys.onReturnPressed: page.playEntry(entry)
+        Keys.onEnterPressed: page.playEntry(entry)
+        Keys.onSpacePressed: page.playEntry(entry)
+        Accessible.role: Accessible.Button
+        Accessible.name: (card.title || "") + ", " + page.episodeLabel(ep)
+        Accessible.onPressAction: page.playEntry(entry)
+        scale: theme.reducedMotion ? 1 : (em.pressed ? 0.985 : 1)
+        Behavior on scale { NumberAnimation { duration: theme.motionFast } }
+        Corner {
+            id: thumb
+            width: parent.width
+            height: Math.round(width * 9 / 16)
+            radius: theme.radiusTile
+            smoothing: theme.cornerSmoothing
+            color: theme.tileSunken
+            fillItem: thumbImg.status === Image.Ready ? thumbImg : null
+            Image {
+                id: thumbImg
+                visible: false
+                width: thumb.width; height: thumb.height
+                source: ecard.art ? Fmt.fileUrl(ecard.art) : ""
+                sourceSize: Qt.size(Math.ceil(thumb.width * 2), Math.ceil(thumb.height * 2))
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+            }
+            // A shade under the play mark and the time left, deeper while hovered
+            Corner {
+                anchors.fill: parent
+                radius: thumb.radius
+                smoothing: thumb.smoothing
+                fillGradient: LinearGradient {
+                    x1: 0; y1: 0; x2: 0; y2: thumb.height
+                    GradientStop { position: 0; color: Qt.rgba(0, 0, 0, em.containsMouse ? 0.25 : 0) }
+                    GradientStop { position: 0.55; color: Qt.rgba(0, 0, 0, em.containsMouse ? 0.3 : 0.05) }
+                    GradientStop { position: 1; color: Qt.rgba(0, 0, 0, ecard.frac > 0 ? 0.55 : 0.2) }
                 }
             }
-            Heading {
-                objectName: "home-on-hold"
-                visible: row.split
-                x: row.holdX
-                width: row.width - row.holdX
-                text: words.t("home-on-hold")
-                fact: words.t("home-on-hold-fact", { count: row.holdCards.length })
-                action: Button {
-                    visible: row.holdCards.length > row.holdShown
-                    msg: "action-see-all"
-                    small: true
-                    flat: true
-                    onClicked: frame.go("library", { arrange: "WatchState", box: "On hold" }) // i18n: none
+            Rectangle {
+                anchors.centerIn: parent
+                width: theme.space(12); height: width; radius: width / 2
+                color: Qt.rgba(0, 0, 0, 0.5)
+                border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
+                opacity: em.containsMouse || ecard.activeFocus ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
+                Icon { anchors.centerIn: parent; anchors.horizontalCenterOffset: theme.space(0.25); glyph: "play"; size: theme.space(5); color: "#ffffff" }
+            }
+            Label {
+                visible: ecard.frac > 0
+                anchors.right: parent.right; anchors.rightMargin: theme.space(3)
+                anchors.bottom: bar.top; anchors.bottomMargin: theme.space(2)
+                text: words.t("home-hero-min-left", { count: page.minutesLeft(ecard.entry) })
+                role: "ledger"
+                color: "#f4f6f8"
+            }
+            // How far into the episode, along the frame's foot
+            Rectangle {
+                id: bar
+                visible: ecard.frac > 0
+                anchors.left: parent.left; anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.margins: theme.space(3)
+                height: theme.space(1)
+                radius: height / 2
+                color: Qt.rgba(1, 1, 1, 0.25)
+                Rectangle {
+                    width: Math.max(height, parent.width * ecard.frac); height: parent.height
+                    radius: height / 2
+                    color: theme.accent
                 }
             }
         }
-        // Both groups share one parent, placed by x, so the arrow keys cross from Continue
-        // into On hold (GridKeys steps among one parent's children); a Row would drop the
-        // empty item a second gap needs, since it lays out nothing of width nought
-        Item {
-            width: row.width
-            height: Math.round(row.cardWidth * 1.5)
-            Repeater {
-                model: row.continueCards.slice(0, row.lead)
-                Card {
-                    required property var modelData
-                    required property int index
-                    objectName: "card-" + modelData.id   // a --drive target
-                    x: index * (row.cardWidth + page.gap)
-                    item: modelData
-                    posterWidth: row.cardWidth
-                    nowMs: page.nowMs
-                    onOpened: page.openSeries(modelData)
-                    onPlayed: page.playSeries(modelData)
-                }
+        // The frame's edge above the art: the focus ring, the hover line
+        Corner {
+            anchors.fill: thumb
+            radius: thumb.radius
+            smoothing: thumb.smoothing
+            borderColor: ecard.activeFocus ? theme.focusRing : em.containsMouse ? theme.lineStrong : "transparent"
+            borderWidth: ecard.activeFocus ? 2 : 1
+        }
+        Column {
+            id: text
+            anchors.top: thumb.bottom; anchors.topMargin: theme.space(2.5)
+            width: parent.width
+            spacing: theme.space(0.5)
+            Label {
+                width: parent.width
+                text: ecard.card.title || ""
+                role: "ui"
+                font.weight: 600
+                color: em.containsMouse ? theme.accent : theme.text
+                elide: Text.ElideRight
             }
+            Label {
+                width: parent.width
+                text: page.episodeLabel(ecard.ep)
+                role: "ui"
+                font.pointSize: theme.typeSmall
+                color: theme.textDim
+                elide: Text.ElideRight
+            }
+        }
+        MouseArea {
+            id: em
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { ecard.forceActiveFocus(); page.playEntry(ecard.entry) }
+            onContainsMouseChanged: frame.hoverCard(ecard, ecard.card, containsMouse)
+        }
+        Component.onDestruction: frame.hoverCard(ecard, null, false)
+    }
+    component ContinueRow: Column {
+        id: row
+        property var entries: []
+        readonly property real minWidth: theme.space(76)
+        readonly property int cols: Math.max(1, Math.floor((width + page.gap) / (minWidth + page.gap)))
+        readonly property real cardWidth: Math.floor((width - page.gap * (cols - 1)) / cols)
+        readonly property var shown: entries.slice(0, cols)
+        visible: entries.length > 0
+        spacing: theme.space(3)
+        Heading {
+            text: words.t("home-continue")
+            fact: words.t("home-continue-fact", { count: row.entries.length })
+            action: Button {
+                visible: row.entries.length > row.shown.length
+                msg: "action-see-all"
+                small: true
+                flat: true
+                onClicked: frame.go("library", { arrange: "WatchState", box: "Watching" })
+            }
+        }
+        Flow {
+            width: row.width
+            spacing: page.gap
             Repeater {
-                model: row.holdCards.slice(0, row.holdShown)
-                Card {
-                    required property var modelData
-                    required property int index
-                    objectName: "card-" + modelData.id
-                    x: row.holdX + index * (row.cardWidth + page.gap)
-                    item: modelData
-                    posterWidth: row.cardWidth
-                    nowMs: page.nowMs
-                    onOpened: page.openSeries(modelData)
-                    onPlayed: page.playSeries(modelData)
-                }
+                model: row.shown
+                EpisodeCard { required property var modelData; entry: modelData; width: row.cardWidth }
             }
         }
     }
@@ -959,199 +1078,467 @@ Item {
         anchors.fill: parent
         visible: !page.libraryEmpty
 
-        // ---- The hero: the series to go on with, on a band in its own colour, the banner
-        // art fading in from the right
+        // ---- The hero (#1464): the Continue series one at a time, in the series page head's
+        // look. The banner (the episode's still where there is no banner) runs to the window's
+        // edges under a quiet scrim and fades into the page; low on it sit the still of the
+        // episode to play (the poster without one), the logo or the title, the facts, the
+        // episode and its synopsis, how far you are, and one row of actions. The arrows and
+        // dots step through the series; after a stretch with no input it moves on by itself,
+        // slowly, and never while the pointer is on it. Each step crossfades.
         Item {
             id: hero
-            visible: page.resume !== null
+            objectName: "home-hero"
+            visible: count > 0
+            // Under the rest of the column, so the art can run up behind the page's head
+            z: -1
             width: parent.width
-            height: visible ? theme.space(92) : 0
-            readonly property var r: page.resume
-            readonly property var d: r ? r.detail : null
-            readonly property var c: r ? r.card : null
-            readonly property var ep: r ? r.episode : null
-            readonly property bool hasArt: !!(d && d.banner)
-            readonly property real pad: theme.space(8)
-            // The band's colour: the poster's tone over a dark base, so white ink holds in
-            // both modes; the ink accent is the tone lifted toward white
-            PosterTone { id: toneOf; source: hero.c && hero.c.poster ? Fmt.fileUrl(hero.c.poster) : "" }
-            readonly property color tone: toneOf.tone
-            readonly property color base: theme.bandBase(tone, 0.5)
-            readonly property color inkAccent: theme.bandAccent(tone, base)
-            readonly property color ink: "#f4f6f8"
-            readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
-
-            // The band's colour bleeds up into the page's head and out to the window's edges,
-            // so the whole top of Home takes the series' tone
-            Rectangle {
-                x: -scroll.gutter; y: -theme.space(7)
-                width: scroll.width; height: parent.height * 0.6 + theme.space(7)
-                gradient: Gradient {
-                    GradientStop { position: 0; color: Qt.rgba(hero.tone.r, hero.tone.g, hero.tone.b, 0.22) }
-                    GradientStop { position: 1; color: Qt.rgba(hero.tone.r, hero.tone.g, hero.tone.b, 0) }
+            readonly property int count: page.heroList.length
+            property int index: 0
+            property int prev: -1
+            property real fade: 1
+            // A short window gives the hero less of its height, so Continue still shows under it
+            readonly property real frameH: Math.round(Math.min(theme.space(56), page.height * 0.24))
+            // The still or poster box drops out on a narrow window, the words keep the width
+            readonly property bool framed: width >= theme.space(200)
+            readonly property real topPad: Math.round(Math.max(theme.space(16), Math.min(theme.space(40), page.height * 0.13)))
+            readonly property real tail: theme.space(4)
+            readonly property real contentH: {
+                var h = framed ? frameH : 0
+                for (var i = 0; i < slides.count; i++) {
+                    var s = slides.itemAt(i)
+                    if (s) h = Math.max(h, s.wordsH)
+                }
+                return Math.ceil(h)
+            }
+            height: visible ? topPad + contentH + tail : 0
+            // The series shown stays shown when the list is read again
+            property int shownId: -1
+            Connections {
+                target: page
+                function onHeroListChanged() {
+                    var i = page.heroList.findIndex(function(e) { return e.card.id === hero.shownId })
+                    fadeIn.stop()
+                    hero.prev = -1
+                    hero.fade = 1
+                    hero.index = Math.max(0, i)
+                    hero.shownId = hero.count ? page.heroList[hero.index].card.id : -1
                 }
             }
-            Rectangle { anchors.fill: parent; radius: theme.radiusXl; color: hero.base; antialiasing: true }
-            // The art sits in the right two thirds, under a wash of the band's colour that
-            // clears to the right
-            Item {
-                anchors.fill: parent
-                clip: true
-                Corner {
-                    id: band
-                    visible: hero.hasArt
-                    x: Math.round(parent.width * 0.3); y: 0
-                    width: parent.width - x; height: parent.height
-                    radius: theme.radiusXl
-                    color: "transparent"
-                    fillItem: hero.hasArt && art.status === Image.Ready ? art : null
-                    Image {
-                        id: art; visible: false
-                        width: parent.width; height: parent.height
-                        source: hero.hasArt ? Fmt.fileUrl(hero.d.banner) : ""
-                        fillMode: Image.PreserveAspectCrop; asynchronous: true
-                    }
-                }
-                // The wash shares the band's rounding, so no square corner of it shows past
-                // the band's own; it stays solid until past the art's left edge
-                Rectangle {
-                    visible: hero.hasArt
-                    anchors.fill: parent
-                    radius: theme.radiusXl
-                    antialiasing: true
-                    gradient: Gradient {
-                        orientation: Gradient.Horizontal
-                        GradientStop { position: 0.33; color: hero.base }
-                        GradientStop { position: 0.62; color: Qt.rgba(hero.base.r, hero.base.g, hero.base.b, 0.55) }
-                        GradientStop { position: 1; color: Qt.rgba(hero.base.r, hero.base.g, hero.base.b, 0.1) }
-                    }
-                }
+            function show(i) {
+                if (count < 2) return
+                i = (i % count + count) % count
+                if (i === index) return
+                prev = index
+                index = i
+                shownId = page.heroList[i].card.id
+                lastInput = Date.now()
+                if (theme.reducedMotion) { fadeIn.stop(); fade = 1; prev = -1 }
+                else fadeIn.restart()
             }
-
-            Corner {
-                id: heroPoster
-                x: hero.pad
-                anchors.verticalCenter: parent.verticalCenter
-                height: parent.height - hero.pad * 2
-                width: Math.round(height * 2 / 3)
-                radius: theme.radiusTile
-                color: Qt.rgba(0, 0, 0, 0.3)
-                fillItem: hero.c && hero.c.poster && heroPosterImage.status === Image.Ready ? heroPosterImage : null
-                Image {
-                    id: heroPosterImage; visible: false
-                    anchors.fill: parent
-                    source: hero.c && hero.c.poster ? Fmt.fileUrl(hero.c.poster) : ""
-                    sourceSize: Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
-                    fillMode: Image.PreserveAspectCrop; asynchronous: true
-                }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openSeries(hero.c); Accessible.role: Accessible.Button; Accessible.name: words.t("home-hero-open", { title: hero.c ? hero.c.title || "" : "" })
-                    Accessible.onPressAction: page.openSeries(hero.c) }
+            NumberAnimation {
+                id: fadeIn
+                target: hero; property: "fade"
+                from: 0; to: 1
+                duration: 900
+                easing.type: Easing.InOutQuad
+                onFinished: hero.prev = -1
             }
+            // On by itself after eight seconds with no input, and never while the pointer
+            // rests on the hero or the hero is scrolled away. Any step, a pointer leaving the
+            // hero and a scroll start the eight seconds again.
+            readonly property int idleMs: 8000
+            property real lastInput: Date.now()
+            readonly property bool held: heroHover.hovered
+            onHeldChanged: lastInput = Date.now()
+            Connections { target: scroll; function onContentYChanged() { hero.lastInput = Date.now() } }
+            Timer {
+                interval: 500
+                repeat: true
+                running: hero.count > 1 && page.visible && !hero.held && scroll.contentY < hero.height
+                onTriggered: if (Date.now() - hero.lastInput >= hero.idleMs) hero.show(hero.index + 1)
+            }
+            HoverHandler { id: heroHover }
 
-            Column {
-                anchors.left: heroPoster.right
-                anchors.leftMargin: theme.space(8)
-                anchors.right: parent.right
-                anchors.rightMargin: hero.pad
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(2.5)
+            Repeater {
+                id: slides
+                model: page.heroList
+                Item {
+                    id: slide
+                    required property var modelData
+                    required property int index
+                    readonly property bool current: index === hero.index
+                    readonly property bool leaving: index === hero.prev
+                    readonly property var c: modelData.card
+                    readonly property var d: modelData.detail
+                    readonly property var ep: modelData.episode
+                    readonly property bool partial: modelData.partial
+                    readonly property real wordsH: wordsCol.implicitHeight
+                    readonly property string backdrop: d && d.banner ? d.banner : ep && ep.still ? ep.still : ""
+                    readonly property string still: ep && ep.still ? ep.still : ""
+                    readonly property bool hasMinutes: !!(d && d.episode_minutes)
+                    readonly property real frac: page.resumeFrac(modelData)
+                    // The incoming slide fades in over the outgoing one, which stays whole
+                    // under it, so the art never dips to the page between the two
+                    z: current ? 2 : leaving ? 1 : 0
+                    opacity: current || leaving ? 1 : 0
+                    enabled: current
+                    width: hero.width
+                    height: hero.height
+                    PosterTone { id: tone; source: slide.c.poster ? Fmt.fileUrl(slide.c.poster) : "" }
+                    readonly property color bandBase: theme.bandBase(tone.tone, slide.c.poster ? 0.5 : 0.25)
+                    readonly property color inkAccent: theme.bandAccent(tone.tone, bandBase)
+                    readonly property color ink: "#f4f6f8"
+                    readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
 
-                Label {
-                    text: hero.r && hero.r.partial ? words.t("home-hero-pick-up") : words.t("home-hero-up-next")
-                    role: "title"
-                    font.pointSize: theme.typeNormal
-                    color: hero.inkAccent
-                }
-                Label {
-                    width: parent.width
-                    text: hero.c ? hero.c.title : ""
-                    role: "display"
-                    color: hero.ink
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    lineHeight: 0.92
-                }
-                Label {
-                    width: parent.width
-                    text: hero.ep ? words.episodeName(hero.ep.title || "", hero.ep.number) : ""
-                    role: "ui"
-                    color: hero.ink
-                    elide: Text.ElideRight
-                }
-                Label {
-                    objectName: "hero-downloading"
-                    visible: !!(hero.c && hero.c.downloading && hero.c.downloading.length > 0)
-                    text: visible ? words.t("home-hero-downloading", { count: hero.c.downloading.length }) : ""
-                    role: "ledger"
-                    font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
-                    color: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3)
-                }
-                Row {
-                    spacing: theme.space(3)
-                    readonly property real frac: hero.r && hero.r.partial
-                        ? hero.ep.resume.position / hero.ep.resume.duration
-                        : hero.c && hero.c.total_episodes > 0 ? page.watchedOf(hero.c) / hero.c.total_episodes : 0
-                    visible: frac > 0 || !!(hero.c && hero.c.cubes)
-                    EpisodeCubes {
-                        visible: codes.length > 0
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, theme.space(60))
-                        height: implicitHeight
-                        codes: hero.c && hero.c.cubes ? hero.c.cubes : ""
-                        cubeSize: theme.space(2)
-                        maxRows: 1
-                    }
-                    Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        role: "ledger"
-                        color: hero.inkDim
-                        text: {
-                            if (!hero.r) return ""
-                            if (hero.r.partial) {
-                                var left = Math.max(1, Math.round((hero.ep.resume.duration - hero.ep.resume.position) / 60))
-                                return words.t("home-hero-min-left", { count: left })
+                    Item {
+                        id: back
+                        x: -scroll.gutter
+                        y: -(hero.y + theme.space(7))
+                        width: scroll.width
+                        height: hero.height - y
+                        clip: true
+                        opacity: slide.current ? hero.fade : 1
+                        // Faded as one picture, or the scrims would fade apart from the art
+                        layer.enabled: opacity < 1
+                        Rectangle { anchors.fill: parent; color: slide.bandBase }
+                        Image {
+                            id: art
+                            visible: slide.backdrop !== "" && status === Image.Ready
+                            anchors.fill: parent
+                            source: slide.backdrop ? Fmt.fileUrl(slide.backdrop) : ""
+                            fillMode: Image.PreserveAspectCrop
+                            verticalAlignment: slide.d && slide.d.banner ? Image.AlignTop : Image.AlignVCenter
+                            asynchronous: true
+                        }
+                        Rectangle { visible: art.visible; anchors.fill: parent; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.35) }
+                        Rectangle {
+                            visible: art.visible
+                            anchors.fill: parent
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.7) }
+                                GradientStop { position: 0.5; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.3) }
+                                GradientStop { position: 0.85; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
                             }
-                            var w = page.watchedOf(hero.c)
-                            return hero.c.total_episodes > 0 ? words.t("home-hero-watched", { watched: w, total: hero.c.total_episodes }) : ""
+                        }
+                        Rectangle {
+                            id: fade
+                            anchors.fill: parent
+                            readonly property real start: Math.max(0.05, (hero.topPad - theme.space(24) - back.y) / back.height)
+                            readonly property real solid: Math.min(0.98, (hero.topPad + hero.contentH * 0.8 - back.y) / back.height)
+                            gradient: Gradient {
+                                GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
+                                GradientStop { position: fade.start; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
+                                GradientStop { position: fade.start + (fade.solid - fade.start) * 0.5; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.6) }
+                                GradientStop { position: fade.solid; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, art.visible ? 0.97 : 1) }
+                                GradientStop { position: 1; color: theme.bg }
+                            }
+                        }
+                    }
+
+                    Item {
+                        anchors.fill: parent
+                        // The outgoing words clear quickly, so two never read on top of each other
+                        opacity: slide.current ? hero.fade : Math.max(0, 1 - hero.fade * 2)
+                        layer.enabled: opacity > 0 && opacity < 1
+
+                        // The episode's still at 16:9, or the poster where the record has no still
+                        Corner {
+                            id: frameBox
+                            visible: hero.framed
+                            x: 0
+                            y: hero.topPad + hero.contentH - height
+                            height: hero.frameH
+                            width: slide.still ? Math.round(height * 16 / 9) : Math.round(height * 2 / 3)
+                            radius: theme.radiusTile
+                            smoothing: theme.cornerSmoothing
+                            color: Qt.rgba(0, 0, 0, 0.3)
+                            fillItem: frameImg.status === Image.Ready ? frameImg : null
+                            Image {
+                                id: frameImg
+                                visible: false
+                                width: frameBox.width; height: frameBox.height
+                                source: slide.still ? Fmt.fileUrl(slide.still) : slide.c.poster ? Fmt.fileUrl(slide.c.poster) : ""
+                                sourceSize: Qt.size(Math.ceil(frameBox.width * 2), Math.ceil(frameBox.height * 2))
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                            }
+                            Corner {
+                                anchors.fill: parent
+                                radius: frameBox.radius
+                                smoothing: frameBox.smoothing
+                                fillGradient: LinearGradient {
+                                    x1: 0; y1: 0; x2: 0; y2: frameBox.height
+                                    GradientStop { position: 0; color: Qt.rgba(0, 0, 0, fm.containsMouse ? 0.25 : 0) }
+                                    GradientStop { position: 0.6; color: Qt.rgba(0, 0, 0, fm.containsMouse ? 0.3 : 0.05) }
+                                    GradientStop { position: 1; color: Qt.rgba(0, 0, 0, slide.frac > 0 ? 0.5 : 0.1) }
+                                }
+                                borderColor: fm.containsMouse ? Qt.rgba(1, 1, 1, 0.3) : Qt.rgba(1, 1, 1, 0.1)
+                                borderWidth: 1
+                            }
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: theme.space(16); height: width; radius: width / 2
+                                color: Qt.rgba(0, 0, 0, 0.5)
+                                border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
+                                opacity: fm.containsMouse ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
+                                Icon { anchors.centerIn: parent; anchors.horizontalCenterOffset: theme.space(0.5); glyph: "play"; size: theme.space(7); color: "#ffffff" }
+                            }
+                            Rectangle {
+                                visible: slide.frac > 0
+                                anchors.left: parent.left; anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.margins: theme.space(4)
+                                height: theme.space(1.25)
+                                radius: height / 2
+                                color: Qt.rgba(1, 1, 1, 0.25)
+                                Rectangle { width: Math.max(height, parent.width * slide.frac); height: parent.height; radius: height / 2; color: slide.inkAccent }
+                            }
+                            MouseArea {
+                                id: fm
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: page.playEntry(slide.modelData)
+                                onContainsMouseChanged: frame.hoverCard(frameBox, slide.c, containsMouse)
+                                Accessible.role: Accessible.Button
+                                Accessible.name: (slide.c.title || "") + ", " + page.episodeLabel(slide.ep)
+                                Accessible.onPressAction: page.playEntry(slide.modelData)
+                            }
+                            Component.onDestruction: frame.hoverCard(frameBox, null, false)
+                        }
+
+                        // The words end on the frame's bottom edge, so the actions line up with it
+                        Column {
+                            id: wordsCol
+                            x: hero.framed ? frameBox.width + theme.space(8) : 0
+                            y: hero.topPad + hero.contentH - implicitHeight
+                            width: hero.width - x - (stepper.visible ? stepper.width + theme.space(6) : 0)
+                            spacing: theme.space(3)
+
+                            Label {
+                                text: slide.partial ? words.t("home-hero-pick-up") : words.t("home-hero-up-next")
+                                role: "title"
+                                font.pointSize: theme.typeNormal
+                                color: slide.inkAccent
+                            }
+                            // The show's logo when the record has one, from its left edge; the
+                            // title in the display cut otherwise. Either opens the series.
+                            Item {
+                                id: titleBlock
+                                width: parent.width
+                                readonly property bool logoShown: logo.status === Image.Ready && logo.implicitWidth > 0
+                                readonly property real logoW: Math.min(width, theme.space(110))
+                                height: logoShown ? Math.min(theme.space(22), Math.round(logoW * logo.implicitHeight / logo.implicitWidth)) : titleLabel.height
+                                Image {
+                                    id: logo
+                                    objectName: "home-hero-logo"
+                                    visible: titleBlock.logoShown
+                                    width: titleBlock.logoW
+                                    height: parent.height
+                                    source: slide.d && slide.d.logo ? Fmt.fileUrl(slide.d.logo) : ""
+                                    fillMode: Image.PreserveAspectFit
+                                    horizontalAlignment: Image.AlignLeft
+                                    verticalAlignment: Image.AlignBottom
+                                    asynchronous: true
+                                    smooth: true
+                                    mipmap: true
+                                }
+                                Label {
+                                    id: titleLabel
+                                    visible: !titleBlock.logoShown
+                                    width: parent.width
+                                    text: slide.c.title || ""
+                                    role: "display"
+                                    color: slide.ink
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: 2
+                                    elide: Text.ElideRight
+                                    lineHeight: 0.92
+                                }
+                                MouseArea {
+                                    width: titleBlock.logoShown ? logo.paintedWidth : Math.min(titleLabel.implicitWidth, titleBlock.width)
+                                    height: parent.height
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: page.openSeries(slide.c)
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: words.t("home-hero-open", { title: slide.c.title || "" })
+                                    Accessible.onPressAction: page.openSeries(slide.c)
+                                }
+                            }
+                            // The facts as pills, the genres quieter
+                            Flow {
+                                objectName: "home-hero-facts"
+                                width: parent.width
+                                spacing: theme.space(2)
+                                HeroPill { visible: (slide.c.community_score || 0) > 0; icon: "star"; ink: slide.inkAccent; text: visible ? words.score(slide.c.community_score) : "" }
+                                HeroPill { visible: !!(slide.d && slide.d.year); text: visible ? String(slide.d.year) : "" }
+                                HeroPill { visible: slide.hasMinutes; icon: "clock"; text: slide.hasMinutes ? words.t("series-facts-each", { runtime: words.runtime(slide.d.episode_minutes) }) : "" }
+                                HeroPill {
+                                    objectName: "hero-downloading"
+                                    visible: !!(slide.c.downloading && slide.c.downloading.length > 0)
+                                    icon: "download"
+                                    ink: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3)
+                                    text: visible ? words.t("home-hero-downloading", { count: slide.c.downloading.length }) : ""
+                                }
+                                Repeater {
+                                    model: slide.d && slide.d.genres ? slide.d.genres.slice(0, 3) : []
+                                    HeroPill { required property string modelData; text: modelData; quiet: true }
+                                }
+                            }
+                            // The episode to play, and what it is about: the episode's own
+                            // synopsis where the record has one, the show's otherwise
+                            Column {
+                                width: parent.width
+                                spacing: theme.space(1.5)
+                                Label {
+                                    objectName: "home-hero-episode"
+                                    width: parent.width
+                                    text: page.episodeLabel(slide.ep)
+                                    role: "title"
+                                    font.pointSize: theme.typeNormal * 1.15
+                                    color: slide.ink
+                                    elide: Text.ElideRight
+                                }
+                                Label {
+                                    readonly property string body: {
+                                        var s = slide.ep && typeof slide.ep.synopsis === "string" && slide.ep.synopsis.trim() !== "" ? slide.ep.synopsis
+                                              : slide.d && slide.d.synopsis ? slide.d.synopsis : ""
+                                        return s.split(/\n\s*\n/)[0].trim()
+                                    }
+                                    visible: body !== ""
+                                    width: Math.min(parent.width, theme.space(170))
+                                    text: body
+                                    role: "ui"
+                                    color: slide.inkDim
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: 2
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            // How far: the minutes left in a stopped episode, else the cubes
+                            // and the count watched
+                            Row {
+                                spacing: theme.space(3)
+                                readonly property real watchedFrac: slide.c.total_episodes > 0 ? page.watchedOf(slide.c) / slide.c.total_episodes : 0
+                                visible: slide.partial || watchedFrac > 0 || !!slide.c.cubes
+                                EpisodeCubes {
+                                    visible: !slide.partial && codes.length > 0
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: Math.min(implicitWidth, theme.space(60))
+                                    height: implicitHeight
+                                    codes: slide.c.cubes ? slide.c.cubes : ""
+                                    cubeSize: theme.space(2)
+                                    maxRows: 1
+                                }
+                                Label {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    role: "ledger"
+                                    color: slide.inkDim
+                                    text: slide.partial ? words.t("home-hero-min-left", { count: page.minutesLeft(slide.modelData) })
+                                        : slide.c.total_episodes > 0 ? words.t("home-hero-watched", { watched: page.watchedOf(slide.c), total: slide.c.total_episodes }) : ""
+                                }
+                            }
+                            Row {
+                                spacing: theme.space(2.5)
+                                Button {
+                                    objectName: "home-resume"
+                                    // The top of the page's vertical key order: Down from here
+                                    // lands on the first card, Up from the first row comes back
+                                    readonly property bool gridStop: slide.current
+                                    primary: true
+                                    tint: slide.inkAccent
+                                    icon: "play"
+                                    text: !slide.ep ? "" : words.episodeNumber(slide.ep.number) === null
+                                          ? words.t(slide.partial ? "home-hero-resume-unnumbered" : "home-hero-play-unnumbered")
+                                          : words.t(slide.partial ? "home-hero-resume" : "home-hero-play", { number: words.episodeNumber(slide.ep.number) })
+                                    onClicked: page.playEntry(slide.modelData)
+                                }
+                                Button {
+                                    ghost: true
+                                    icon: "layers"
+                                    msg: "action-open-series"
+                                    onClicked: page.openSeries(slide.c)
+                                }
+                            }
                         }
                     }
                 }
-                Item { width: 1; height: theme.space(2) }
+            }
+
+            // The steps: back, a dot a series, on. At the foot of the band, level with the actions.
+            Row {
+                id: stepper
+                objectName: "home-hero-steps"
+                visible: hero.count > 1
+                z: 3
+                anchors.right: parent.right
+                y: hero.topPad + hero.contentH - height
+                spacing: theme.space(3)
+                Button {
+                    objectName: "home-hero-previous"
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: height
+                    ghost: true
+                    icon: "chevron-left"
+                    accessibleName: words.t("home-hero-previous")
+                    onClicked: hero.show(hero.index - 1)
+                    Tooltip { msg: "home-hero-previous" }
+                }
                 Row {
-                    spacing: theme.space(3)
-                    Button {
-                        objectName: "home-resume"
-                        // The top of the page's vertical key order: Down from here lands on
-                        // the first card, Up from the first row comes back here
-                        readonly property bool gridStop: true
-                        primary: true
-                        tint: hero.inkAccent
-                        icon: "play"
-                        text: !hero.ep ? "" : words.episodeNumber(hero.ep.number) === null
-                              ? words.t(hero.r.partial ? "home-hero-resume-unnumbered" : "home-hero-play-unnumbered")
-                              : words.t(hero.r.partial ? "home-hero-resume" : "home-hero-play", { number: words.episodeNumber(hero.ep.number) })
-                        onClicked: if (hero.ep) page.playFile(hero.ep.file, hero.c.title)
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: theme.space(1)
+                    Repeater {
+                        model: hero.count
+                        Item {
+                            id: dot
+                            required property int index
+                            readonly property bool on: index === hero.index
+                            objectName: "home-hero-dot-" + index
+                            width: theme.space(5); height: theme.space(5)
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: dot.on ? theme.space(5) : theme.space(2)
+                                height: theme.space(2)
+                                radius: height / 2
+                                color: dot.on ? "#f4f6f8" : dm.containsMouse ? Qt.rgba(1, 1, 1, 0.6) : Qt.rgba(1, 1, 1, 0.3)
+                                Behavior on width { NumberAnimation { duration: theme.motionNormal; easing.type: Easing.OutCubic } }
+                            }
+                            MouseArea {
+                                id: dm
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: hero.show(dot.index)
+                                Accessible.role: Accessible.Button
+                                Accessible.name: page.heroList[dot.index] ? page.heroList[dot.index].card.title || "" : ""
+                                Accessible.onPressAction: hero.show(dot.index)
+                            }
+                        }
                     }
-                    Button {
-                        msg: "action-open-series"
-                        flat: true
-                        onClicked: page.openSeries(hero.c)
-                    }
+                }
+                Button {
+                    objectName: "home-hero-next"
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: height
+                    ghost: true
+                    icon: "chevron-right"
+                    accessibleName: words.t("home-hero-next")
+                    onClicked: hero.show(hero.index + 1)
+                    Tooltip { msg: "home-hero-next" }
                 }
             }
         }
 
-        Item { width: 1; height: hero.visible ? theme.space(4) : 0 }
+        Item { width: 1; height: hero.visible ? theme.space(2) : 0 }
 
-        // ---- Continue: every series with an episode to go on with, the hero's first (#719), and
-        // On hold in what is left of the row
+        // ---- Continue: every series with an episode to go on with, the hero's among them (#719)
         ContinueRow {
             id: continueRow
             objectName: "home-continue"
             width: parent.width
-            continueCards: page.continueList.map(function(e) { return e.card })
-            holdCards: page.holdList
+            entries: page.continueList
         }
         Item { width: 1; height: continueRow.visible ? theme.space(4) : 0 }
 
@@ -1352,6 +1739,18 @@ Item {
             onMore: frame.go("library", { arrange: "WatchState", box: "Not started" }) // i18n: none
         }
         Item { width: 1; height: page.freshList.length ? theme.space(4) : 0 }
+
+        // ---- On hold: off the top of the page (#1464), still a row away
+        Shelf {
+            objectName: "home-on-hold"
+            width: parent.width
+            heading: words.t("home-on-hold")
+            fact: words.t("home-on-hold-fact", { count: page.holdList.length })
+            list: page.holdList
+            maxRows: 1
+            onMore: frame.go("library", { arrange: "WatchState", box: "On hold" }) // i18n: none
+        }
+        Item { width: 1; height: page.holdList.length ? theme.space(4) : 0 }
 
         // ---- Genres: a way into the library by kind
         Column {
