@@ -274,7 +274,19 @@ async fn refresh_anilist(
             Ok(status_changed || details_changed || before != stored(tx, anilist_id)?)
         })
         .await?;
-    if anizip_due {
+    // A season ani.zip still has no episodes for walks its franchise again
+    // on the same clock (#1461).
+    let fallback_due = metadata
+        .services
+        .store
+        .read(move |c| crate::fallback::due(c, anilist_id, now))
+        .unwrap_or(false);
+    let fell_back = fallback_due
+        && crate::fallback::run(metadata, anilist_id, now, None)
+            .await
+            .unwrap_or(false);
+    let changed = changed || fell_back;
+    if anizip_due || fallback_due {
         let urls = metadata
             .services
             .store

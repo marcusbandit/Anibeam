@@ -76,7 +76,12 @@ const REFERENCED_SQL: &str =
      UNION SELECT cover_url FROM not_interested WHERE cover_url IS NOT NULL
      UNION SELECT a.url FROM anizip_images a JOIN series s ON s.anilist_id = a.anilist_id
      UNION SELECT z.still_url FROM anizip_episodes z JOIN series s ON s.anilist_id = z.anilist_id
-           WHERE z.still_url IS NOT NULL";
+           WHERE z.still_url IS NOT NULL
+     UNION SELECT b.logo_url FROM fallback_shows b JOIN series s ON s.anilist_id = b.anilist_id
+           WHERE b.logo_url IS NOT NULL
+     UNION SELECT e.still_url FROM fallback_episodes e JOIN series s ON s.anilist_id = e.anilist_id
+           WHERE e.still_url IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = e.anilist_id AND ze2.number IS NOT NULL)";
 
 /// The urls of a series the library actually owns. These are never evicted
 /// by the cap: losing them is the one loss a user would see at once.
@@ -92,7 +97,11 @@ const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN se
                 FROM anizip_images a
                 WHERE a.kind = 'Clearlogo'
                   AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
-             ) WHERE pick = 1)";
+             ) WHERE pick = 1)
+     UNION SELECT b.logo_url FROM fallback_shows b
+           WHERE b.logo_url IS NOT NULL
+             AND b.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
+             AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')";
 
 /// What a fill goes and gets: everything an owned series draws, the covers
 /// of what it recommends, the covers behind the watching list, and the
@@ -135,6 +144,14 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
         UNION SELECT ze.still_url FROM anizip_episodes ze
                      JOIN series s ON s.anilist_id = ze.anilist_id AND s.provider = 'anilist'
                      JOIN files f ON f.series_id = s.id AND f.kind != 'extra' AND f.number = ze.number
+        UNION SELECT b.logo_url FROM fallback_shows b
+           WHERE b.logo_url IS NOT NULL
+             AND b.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
+             AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')
+        UNION SELECT fe.still_url FROM fallback_episodes fe
+                     JOIN series s ON s.anilist_id = fe.anilist_id AND s.provider = 'anilist'
+                     JOIN files f ON f.series_id = s.id AND f.kind != 'extra' AND f.number = fe.number
+                     WHERE NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = fe.anilist_id AND ze2.number IS NOT NULL)
      )
      WHERE url IS NOT NULL AND url NOT IN (SELECT url FROM images)
      ORDER BY url";
@@ -582,12 +599,20 @@ fn series_for_urls(conn: &Connection, urls: &[String]) -> Result<Vec<u64>, CoreE
          WHERE a.url IN ({list})
          UNION
          SELECT s.id FROM series s JOIN anizip_episodes z ON z.anilist_id = s.anilist_id
-         WHERE z.still_url IN ({list})"
+         WHERE z.still_url IN ({list})
+         UNION
+         SELECT s.id FROM series s JOIN fallback_shows b ON b.anilist_id = s.anilist_id
+         WHERE b.logo_url IN ({list})
+         UNION
+         SELECT s.id FROM series s JOIN fallback_episodes e ON e.anilist_id = s.anilist_id
+         WHERE e.still_url IN ({list})"
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(
         params_from_iter(
             urls.iter()
+                .chain(urls)
+                .chain(urls)
                 .chain(urls)
                 .chain(urls)
                 .chain(urls)
