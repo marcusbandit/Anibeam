@@ -19,6 +19,9 @@ Item {
     property string label: ""
     property string line: ""
     property string status: ""
+    property bool redactLabel: false
+    property bool redactLine: false
+    property bool redactStatus: false
     property bool hairline: true
     readonly property bool settingTarget: true
     property real flash: 0
@@ -56,31 +59,52 @@ Item {
         y: root.stacked ? root.pad : Math.round((root.height - height) / 2)
         width: root.stacked ? root.width : Math.max(0, root.width - slot.width - root.gutter)
         spacing: theme.space(0.5)
-        Text {
-            width: parent.width
-            text: root.label
-            color: theme.text
-            wrapMode: Text.Wrap
-            font.family: theme.fontSans
-            font.pointSize: theme.typeNormal
+        PrivacyBlur {
+            id: labelBlur
+            active: root.redactLabel
+            width: Math.min(labelText.implicitWidth, parent.width)
+            height: labelText.implicitHeight
+            Text {
+                id: labelText
+                width: textColumn.width
+                text: labelBlur.blurred ? labelBlur.mask(root.label) : root.label
+                color: theme.text
+                wrapMode: Text.Wrap
+                font.family: theme.fontSans
+                font.pointSize: theme.typeNormal
+            }
         }
-        Text {
+        PrivacyBlur {
+            id: lineBlur
             visible: root.line !== ""
-            width: parent.width
-            text: root.line
-            color: theme.textDim
-            wrapMode: Text.Wrap
-            font.family: theme.fontUi
-            font.pointSize: theme.typeSmall
+            active: root.redactLine
+            width: Math.min(lineText.implicitWidth, parent.width)
+            height: lineText.implicitHeight
+            Text {
+                id: lineText
+                width: textColumn.width
+                text: lineBlur.blurred ? lineBlur.mask(root.line) : root.line
+                color: theme.textDim
+                wrapMode: Text.Wrap
+                font.family: theme.fontUi
+                font.pointSize: theme.typeSmall
+            }
         }
-        Text {
+        PrivacyBlur {
+            id: statusBlur
             visible: root.status !== ""
-            width: parent.width
-            text: root.status
-            color: theme.textDim
-            wrapMode: Text.Wrap
-            font.family: theme.fontUi
-            font.pointSize: theme.typeSmall
+            active: root.redactStatus
+            width: Math.min(statusText.implicitWidth, parent.width)
+            height: statusText.implicitHeight
+            Text {
+                id: statusText
+                width: textColumn.width
+                text: statusBlur.blurred ? statusBlur.mask(root.status) : root.status
+                color: theme.textDim
+                wrapMode: Text.Wrap
+                font.family: theme.fontUi
+                font.pointSize: theme.typeSmall
+            }
         }
     }
     Item {

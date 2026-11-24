@@ -93,6 +93,7 @@ SettingsTab {
         title: words.t("settings-data-backup")
         SettingRow { label: words.t("settings-data-back-up-library")
             line: tab.lastExport !== "" ? words.t("settings-data-last-written", { path: tab.lastExport }) : ""
+            redactLine: tab.lastExport !== ""
             Row { spacing: theme.space(2)
                 Button { visible: tab.lastExport !== ""; msg: "settings-data-open-folder"; icon: "folder-open"; flat: true; onClicked: frame.openLink(Fmt.fileUrl(tab.dir(tab.lastExport))) }
                 Button { objectName: "data-export"; msg: "settings-data-back-up"; icon: "file-up"; primary: true; onClicked: exportDialog.open() } } }
@@ -130,6 +131,7 @@ SettingsTab {
                 required property var modelData
                 label: words.t(modelData[0])
                 status: tab.about[modelData[1]] || ""
+                redactStatus: true
                 Button { msg: "action-open"; icon: "folder-open"; flat: true; small: true; onClicked: frame.openLink(Fmt.fileUrl(modelData[2] ? tab.dir(tab.about[modelData[1]]) : tab.about[modelData[1]])) }
             }
         }

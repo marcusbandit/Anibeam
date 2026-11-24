@@ -38,28 +38,9 @@ SettingsTab {
     // The core's ASS override modes, in the order the switch shows them
     readonly property var assModes: ["AsScripted", "ScaleOnly", "Force"] // i18n: none
     function pickPreview() {
-        // The episode watched last, at its resume point; else the sample source. The
-        // Watched list rides along: the episode seen last is often watched out, and the two
-        // lists are each sorted, not the pair of them, so the newest view wins explicitly.
-        var rows = []
-        var recent = Door.listSeries("All", "", "LastViewed", "Desc", false)
-        if (!recent.error) rows = rows.concat(recent.reply.series)
-        var watched = Door.listSeries("Watched", "", "LastViewed", "Desc", false)
-        if (!watched.error) rows = rows.concat(watched.reply.series)
-        // Times reach QML as plain seconds (json.rs flatten_times)
-        var viewed = function(s) { return typeof s.last_viewed_at === "number" ? s.last_viewed_at : 0 }
-        rows.sort(function(a, b) { return viewed(b) - viewed(a) })
-        var chosen = null
-        for (var i = 0; i < rows.length && !chosen; i++) {
-            if (!rows[i].last_viewed_at) break
-            var d = Door.getSeries(rows[i].id)
-            if (d.error) continue
-            var eps = d.reply.detail.episodes
-            var withResume = eps.filter(function(e) { return e.resume })
-            var ep = withResume.length ? withResume[0] : (eps.length ? eps[0] : null)
-            if (ep) chosen = { path: ep.path, subtitle: "", startAt: ep.resume ? ep.resume.position : 0 }
-        }
-        if (chosen) { preview = chosen; return }
+        // Always use the predefined template image and demo subtitles so the preview is
+        // predictable, never leaks whatever episode was watched last, and always displays
+        // subtitles ready to style.
         var sample = Player.samplePreview()
         preview = { path: sample.path, subtitle: sample.subtitle, startAt: 0 }
     }
@@ -204,6 +185,7 @@ SettingsTab {
         SettingRow { label: words.t("settings-playback-discord-blocked")
             visible: tab.discordAvailable
             status: tab.discordBlocked.map(function(p) { return p.name }).join(", ")
+            redactStatus: tab.discordBlocked.length > 0
             Button { objectName: "settings-discord-unblock"; msg: "action-clear"; flat: true; small: true
                 enabled: tab.discordBlocked.length > 0; opacity: enabled ? 1 : theme.disabledOpacity
                 onClicked: tab.clearBlocked() } }
@@ -212,18 +194,27 @@ SettingsTab {
     Panel {
         title: words.t("settings-playback-together")
         SettingRow { label: words.t("settings-playback-room-name")
-            Field { objectName: "settings-room-name"; text: Door.preferences.room_name || ""; placeholder: frame.room.suggestedName || words.t("settings-playback-room-name-placeholder"); width: theme.space(48)
-                accessibleName: words.t("settings-playback-room-name")
-                onEdited: function(t) { if (t.trim() !== "" && t.trim() !== (Door.preferences.room_name || "") && !frame.room.setName(t)) frame.toast(frame.room.error) } } }
+            PrivacyBlur {
+                id: roomNameBlur
+                width: roomNameField.width; height: roomNameField.height
+                Field { id: roomNameField; objectName: "settings-room-name"; text: roomNameBlur.blurred ? roomNameBlur.mask(Door.preferences.room_name || "") : (Door.preferences.room_name || ""); placeholder: roomNameBlur.blurred ? roomNameBlur.mask(frame.room.suggestedName || words.t("settings-playback-room-name-placeholder")) : (frame.room.suggestedName || words.t("settings-playback-room-name-placeholder")); width: theme.space(48)
+                    accessibleName: words.t("settings-playback-room-name")
+                    onEdited: function(t) { if (t.trim() !== "" && t.trim() !== (Door.preferences.room_name || "") && !frame.room.setName(t)) frame.toast(frame.room.error) } }
+            } }
     }
     Panel {
         title: words.t("settings-playback-advanced")
         SettingRow { label: words.t("settings-playback-my-mpv")
             status: Player.configLayers.length ? Player.configLayers.join("\n") : words.t("settings-playback-no-mpv-conf")
+            redactStatus: Player.configLayers.length > 0
             Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.setUseMyMpvConf(on) } } }
         SettingRow { label: words.t("settings-playback-room-relay")
-            Field { objectName: "settings-room-relay"; text: Door.preferences.room_relay || ""; mono: true; width: theme.space(64)
-                accessibleName: words.t("settings-playback-room-relay")
-                onEdited: function(t) { if (t.trim() !== (Door.preferences.room_relay || "")) frame.room.setRelay(t) } } }
+            PrivacyBlur {
+                id: roomRelayBlur
+                width: roomRelayField.width; height: roomRelayField.height
+                Field { id: roomRelayField; objectName: "settings-room-relay"; text: roomRelayBlur.blurred ? roomRelayBlur.mask(Door.preferences.room_relay || "") : (Door.preferences.room_relay || ""); mono: true; width: theme.space(64)
+                    accessibleName: words.t("settings-playback-room-relay")
+                    onEdited: function(t) { if (t.trim() !== (Door.preferences.room_relay || "")) frame.room.setRelay(t) } }
+            } }
     }
 }

@@ -3687,3 +3687,15 @@ door-not-a-torrent-action = { $value } is not a torrent action
 # $folder is a path, $error the system's own reason.
 shell-starter-folder-failed = Could not create { $folder }: { $error }
 shell-update-gone = { -app-name } { $version } is no longer available
+
+## Privacy mode
+
+privacy-show-content = Show content
+privacy-blurred-content = Hidden content, click to show
+settings-privacy-title = Privacy
+settings-privacy-mode = Blur personal info
+settings-privacy-mode-line = Hides accounts, emails, devices, addresses, and local paths for streaming or recording
+settings-find-privacy =
+    .words = privacy streamer mode blur hide personal info email name tailscale devices ip mac address path record
+downloads-chip-client-private = Connected
+

@@ -67,16 +67,21 @@ Item {
             Row {
                 id: pathLine
                 spacing: theme.space(2)
-                Text {
-                    id: pathText
+                PrivacyBlur {
+                    id: pathBlur
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(implicitWidth, root.pathRoom)
-                    elide: Text.ElideMiddle
-                    text: root.source.path || ""
-                    color: root.available ? theme.text : theme.textDim
-                    font.family: theme.fontUi
-                    font.pointSize: theme.typeNormal
-                    Tooltip { text: parent.truncated ? parent.text : "" }
+                    width: pathText.width
+                    height: pathText.implicitHeight
+                    Text {
+                        id: pathText
+                        width: Math.min(implicitWidth, root.pathRoom)
+                        elide: Text.ElideMiddle
+                        text: pathBlur.blurred ? pathBlur.mask(root.source.path || "") : (root.source.path || "")
+                        color: root.available ? theme.text : theme.textDim
+                        font.family: theme.fontUi
+                        font.pointSize: theme.typeNormal
+                        Tooltip { text: !pathBlur.blurred && parent.truncated ? parent.text : "" }
+                    }
                 }
                 Chip {
                     id: chip

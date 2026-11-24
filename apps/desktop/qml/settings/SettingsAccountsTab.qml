@@ -196,6 +196,7 @@ SettingsTab {
             SettingRow {
                 required property var modelData
                 label: modelData
+                redactLabel: true
                 Button { msg: "settings-phone-copy"; icon: "copy"; flat: true; small: true; onClicked: frame.copyText(modelData, words.t("settings-phone-address-copied")) }
             }
         }
@@ -210,6 +211,8 @@ SettingsTab {
                 required property var modelData
                 label: modelData.name
                 line: tab.personLine(modelData)
+                redactLabel: true
+                redactLine: true
                 Chip {
                     visible: modelData.owner
                     text: words.t("settings-phone-own-profile")
@@ -230,6 +233,8 @@ SettingsTab {
                 required property var modelData
                 label: modelData.name
                 line: tab.deviceLine(modelData)
+                redactLabel: true
+                redactLine: true
                 Switch {
                     checked: modelData.trusted
                     onToggled: function(on) { tab.setTrusted(modelData.id, on) }

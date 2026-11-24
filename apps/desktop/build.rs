@@ -31,6 +31,7 @@ fn main() {
             .qml_file("qml/dev/TokensPage.qml")
             .qml_file("qml/ui/Corner.qml")
             .qml_file("qml/ui/Frost.qml")
+            .qml_file("qml/ui/PrivacyBlur.qml")
             .qml_file("qml/ui/Blocker.qml")
             .qml_file("qml/ui/WheelStep.qml")
             .qml_file("qml/ui/Label.qml")

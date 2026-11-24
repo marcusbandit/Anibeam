@@ -654,6 +654,68 @@ FocusScope {
             width: tipText.implicitWidth + theme.space(4); height: tipText.implicitHeight + theme.space(2)
             Label { id: tipText; anchors.centerIn: parent; role: "ui"; font.pointSize: theme.typeSmall }
         }
+        // Privacy mode reveal popover: opened by an active click on any PrivacyBlur item.
+        // Clicking the eye pill reveals the item; clicking outside or pressing Escape dismisses it.
+        Item {
+            id: privacyPopover
+            objectName: "privacy-reveal-popover"
+            anchors.fill: parent
+            visible: false
+            z: 25
+            property Item target: null
+            property var onConfirm: null
+            function open(item, confirmFn) {
+                target = item
+                onConfirm = confirmFn
+                var c = item.mapToItem(overlay, item.width / 2, item.height / 2)
+                var pad = theme.space(2)
+                privacyPill.x = Math.max(pad, Math.min(c.x - privacyPill.width / 2, overlay.width - privacyPill.width - pad))
+                privacyPill.y = Math.max(pad, Math.min(c.y - privacyPill.height / 2, overlay.height - privacyPill.height - pad))
+                visible = true
+                frame.escapeStack.push("popover", privacyPopover)
+            }
+            function close() {
+                if (!visible) return
+                visible = false
+                target = null
+                onConfirm = null
+                frame.escapeStack.pop(privacyPopover)
+            }
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.AllButtons
+                onPressed: privacyPopover.close()
+            }
+            Frost {
+                id: privacyPill
+                objectName: "privacy-reveal-button"
+                radius: theme.radiusTile
+                width: privacyPillRow.implicitWidth + theme.space(4)
+                height: Math.max(theme.space(8), privacyPillRow.implicitHeight + theme.space(2))
+                borderColor: privacyPillMouse.containsMouse ? theme.accent : theme.lineStrong
+                Row {
+                    id: privacyPillRow
+                    anchors.centerIn: parent
+                    spacing: theme.space(1.5)
+                    Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "eye"; size: theme.space(4); color: theme.accent }
+                    Label { anchors.verticalCenter: parent.verticalCenter; msg: "privacy-show-content"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.text }
+                }
+                MouseArea {
+                    id: privacyPillMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    Accessible.role: Accessible.Button
+                    Accessible.name: words.t("privacy-show-content")
+                    Accessible.onPressAction: privacyPillMouse.clicked(null)
+                    onClicked: {
+                        var fn = privacyPopover.onConfirm
+                        privacyPopover.close()
+                        if (fn) fn()
+                    }
+                }
+            }
+        }
         // A toast: one line, an optional action (Undo), and an x. The pointer on it holds it,
         // so a long line is never taken away mid-read
         Frost {
@@ -837,7 +899,11 @@ FocusScope {
         property string settingsTab: "library"
         // Downloads comes back with its last search
         property bool keepDownloadsQuery: true
+        // Privacy mode: blurs accounts, emails, tailnet devices, addresses, and local paths
+        property bool privacyMode: false
     }
+    function askPrivacyReveal(item, confirmFn) { privacyPopover.open(item, confirmFn) }
+    function closePrivacyReveal(item) { if (!item || privacyPopover.target === item) privacyPopover.close() }
     // The last Downloads search, for this run only
     property string downloadsQuery: ""
     readonly property alias prefs: shellPrefs
