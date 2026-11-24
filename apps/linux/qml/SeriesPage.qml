@@ -757,7 +757,7 @@ Item {
                     readonly property real start: Math.max(0.05, (band.topPad - theme.space(24) - hero.y) / hero.height)
                     readonly property real solid: Math.min(0.98, (band.topPad + band.contentH * 0.8 - hero.y) / hero.height)
                     gradient: Gradient {
-                        GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, art.visible ? 0 : 0) }
+                        GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
                         GradientStop { position: fade.start; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
                         GradientStop { position: fade.start + (fade.solid - fade.start) * 0.5; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.6) }
                         GradientStop { position: fade.solid; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, art.visible ? 0.97 : 1) }
