@@ -18,6 +18,10 @@ use std::time::SystemTime;
 
 use anibeam_foundation::sync::recover;
 
+/// The most files the memo keeps. A page asks about two at a time and the
+/// image cache's row cap is 5000, so a session rarely gets near it.
+const MEMO_CAP: usize = 4096;
+
 /// The bytes read before the format is known: enough for every format's
 /// size but a JPEG's, which a JPEG then seeks on for.
 const HEAD: usize = 32;
@@ -154,7 +158,14 @@ pub fn width_of(path: &Path) -> Option<u32> {
     let width = std::fs::File::open(path)
         .ok()
         .and_then(|f| width_in(&mut std::io::BufReader::new(f)));
-    recover(memo()).insert(
+    let mut kept = recover(memo());
+    // A bound on a process-long map: the image cache evicts and replaces
+    // files the memo never hears of, so past the cap it starts over, and
+    // each path costs one header read again.
+    if kept.len() >= MEMO_CAP && !kept.contains_key(path) {
+        kept.clear();
+    }
+    kept.insert(
         path.to_path_buf(),
         Seen {
             len,
