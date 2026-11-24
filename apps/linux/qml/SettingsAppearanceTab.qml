@@ -76,7 +76,7 @@ SettingsTab {
                   onPicked: function(i) { tab.setTitleLanguage(tab.titleLanguages[i]) } } }
         SettingRow { label: words.t("settings-appearance-series-logos")
             Switch { objectName: "series-logos"; checked: Door.preferences.series_logos !== false; onToggled: function(on) { tab.setSeriesLogos(on) } } }
-        SettingRow { visible: Door.preferences.series_logos !== false; label: words.t("settings-appearance-logo-language")
+        SettingRow { label: words.t("settings-appearance-logo-language")
             Seg { objectName: "logo-language"; options: tab.logoLanguageNames; index: Math.max(0, tab.logoLanguages.indexOf(Door.preferences.logo_language))
                   onPicked: function(i) { tab.setLogoLanguage(tab.logoLanguages[i]) } } }
     }
