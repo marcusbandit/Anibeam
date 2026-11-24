@@ -251,6 +251,8 @@ struct Reached {
     client: AnirssClient,
     generation: u64,
     own: bool,
+    /// This call started the sidecar: it says Ready, and nothing has read its endpoints yet.
+    started: bool,
 }
 
 /// The anirss client when one is already there: the remote server, or a
@@ -276,6 +278,7 @@ async fn running(downloads: &Downloads) -> Result<Option<Reached>, CoreError> {
         client: AnirssClient::new(&sc.server(), &sc.token, downloads.services.http.clone()),
         generation,
         own: true,
+        started: false,
     }))
 }
 
@@ -283,7 +286,28 @@ async fn running(downloads: &Downloads) -> Result<Option<Reached>, CoreError> {
 /// not up. The status in the state follows every step, so a shell that
 /// reads `GetDownloads` after a failure sees why.
 async fn ensure_client(downloads: &Downloads) -> Result<AnirssClient, CoreError> {
-    reach(downloads).await.map(|r| r.client)
+    let reached = reach(downloads).await?;
+    if reached.started {
+        read_started(downloads, &reached).await;
+    }
+    Ok(reached.client)
+}
+
+/// A sidecar a search or another call started, not a connect: `reach` marked it Ready, so
+/// its endpoints are read now and the shells told. Without this the status said Ready with
+/// the list a failure had cleared, and the settings dotted Downloads for a search helper
+/// whose own config has sources (#1433). A read that fails leaves the call to go on.
+async fn read_started(downloads: &Downloads, reached: &Reached) {
+    if read_anirss(downloads, reached).await != Ok(Read::Kept) {
+        return;
+    }
+    if let Ok(status) = status_async(downloads).await {
+        downloads.services.bus.debug(
+            Stage::Downloads,
+            "Search endpoints read from the restarted anirss",
+            EventBody::DownloadsStatusChanged { status },
+        );
+    }
 }
 
 /// [`ensure_client`], with what the client was built from.
@@ -311,6 +335,7 @@ async fn reach(downloads: &Downloads) -> Result<Reached, CoreError> {
             client: AnirssClient::new(&s.anirss_url, &token, downloads.services.http.clone()),
             generation,
             own: false,
+            started: false,
         });
     }
     let one_at_a_time = downloads.connecting.lock().await;
@@ -327,6 +352,7 @@ async fn reach(downloads: &Downloads) -> Result<Reached, CoreError> {
                     ),
                     generation,
                     own: true,
+                    started: false,
                 });
             }
             st.sidecar = None;
@@ -432,6 +458,7 @@ async fn reach(downloads: &Downloads) -> Result<Reached, CoreError> {
                 client,
                 generation,
                 own: true,
+                started: true,
             })
         }
         Err(message) => {
@@ -3806,6 +3833,7 @@ mod tests {
             client,
             generation: teams.downloads.state().generation,
             own: true,
+            started: false,
         };
         assert_eq!(
             teams
@@ -3874,6 +3902,7 @@ mod tests {
             client: AnirssClient::new("http://anirss.test", "tok", http.clone()),
             generation: teams.downloads.state().generation,
             own,
+            started: false,
         };
         assert_eq!(
             teams
@@ -3986,6 +4015,7 @@ mod tests {
             client,
             generation: teams.downloads.state().generation,
             own: true,
+            started: false,
         };
         assert_eq!(
             teams
@@ -4027,6 +4057,7 @@ mod tests {
             client: AnirssClient::new("http://127.0.0.1:1", "tok", http.clone()),
             generation: teams.downloads.state().generation,
             own,
+            started: false,
         };
         let own = reached(true);
         let remote = reached(false);
