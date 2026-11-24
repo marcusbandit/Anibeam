@@ -19,6 +19,7 @@ pub mod fetch;
 pub mod franchise;
 pub mod imdb;
 pub mod link;
+pub mod logos;
 pub mod owed;
 pub mod recommended;
 pub mod record;

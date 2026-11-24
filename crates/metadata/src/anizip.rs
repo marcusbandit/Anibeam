@@ -282,9 +282,12 @@ pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, Cor
             SELECT i.url FROM anizip_images i
             WHERE i.anilist_id = ?1 AND i.kind = 'Clearlogo'
               AND EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = i.anilist_id AND s.provider = 'anilist')
+              AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0)
             ORDER BY CASE WHEN lower(i.lang) LIKE 'en%' THEN 0 WHEN i.lang IS NULL THEN 1 ELSE 2 END, i.rank
             LIMIT 1
          )
+         UNION
+         SELECT w.url FROM tvdb_logo_wanted w WHERE w.anilist_id = ?1
          UNION
          SELECT z.still_url FROM anizip_episodes z
             JOIN series s ON s.anilist_id = z.anilist_id AND s.provider = 'anilist'
@@ -294,7 +297,9 @@ pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, Cor
          SELECT b.logo_url FROM fallback_shows b
          WHERE b.anilist_id = ?1 AND b.logo_url IS NOT NULL
            AND EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = b.anilist_id AND s.provider = 'anilist')
-           AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')
+           AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo'
+                             AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0))
+           AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = b.logo_url AND v.verdict = 0)
          UNION
          SELECT e.still_url FROM fallback_episodes e
             JOIN series s ON s.anilist_id = e.anilist_id AND s.provider = 'anilist'
@@ -445,6 +450,13 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<(u64, u64), Core
     // launch reads the list again before it ends, so it takes these too.
     if owed_any && let Some(this) = metadata.this() {
         crate::owed::start(&this);
+    }
+    // The logos it found are owed their languages (#1470). A walk already
+    // running reads its list again before it ends.
+    if filled > 0
+        && let Some(this) = metadata.this()
+    {
+        crate::logos::start(&this);
     }
     Ok((filled, fell_back_for))
 }

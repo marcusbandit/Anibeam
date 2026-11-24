@@ -83,6 +83,9 @@ fn draw(
         positions,
         edges,
         mut labels,
+        chains,
+        main_line,
+        anchors,
     } = layout::plan(closure, current);
 
     let mut nodes: Vec<GraphNode> = Vec::with_capacity(closure.nodes.len());
@@ -116,6 +119,19 @@ fn draw(
             root: n.anilist_id == closure.root,
             pending: !n.relations_fetched || n.deferred_until.is_some(),
             site_url: n.site_url.clone(),
+            banner: match n.banner_url.as_deref() {
+                Some(url) => metadata.net.images.path_for(conn, url)?,
+                None => None,
+            },
+            score: n.average_score.map(|s| f64::from(s) / 10.0),
+            chain: chains.get(&n.anilist_id).map(|(chain, _)| *chain),
+            chain_position: chains.get(&n.anilist_id).map(|(_, at)| *at),
+            main_line: main_line.is_some_and(|m| {
+                chains
+                    .get(&n.anilist_id)
+                    .is_some_and(|(chain, _)| *chain == m)
+            }),
+            anchor: anchors.get(&n.anilist_id).copied(),
         });
     }
 

@@ -415,6 +415,7 @@ async fn fetch(trackers: &Trackers, user_id: u64, token: &str) -> Result<Vec<Row
                     status: None,
                     year: None,
                     cover_url: media["coverImage"]["large"].as_str().map(str::to_string),
+                    banner_url: None,
                     site_url: media["siteUrl"].as_str().map(str::to_string),
                     episodes: as_u32(media["episodes"].as_u64()),
                     average_score: as_u32(media["averageScore"].as_u64()),

@@ -168,6 +168,38 @@ fn a_series_whose_node_stands_alone_has_no_layout() {
         !detail.has_graph,
         "the detail page agrees there is nothing to open"
     );
+    assert!(
+        detail.relations_known,
+        "its edges were fetched, so the franchise is known to be empty"
+    );
+}
+
+/// A freshly matched series whose node nobody has fetched the edges of yet
+/// has no graph either, but its page is not told the franchise is empty
+/// (#1454).
+#[test]
+fn a_series_whose_edges_are_still_owed_is_not_known_to_be_alone() {
+    let (_dir, core, _c) = common::open_core_with_http(net::FakeHttp::new());
+    media(&core, 8, "ANIME", "TV", "FINISHED", 2004);
+    core.store()
+        .write(|c| {
+            c.execute(
+                "UPDATE anilist_media SET relations_fetched_at = NULL WHERE id = 8",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/fresh", "Fresh");
+    fixtures::match_series(&core, series, Some(8), None);
+
+    let Reply::SeriesDetail { detail } = core.call(Call::GetSeries { series }).unwrap() else {
+        panic!("expected a detail")
+    };
+    assert!(!detail.has_graph);
+    assert!(!detail.relations_known);
 }
 
 /// An unmatched series has no AniList id to close a graph around, and a

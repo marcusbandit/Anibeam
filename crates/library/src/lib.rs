@@ -21,6 +21,7 @@ pub mod franchises;
 pub mod history;
 pub mod hostview;
 pub mod labels;
+pub mod logo;
 pub mod readings;
 pub mod reads;
 pub mod report;

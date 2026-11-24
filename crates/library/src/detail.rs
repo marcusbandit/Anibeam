@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use rusqlite::{Connection, OptionalExtension, params_from_iter};
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde_json::Value;
 
 use crate::cards::{next_up, upcoming};
@@ -14,7 +14,7 @@ use crate::labels;
 use crate::snapshot::{FileRow, MediaRow, SeriesRow, Snapshot, season_of};
 use anibeam_contract::i18n::tr;
 use anibeam_contract::*;
-use anibeam_foundation::store::sql::placeholders;
+use anibeam_foundation::store::sql::{as_i64, placeholders};
 use anibeam_foundation::time;
 use anibeam_foundation::titles;
 use anibeam_foundation::watch::MARK_FRACTION;
@@ -57,6 +57,40 @@ fn day_start(day: &str) -> Option<i64> {
     let date =
         ::time::Date::from_calendar_date(year, ::time::Month::try_from(month).ok()?, day).ok()?;
     Some(date.midnight().assume_utc().unix_timestamp())
+}
+
+/// The file of the TheTVDB logo `anilist_id` draws, by the logo language
+/// setting, among those the image cache holds and did not turn away. A logo
+/// TheTVDB's page names no language for takes the one ani.zip gives the
+/// same file. `None` when neither names the language of any of them, so
+/// ani.zip's own order decides, or when none is on disk yet.
+fn tvdb_logo(conn: &Connection, anilist_id: u64) -> Result<Option<String>, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT coalesce(l.lang, (SELECT lower(a.lang) FROM anizip_images a
+                                  WHERE a.anilist_id = k.anilist_id AND a.kind = 'Clearlogo' AND a.url = l.url)),
+                i.path
+         FROM tvdb_logo_asks k
+         JOIN anizip_shows z ON z.anilist_id = k.anilist_id AND z.tvdb_id = k.tvdb_id
+         JOIN tvdb_logos l ON l.tvdb_id = k.tvdb_id
+         JOIN images i ON i.url = l.url
+         WHERE NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = l.url AND v.verdict = 0)
+           AND k.anilist_id = ?1 ORDER BY l.rank",
+    )?;
+    let rows = stmt.query_map([anilist_id as i64], |r| {
+        Ok((r.get::<_, Option<String>>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let logos = rows.collect::<Result<Vec<_>, _>>()?;
+    if logos.iter().all(|(lang, _)| lang.is_none()) {
+        return Ok(None);
+    }
+    let prefs = anibeam_foundation::prefs::load_preferences(conn).unwrap_or_default();
+    let want = crate::logo::wanted(prefs.logo_language, prefs.title_language);
+    // ani.zip's `en-US` and TheTVDB's `en` are one language here.
+    let langs: Vec<Option<&str>> = logos
+        .iter()
+        .map(|(l, _)| l.as_deref().and_then(|l| l.split(['-', '_']).next()))
+        .collect();
+    Ok(crate::logo::pick(&langs, want).map(|at| logos[at].1.clone()))
 }
 
 impl Snapshot {
@@ -340,6 +374,10 @@ impl Snapshot {
             has_graph: row
                 .anilist_id
                 .is_some_and(|a| self.graph_seeds.contains(&a)),
+            relations_known: match row.anilist_id {
+                Some(a) => relations_known(conn, a)?,
+                None => false,
+            },
             suggested_fix,
             logo: zip.logo,
             artwork: zip.artwork,
@@ -439,7 +477,7 @@ impl Snapshot {
             e.aired_at = e.aired_at.or(aired_at);
         }
         let mut stmt = conn.prepare(
-            "SELECT a.kind, a.url, a.lang, i.path FROM anizip_images a
+            "SELECT a.kind, a.url, a.lang, i.path, EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = a.url AND v.verdict = 0) FROM anizip_images a
              LEFT JOIN images i ON i.url = a.url
              WHERE a.anilist_id = ?1 ORDER BY a.rank",
         )?;
@@ -449,13 +487,16 @@ impl Snapshot {
                 r.get::<_, String>(1)?,
                 r.get::<_, Option<String>>(2)?,
                 r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<bool>>(4)?.unwrap_or(false),
             ))
         })?;
         let mut logos: Vec<(bool, u8, Option<String>)> = Vec::new();
         for row in rows {
-            let (kind, url, lang, path) = row?;
+            let (kind, url, lang, path, not_a_logo) = row?;
             let path = local(path);
-            if kind == "Clearlogo" {
+            // A logo on a solid rectangle is no logo (#1470): the next one
+            // is picked, then a franchise season's, then the title.
+            if kind == "Clearlogo" && !not_a_logo {
                 // English first, then a logo that names no language, then
                 // any other, each in the reply's own order.
                 let pick = match lang.as_deref().map(str::to_ascii_lowercase) {
@@ -475,11 +516,18 @@ impl Snapshot {
         let own_logo = !logos.is_empty();
         logos.sort_by_key(|(missing, pick, _)| (*missing, *pick));
         view.logo = logos.into_iter().next().and_then(|(_, _, path)| path);
+        // TheTVDB's logos, where it named their languages (#1470), win over
+        // ani.zip's order: the one in the language wanted, then the other of
+        // English and Japanese, then any, of those on disk.
+        if let Some(path) = tvdb_logo(conn, anilist_id)? {
+            view.logo = local(Some(path));
+            return Ok(view);
+        }
         if !own_logo {
             let borrowed: Option<String> = conn
                 .query_row(
                     "SELECT i.path FROM fallback_shows b JOIN images i ON i.url = b.logo_url
-                     WHERE b.anilist_id = ?1",
+                     WHERE b.anilist_id = ?1 AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = b.logo_url AND v.verdict = 0)",
                     [anilist_id as i64],
                     |r| r.get(0),
                 )
@@ -909,6 +957,20 @@ fn tags_of(raw: &Value) -> Vec<Tag> {
 
 fn json_array(v: &Value) -> &[Value] {
     v.as_array().map(Vec::as_slice).unwrap_or(&[])
+}
+
+/// Whether AniList's relations for this id have been fetched: by a full
+/// metadata fetch or by the crawl. Until then a node with no edges may
+/// only be a node whose edges nobody asked for yet.
+fn relations_known(conn: &Connection, anilist_id: u64) -> Result<bool, CoreError> {
+    let known: Option<bool> = conn
+        .query_row(
+            "SELECT relations_fetched_at IS NOT NULL FROM anilist_media WHERE id = ?1",
+            params![as_i64(anilist_id)],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(known.unwrap_or(false))
 }
 
 #[cfg(test)]

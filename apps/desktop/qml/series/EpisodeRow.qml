@@ -11,6 +11,9 @@
 // With `gettable` set, an absent row reads "Get episode" on hover and a click asks for it
 // (#169). While the page picks files to delete, the cube gives way to the phone's circle,
 // filled red once picked, and a click on the row or the circle picks (#168).
+// An episode the record has a still for shows it at the left, 16:9, its code on it, unless
+// the page hides stills (#1453); one with a synopsis carries two lines of it under the title.
+// A row with neither stays one line.
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -21,6 +24,12 @@ Corner {
     property bool hasTracker: false
     property string title: episode.title || ""
     property string detailText: ""
+    // The page's stills switch (#1453)
+    property bool stillsShown: true
+    readonly property bool showStill: stillsShown && !extra && !!episode.still
+    readonly property string synopsis: extra ? "" : String(episode.synopsis || "").trim()
+    // A row with a still or a synopsis reads its title in the heavier cut
+    readonly property bool rich: showStill || synopsis !== ""
     signal play()
     Accessible.role: Accessible.Button
     // "Episode 3, The title", without saying the number twice when the title is only that
@@ -59,7 +68,7 @@ Corner {
     borderColor: activeFocus ? theme.focusRing : "transparent"
     borderWidth: activeFocus ? 2 : 0
     width: parent ? parent.width : implicitWidth
-    height: Math.max(theme.space(10), wordsCol.implicitHeight + theme.space(3))
+    height: Math.max(theme.space(10), wordsCol.implicitHeight + theme.space(3), showStill ? still.height + theme.space(3) : 0)
     radius: theme.radiusMd
     smoothing: theme.cornerSmoothing
     color: picked ? theme.redSoft
@@ -158,8 +167,43 @@ Corner {
             }
             Tooltip { text: root.picking ? "" : !root.trackable ? root.cubeState.label : words.t(root.watched ? "episode-row-mark-unwatched-tip" : "episode-row-mark-watched-tip", { state: root.cubeState.label }) }
         }
+        // The still, 16:9, the code on it; a quiet tile until it decodes
+        Corner {
+            id: still
+            objectName: "episode-still"
+            visible: root.showStill
+            anchors.verticalCenter: parent.verticalCenter
+            width: theme.space(40)
+            height: Math.round(width * 9 / 16)
+            radius: theme.radiusSm
+            smoothing: theme.cornerSmoothing
+            color: theme.tileSunken
+            fillItem: stillArt.status === Image.Ready ? stillArt : null
+            opacity: root.absent || root.upcoming ? 0.6 : 1
+            Image {
+                id: stillArt
+                visible: false
+                width: parent.width; height: parent.height
+                source: root.showStill ? Fmt.fileUrl(root.episode.still) : ""
+                sourceSize: Qt.size(Math.ceil(width * theme.devicePixelRatio), Math.ceil(height * theme.devicePixelRatio))
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: true
+            }
+            Rectangle {
+                visible: stillCode.text !== ""
+                x: theme.space(1.5); y: theme.space(1.5)
+                width: stillCode.implicitWidth + theme.space(3)
+                height: stillCode.implicitHeight + theme.space(1)
+                radius: theme.radiusSm
+                antialiasing: true
+                color: Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.68)
+                Label { id: stillCode; anchors.centerIn: parent; text: root.episode.code || ""; role: "ledger"; color: root.nextUp ? theme.accentOnPoster : theme.onPoster }
+            }
+        }
         Label {
             id: code
+            visible: !root.showStill
             anchors.verticalCenter: parent.verticalCenter
             width: theme.textSpace(12)
             text: root.episode.code || ""
@@ -170,7 +214,8 @@ Corner {
         Column {
             id: wordsCol
             anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - mark.width - code.width - (date.visible ? date.width + parent.spacing : 0) - parent.spacing * 2
+            width: parent.width - mark.width - (root.showStill ? still.width : code.width) - (date.visible ? date.width + parent.spacing : 0) - parent.spacing * 2
+            spacing: theme.space(1)
             Row {
                 width: parent.width
                 spacing: theme.space(2)
@@ -180,8 +225,8 @@ Corner {
                     width: Math.min(implicitWidth, parent.width - (tags.width > 0 ? tags.width + parent.spacing : 0))
                     text: root.title
                     role: "ui"
-                    font.weight: root.nextUp ? 600 : theme.roleWeight("ui")
-                    font.variableAxes: ({ "wdth": 100, "wght": root.nextUp ? 600 : theme.roleWeight("ui") })
+                    font.weight: root.nextUp || root.rich ? 600 : theme.roleWeight("ui")
+                    font.variableAxes: ({ "wdth": 100, "wght": root.nextUp || root.rich ? 600 : theme.roleWeight("ui") })
                     color: root.absent || root.upcoming ? theme.textFaint : root.downloading || (root.watched && !root.nextUp) ? theme.textDim : theme.text
                     elide: Text.ElideRight
                 }
@@ -235,6 +280,19 @@ Corner {
                         color: theme.textDim
                     }
                 }
+            }
+            Label {
+                objectName: "episode-synopsis"
+                visible: root.synopsis !== ""
+                width: parent.width
+                text: root.synopsis
+                textFormat: Text.PlainText
+                role: "ui"
+                font.pointSize: theme.typeSmall
+                color: root.absent || root.upcoming ? theme.textFaint : theme.textDim
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
             }
             Label {
                 visible: root.detailText !== ""
