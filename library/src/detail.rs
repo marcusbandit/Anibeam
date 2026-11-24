@@ -65,7 +65,7 @@ fn tvdb_logo(conn: &Connection, anilist_id: u64) -> Result<Option<String>, CoreE
         "SELECT l.lang, i.path FROM tvdb_logo_asks k
          JOIN anizip_shows z ON z.anilist_id = k.anilist_id AND z.tvdb_id = k.tvdb_id
          JOIN tvdb_logos l ON l.tvdb_id = k.tvdb_id
-         JOIN images i ON i.url = l.url
+         JOIN images i ON i.url = l.url AND coalesce(i.logo_check, 1) != 0
          WHERE k.anilist_id = ?1 ORDER BY l.rank",
     )?;
     let rows = stmt.query_map([anilist_id as i64], |r| {
@@ -433,7 +433,7 @@ impl Snapshot {
             e.aired_at = e.aired_at.or(aired_at);
         }
         let mut stmt = conn.prepare(
-            "SELECT a.kind, a.url, a.lang, i.path FROM anizip_images a
+            "SELECT a.kind, a.url, a.lang, i.path, i.logo_check = 0 FROM anizip_images a
              LEFT JOIN images i ON i.url = a.url
              WHERE a.anilist_id = ?1 ORDER BY a.rank",
         )?;
@@ -443,13 +443,16 @@ impl Snapshot {
                 r.get::<_, String>(1)?,
                 r.get::<_, Option<String>>(2)?,
                 r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<bool>>(4)?.unwrap_or(false),
             ))
         })?;
         let mut logos: Vec<(bool, u8, Option<String>)> = Vec::new();
         for row in rows {
-            let (kind, url, lang, path) = row?;
+            let (kind, url, lang, path, not_a_logo) = row?;
             let path = local(path);
-            if kind == "Clearlogo" {
+            // A logo on a solid rectangle is no logo (#1470): the next one
+            // is picked, then a franchise season's, then the title.
+            if kind == "Clearlogo" && !not_a_logo {
                 // English first, then a logo that names no language, then
                 // any other, each in the reply's own order.
                 let pick = match lang.as_deref().map(str::to_ascii_lowercase) {
@@ -480,7 +483,7 @@ impl Snapshot {
             let borrowed: Option<String> = conn
                 .query_row(
                     "SELECT i.path FROM fallback_shows b JOIN images i ON i.url = b.logo_url
-                     WHERE b.anilist_id = ?1",
+                     WHERE b.anilist_id = ?1 AND coalesce(i.logo_check, 1) != 0",
                     [anilist_id as i64],
                     |r| r.get(0),
                 )

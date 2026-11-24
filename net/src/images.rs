@@ -21,6 +21,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
 use crate::Net;
+use crate::logo_image::{self, LogoFile};
 use crate::{Http, HttpRequest};
 use anibeam_contract::*;
 use anibeam_foundation::atomic_file;
@@ -98,6 +99,7 @@ const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN se
                 FROM anizip_images a
                 WHERE a.kind = 'Clearlogo'
                   AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
+                  AND NOT EXISTS (SELECT 1 FROM images x WHERE x.url = a.url AND x.logo_check = 0)
              ) WHERE pick = 1)
      UNION SELECT b.logo_url FROM fallback_shows b
            WHERE b.logo_url IS NOT NULL
@@ -142,6 +144,7 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
                 FROM anizip_images a
                 WHERE a.kind = 'Clearlogo'
                   AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
+                  AND NOT EXISTS (SELECT 1 FROM images x WHERE x.url = a.url AND x.logo_check = 0)
              ) WHERE pick = 1)
         UNION SELECT ze.still_url FROM anizip_episodes ze
                      JOIN series s ON s.anilist_id = ze.anilist_id AND s.provider = 'anilist'
@@ -657,6 +660,89 @@ fn missing_urls(conn: &Connection) -> Result<Vec<String>, CoreError> {
 // The fetch
 // ---------------------------------------------------------------------------
 
+/// A clear logo's file judged off the runtime (`logo_image`): the bytes to
+/// keep, trimmed to the mark where it had a transparent margin, and what
+/// `images.logo_check` records.
+async fn judge_logo(body: Vec<u8>) -> (Vec<u8>, i64) {
+    let judged = tokio::task::spawn_blocking(move || {
+        let file = logo_image::inspect(&body);
+        let check = file.check();
+        match file {
+            LogoFile::Clear {
+                trimmed: Some(trimmed),
+            } => (trimmed, check),
+            _ => (body, check),
+        }
+    })
+    .await;
+    match judged {
+        Ok(judged) => judged,
+        // A judge that panicked keeps nothing: the logo is drawn as fetched
+        // next time it is fetched, and this time not at all.
+        Err(e) => {
+            tracing::warn!("judging a logo failed: {e}");
+            (Vec::new(), 2)
+        }
+    }
+}
+
+impl ImageCache {
+    /// Judges the clear logos cached before the cache judged them as they
+    /// land (#1470): each is trimmed to its mark in place, or marked as not
+    /// a logo. Returns the urls whose file or standing changed.
+    pub async fn check_logos(&self) -> Vec<String> {
+        let rows: Vec<(String, String)> = self
+            .store
+            .read(|c| {
+                let mut stmt = c.prepare(
+                    "SELECT url, path FROM images
+                     WHERE logo_check IS NULL AND instr(lower(url), '/clearlogo/') > 0",
+                )?;
+                let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+                Ok(rows.collect::<Result<Vec<_>, _>>()?)
+            })
+            .unwrap_or_default();
+        let mut changed = Vec::new();
+        for (url, relative) in rows {
+            let path = self.dir.join(&relative);
+            let Ok(body) = tokio::fs::read(&path).await else {
+                continue;
+            };
+            let before = body.len();
+            let (body, check) = judge_logo(body).await;
+            if body.is_empty() {
+                continue;
+            }
+            let bytes = body.len() as i64;
+            if body.len() != before
+                && let Err(e) = atomic_file::write_async(&path, body).await
+            {
+                tracing::warn!("trimming the logo {url} failed: {e}");
+                continue;
+            }
+            let row_url = url.clone();
+            if let Err(e) = self
+                .store
+                .write_async(move |c| {
+                    c.execute(
+                        "UPDATE images SET logo_check = ?2, bytes = ?3 WHERE url = ?1",
+                        params![row_url, check, bytes],
+                    )?;
+                    Ok(())
+                })
+                .await
+            {
+                tracing::warn!("recording the logo {url} failed: {e}");
+                continue;
+            }
+            if check != 1 || bytes as usize != before {
+                changed.push(url);
+            }
+        }
+        changed
+    }
+}
+
 /// One url: get it, write it beside its final name, rename it into place,
 /// then record the row. The rename is what makes a half-written file
 /// impossible to read as a cached image, since only a complete file ever
@@ -680,16 +766,27 @@ async fn fetch_one(
     }
     let relative = relative_path(url, extension(url, response.header("content-type")));
     let path = dir.join(&relative);
-    let bytes = response.body.len() as i64;
-    atomic_file::write_async(&path, response.body).await?;
+    let (body, check) = if crate::anizip::is_clear_logo(url) {
+        let (body, check) = judge_logo(response.body).await;
+        if body.is_empty() {
+            return Err(CoreError::internal(format!(
+                "judging the logo {url} failed"
+            )));
+        }
+        (body, Some(check))
+    } else {
+        (response.body, None)
+    };
+    let bytes = body.len() as i64;
+    atomic_file::write_async(&path, body).await?;
 
     let now = time::now_secs();
     let (row_url, row_path) = (url.to_string(), relative);
     store
         .write_async(move |c| {
             c.execute(
-                "INSERT OR REPLACE INTO images (url, path, bytes, fetched_at, used_at) VALUES (?1, ?2, ?3, ?4, ?4)",
-                params![row_url, row_path, bytes, now],
+                "INSERT OR REPLACE INTO images (url, path, bytes, fetched_at, used_at, logo_check) VALUES (?1, ?2, ?3, ?4, ?4, ?5)",
+                params![row_url, row_path, bytes, now, check],
             )?;
             Ok(())
         })
@@ -714,6 +811,9 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
         .jobs
         .clone()
         .start(JobKind::FillImages, move |ctx| async move {
+            // The logos cached before they were judged are judged first, so
+            // the urls a logo that is none gives way to are among the missing.
+            let judged = owner.images.check_logos().await;
             let urls = owner
                 .services
                 .store
@@ -722,6 +822,15 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
             let total = urls.len() as u64;
             let (mut fetched, mut failed) = (0u64, 0u64);
             let mut touched: HashSet<u64> = HashSet::new();
+            if !judged.is_empty() {
+                touched.extend(
+                    owner
+                        .services
+                        .store
+                        .write_async(move |c| series_for_urls(c, &judged))
+                        .await?,
+                );
+            }
 
             for (round, batch) in urls.chunks(BATCH).enumerate() {
                 ctx.checkpoint()?;

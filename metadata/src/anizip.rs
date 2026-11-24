@@ -282,6 +282,7 @@ pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, Cor
             SELECT i.url FROM anizip_images i
             WHERE i.anilist_id = ?1 AND i.kind = 'Clearlogo'
               AND EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = i.anilist_id AND s.provider = 'anilist')
+              AND NOT EXISTS (SELECT 1 FROM images x WHERE x.url = i.url AND x.logo_check = 0)
             ORDER BY CASE WHEN lower(i.lang) LIKE 'en%' THEN 0 WHEN i.lang IS NULL THEN 1 ELSE 2 END, i.rank
             LIMIT 1
          )

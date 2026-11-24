@@ -77,7 +77,7 @@ pub fn owed(conn: &Connection, anilist_id: u64, now: i64) -> Result<Option<Ask>,
         .optional()?;
     let fresh =
         asked.is_some_and(|(t, s, at)| t == tvdb_id && s == set && now.saturating_sub(at) < KEEP);
-    Ok((!fresh).then(|| Ask {
+    Ok((!fresh).then_some(Ask {
         tvdb_id: tvdb_id as u64,
         logo_set: set,
     }))
@@ -179,6 +179,29 @@ pub async fn run(metadata: &Metadata, anilist_id: u64) -> Result<bool, CoreError
         .tx_async(move |tx| write(tx, anilist_id, &ask, &logos, now))
         .await?;
     Ok(true)
+}
+
+/// Fetches the images `anilist_id` wants now. A logo that turns out to be
+/// none on arrival gives way to the next, so this asks again while new
+/// urls come up, a few times at most.
+async fn ensure_logos(metadata: &Metadata, anilist_id: u64) {
+    let mut asked: HashSet<String> = HashSet::new();
+    for _ in 0..4 {
+        let urls: Vec<String> = metadata
+            .services
+            .store
+            .write_async(move |c| anizip::image_urls(c, anilist_id))
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|u| !asked.contains(u))
+            .collect();
+        if urls.is_empty() {
+            return;
+        }
+        asked.extend(urls.iter().cloned());
+        metadata.net.images.ensure(&urls).await;
+    }
 }
 
 /// The AniList ids a series is matched to that are owed an ask, each with
@@ -322,13 +345,7 @@ async fn ask_all(
                 }
             }
             named += 1;
-            let urls = metadata
-                .services
-                .store
-                .write_async(move |c| anizip::image_urls(c, anilist_id))
-                .await
-                .unwrap_or_default();
-            metadata.net.images.ensure(&urls).await;
+            ensure_logos(metadata, anilist_id).await;
             for id in series {
                 match crate::apply::card_for(&metadata.services, id).await {
                     Ok(Some(card)) => ctx.changed(card),

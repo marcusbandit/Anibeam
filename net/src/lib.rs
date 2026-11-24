@@ -21,6 +21,7 @@ pub mod images;
 pub mod imdb;
 pub mod jikan;
 pub mod limiter;
+pub mod logo_image;
 pub mod mal;
 mod team;
 pub mod tvdb;

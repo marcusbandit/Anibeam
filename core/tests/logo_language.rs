@@ -171,3 +171,53 @@ fn a_tvdb_that_does_not_answer_leaves_the_ani_zip_pick() {
 
     core.shutdown();
 }
+
+/// A logo on a solid rectangle is no logo: the pick passes over it to the
+/// next, then to a franchise season's, then to the title.
+#[test]
+fn a_logo_that_is_not_clear_gives_way_to_the_next() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http);
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Toudai", "Toudai");
+    fixtures::media(SHOW, "Toudai").insert(&core);
+    fixtures::match_series(&core, series, Some(SHOW), None);
+    let now = time::now_secs();
+    // TheTVDB named both; the Japanese one, which romaji titles want, turned
+    // out to be a picture when it was cached.
+    core.store()
+        .write(move |c| {
+            c.execute_batch(&format!(
+                "INSERT INTO anizip_shows (anilist_id, found, tvdb_id, fetched_at) VALUES ({SHOW}, 1, {TVDB}, {now});
+                 INSERT INTO anizip_images (anilist_id, kind, url, lang, rank) VALUES
+                    ({SHOW}, 'Clearlogo', '{LOGO_JA}', 'ja', 0), ({SHOW}, 'Clearlogo', '{LOGO_EN}', 'en', 1);
+                 INSERT INTO tvdb_logo_asks (anilist_id, tvdb_id, logo_set, fetched_at) VALUES ({SHOW}, {TVDB}, '', {now});
+                 INSERT INTO tvdb_logos (tvdb_id, url, lang, rank) VALUES
+                    ({TVDB}, '{LOGO_JA}', 'ja', 0), ({TVDB}, '{LOGO_EN}', 'en', 1);
+                 INSERT INTO images (url, path, bytes, fetched_at, used_at, logo_check) VALUES
+                    ('{LOGO_JA}', 'aa/ja.png', 5, {now}, {now}, 0),
+                    ('{LOGO_EN}', 'aa/en.png', 5, {now}, {now}, 1);"
+            ))?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(logo_is(&core, series, LOGO_EN));
+    // Without TheTVDB's names, ani.zip's own order passes over it too.
+    core.store()
+        .write(|c| {
+            c.execute_batch("DELETE FROM tvdb_logo_asks;")?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(logo_is(&core, series, LOGO_EN));
+    // Neither is a logo, and no franchise season lends one: the title.
+    core.store()
+        .write(|c| {
+            c.execute_batch("UPDATE images SET logo_check = 0;")?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(detail(&core, series).logo, None);
+
+    core.shutdown();
+}
