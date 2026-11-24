@@ -31,18 +31,46 @@ Panel {
 
     // The Downloads status, for the search helper's own sources
     property var helper: null
-    readonly property string configPath: helper && helper.anirss && helper.anirss.config_path ? helper.anirss.config_path : ""
+    // The file names a path only for the sidecar: a helper someone else runs reads its own
+    // config on its own machine
+    readonly property bool localHelper: !!helper && !!helper.settings && helper.settings.anirss_mode === "Sidecar"
+    readonly property string configPath: localHelper && helper.anirss && helper.anirss.config_path ? helper.anirss.config_path : ""
     // What the running search helper lists that no installed source accounts for. anirss
     // names an installed one by its id; the name is checked too. Nothing on Anibeam itself:
-    // that engine never reads the helper's config.
+    // that engine never reads the helper's config. Nothing before the catalog is read, or
+    // every installed source would pass for one of the file's, nor one just removed here
+    // that the helper still lists until its list is read again.
     readonly property var fromConfig: {
-        if (!helper || !helper.settings || helper.settings.engine === "Native") return []
+        if (!catalog || !helper || !helper.settings || helper.settings.engine === "Native") return []
         if (!helper.anirss || helper.anirss.state !== "Ready") return []
         var ours = {}
         for (var i = 0; i < installed.length; i++) { ours[installed[i].id] = true; ours[installed[i].name] = true }
-        return (helper.endpoints || []).filter(function(e) { return !ours[e.name] })
+        return (helper.endpoints || []).filter(function(e) { return !ours[e.name] && !gone[e.name] })
     }
-    function hostOf(url) { return String(url).replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split(/[\/?#]/)[0] }
+    // Installed sources removed here (one, or a list's), by id and name, until the helper's
+    // list no longer names them
+    property var gone: ({})
+    property var lastInstalled: []
+    onInstalledChanged: {
+        if (!catalog) return
+        var now = {}, g = Object.assign({}, gone)
+        for (var i = 0; i < installed.length; i++) { now[installed[i].id] = true; now[installed[i].name] = true }
+        for (var j = 0; j < lastInstalled.length; j++) {
+            var e = lastInstalled[j]
+            if (!now[e.id]) { g[e.id] = true; g[e.name] = true }
+        }
+        gone = g
+        lastInstalled = installed
+    }
+    onHelperChanged: {
+        var listed = {}, g = {}
+        var list = helper && helper.endpoints ? helper.endpoints : []
+        for (var i = 0; i < list.length; i++) listed[list[i].name] = true
+        for (var k in gone) if (listed[k]) g[k] = true
+        gone = g
+    }
+    // The host alone: no scheme, path or login
+    function hostOf(url) { return String(url).replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split(/[\/?#]/)[0].replace(/^.*@/, "") }
     readonly property var repos: catalog ? catalog.repos : []
     readonly property var installed: catalog ? catalog.installed : []
     readonly property var offered: {
@@ -264,9 +292,9 @@ Panel {
         objectName: "config-sources"
         visible: root.fromConfig.length > 0
         label: words.t("endpoint-repos-panel-config-head")
-        status: words.t("endpoint-repos-panel-config-why", { path: root.configPath })
-        Button { objectName: "config-sources-open"; msg: "action-open"; icon: "external-link"; flat: true; small: true
-                 enabled: root.configPath !== ""; onClicked: frame.openLink(Fmt.fileUrl(root.configPath)) }
+        status: root.configPath !== "" ? words.t("endpoint-repos-panel-config-why", { path: root.configPath }) : ""
+        Button { objectName: "config-sources-open"; visible: root.configPath !== ""; msg: "action-open"; icon: "external-link"; flat: true; small: true
+                 onClicked: frame.openLink(Fmt.fileUrl(root.configPath)) }
     }
     Repeater {
         model: root.fromConfig

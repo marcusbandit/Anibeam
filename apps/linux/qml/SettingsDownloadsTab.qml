@@ -1,8 +1,8 @@
 // Downloads: the source lists first, since nothing searches without one (#1003), then the
 // torrent client (which one, which of the person's saved clients, where, the login, a test),
 // then how searches run (the search helper, anirss, or Anibeam itself) and, for the helper,
-// how Anibeam reaches it and its state, Rolling downloads, finished shows and the search
-// sources anirss was configured with. Edits sit in a draft until Save: the secrets only cross
+// how Anibeam reaches it and its state, Rolling downloads and finished shows. The search
+// helper's own sources show among the source lists, locked (#1434). Edits sit in a draft until Save: the secrets only cross
 // once, and saving stops a running sidecar (its environment carries the password), so a save
 // is one deliberate act followed by a reconnect. While the draft differs, a bar floats at the
 // foot of the section with Discard and Save, so the way to keep a change is never a scroll away from it.
@@ -43,7 +43,6 @@ SettingsTab {
     // The saved engine, as the Save to row applies at once and reads the saved client's folder
     readonly property bool savedNative: !!settings && settings.engine === "Native"
     readonly property var clients: [{ name: "qBittorrent", id: "Qbittorrent" }]
-    readonly property var endpoints: status && status.endpoints ? status.endpoints : []
     readonly property string clientName: {
         for (var i = 0; i < clients.length; i++) if (draft && clients[i].id === draft.torrent_client) return clients[i].name
         return "qBittorrent"
