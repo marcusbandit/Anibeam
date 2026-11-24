@@ -47,6 +47,8 @@ permissions:
 
 jobs:
   resolve:
+    # Every other job waits on this one, so the release environment's approval gates the whole run.
+    environment: release
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
@@ -310,12 +312,17 @@ jobs:
     if: >-
       always() && needs.resolve.outputs.kind == 'promote' &&
       (needs.publish.result == 'success' || needs.publish-phone.result == 'success')
+    # Main's ruleset requires the ci check, which a bot commit never gets, and Actions' own
+    # token can't bypass a ruleset on a personal repo. The deploy key can: its private half
+    # lives in this environment, which only deploys from main.
+    environment: release-push
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
+          ssh-key: ${{ secrets.RELEASE_PUSH_KEY }}
 
       - name: Main moves to the next version
         if: needs.resolve.outputs.app == 'desktop'
