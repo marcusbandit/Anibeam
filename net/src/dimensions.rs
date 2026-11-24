@@ -1,28 +1,38 @@
 //! How wide a cached image is, read off the file's header (#1475).
 //!
 //! A backdrop is only worth drawing across the window when it has the
-//! pixels for it, so the series page asks how wide the AniList banner is
-//! before it hands it out. Nothing is decoded: PNG, JPEG, GIF and WebP all
-//! say their size in the first few hundred bytes, or for a JPEG in the
-//! frame header after its metadata segments. Each answer is kept for the
-//! life of the process, keyed by the file's path, length and modified time,
-//! so a page read stats the file and reads nothing more.
+//! pixels for it, so the series page asks how wide the background and the
+//! banner are before it hands one out. Nothing is decoded: PNG, GIF and WebP
+//! say their size in their first 30 bytes, and a JPEG in its frame header,
+//! which a walk reaches by seeking over each metadata segment's length, so
+//! a read takes a few dozen bytes whatever the file holds before the frame.
+//! Each answer is kept for the life of the process, keyed by the file's
+//! path, length and modified time, so a page read stats the file and reads
+//! nothing more.
 
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
 use anibeam_foundation::sync::recover;
 
-/// The most a header read takes from a file. A JPEG's frame header sits
-/// after its EXIF and colour profile segments, which stay well under this.
-const HEADER_CAP: u64 = 512 * 1024;
+/// The bytes read before the format is known: enough for every format's
+/// size but a JPEG's, which a JPEG then seeks on for.
+const HEAD: usize = 32;
 
 /// The width in pixels a PNG, JPEG, GIF or WebP says it is, or None for
-/// anything else or a header cut short.
+/// anything else or a header cut short: a width nobody could read.
 pub fn width(bytes: &[u8]) -> Option<u32> {
+    width_in(&mut std::io::Cursor::new(bytes))
+}
+
+/// `width`, off anything that reads and seeks: the open file, or bytes.
+pub fn width_in<R: Read + Seek>(r: &mut R) -> Option<u32> {
+    let mut head = Vec::with_capacity(HEAD);
+    r.by_ref().take(HEAD as u64).read_to_end(&mut head).ok()?;
+    let bytes = head.as_slice();
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
         // The first chunk is IHDR, width first.
         if bytes.get(12..16)? != b"IHDR" {
@@ -31,7 +41,8 @@ pub fn width(bytes: &[u8]) -> Option<u32> {
         return be32(bytes, 16);
     }
     if bytes.starts_with(&[0xff, 0xd8]) {
-        return jpeg_width(bytes);
+        r.seek(SeekFrom::Start(2)).ok()?;
+        return jpeg_width(r);
     }
     if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
         return Some(u32::from(u16::from_le_bytes([
@@ -49,42 +60,47 @@ fn be32(bytes: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_be_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
 }
 
-fn be16(bytes: &[u8], at: usize) -> Option<u16> {
-    Some(u16::from_be_bytes(bytes.get(at..at + 2)?.try_into().ok()?))
+fn read<const N: usize, R: Read>(r: &mut R) -> Option<[u8; N]> {
+    let mut out = [0u8; N];
+    r.read_exact(&mut out).ok()?;
+    Some(out)
 }
 
-/// Walks the segments to the first start-of-frame marker, whose payload
-/// holds the precision, the height and then the width.
-fn jpeg_width(bytes: &[u8]) -> Option<u32> {
-    let mut at = 2;
+/// Walks the segments from just after the start-of-image marker to the
+/// first start-of-frame marker, seeking over each segment's payload, and
+/// reads the width out of the frame header: precision, height, width.
+fn jpeg_width<R: Read + Seek>(r: &mut R) -> Option<u32> {
+    let mut byte = read::<1, R>(r)?[0];
     loop {
-        // Fill bytes may pad a marker.
-        while *bytes.get(at)? == 0xff && *bytes.get(at + 1)? == 0xff {
-            at += 1;
-        }
-        if *bytes.get(at)? != 0xff {
+        if byte != 0xff {
             return None;
         }
-        let marker = *bytes.get(at + 1)?;
+        // Fill bytes may pad a marker.
+        let mut marker = read::<1, R>(r)?[0];
+        while marker == 0xff {
+            marker = read::<1, R>(r)?[0];
+        }
         match marker {
             // Standalone markers carry no length.
             0x01 | 0xd0..=0xd7 => {
-                at += 2;
+                byte = read::<1, R>(r)?[0];
                 continue;
             }
             // The scan began, or the image ended, before any frame header.
             0xd9 | 0xda => return None,
             // Every SOFn but DHT (C4), JPG (C8) and DAC (CC).
             0xc0..=0xcf if !matches!(marker, 0xc4 | 0xc8 | 0xcc) => {
-                return be16(bytes, at + 7).map(u32::from);
+                let frame = read::<7, R>(r)?;
+                return Some(u32::from(u16::from_be_bytes([frame[5], frame[6]])));
             }
             _ => {}
         }
-        let length = usize::from(be16(bytes, at + 2)?);
+        let length = u16::from_be_bytes(read::<2, R>(r)?);
         if length < 2 {
             return None;
         }
-        at += 2 + length;
+        r.seek(SeekFrom::Current(i64::from(length) - 2)).ok()?;
+        byte = read::<1, R>(r)?[0];
     }
 }
 
@@ -135,13 +151,9 @@ pub fn width_of(path: &Path) -> Option<u32> {
     {
         return seen.width;
     }
-    let mut head = Vec::new();
-    std::fs::File::open(path)
-        .ok()?
-        .take(HEADER_CAP)
-        .read_to_end(&mut head)
-        .ok()?;
-    let width = width(&head);
+    let width = std::fs::File::open(path)
+        .ok()
+        .and_then(|f| width_in(&mut std::io::BufReader::new(f)));
     recover(memo()).insert(
         path.to_path_buf(),
         Seen {
@@ -227,10 +239,37 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("banner.jpg");
         std::fs::write(&path, jpeg(1900, 400)).unwrap();
+        let stamp = std::fs::metadata(&path).unwrap().modified().unwrap();
         assert_eq!(width_of(&path), Some(1900));
-        // A different length is a different file.
+        // Other bytes of the same length under the same stamp: the memo
+        // answers, so the file was not read again.
+        std::fs::write(&path, jpeg(1200, 400)).unwrap();
+        let file = std::fs::File::options().write(true).open(&path).unwrap();
+        file.set_modified(stamp).unwrap();
+        drop(file);
+        assert_eq!(width_of(&path), Some(1900));
+        // A new stamp is a new file.
+        let file = std::fs::File::options().write(true).open(&path).unwrap();
+        file.set_modified(stamp + std::time::Duration::from_secs(60))
+            .unwrap();
+        drop(file);
+        assert_eq!(width_of(&path), Some(1200));
+        // So is a new length.
         std::fs::write(&path, png(640, 360)).unwrap();
         assert_eq!(width_of(&path), Some(640));
         assert_eq!(width_of(&dir.path().join("gone.jpg")), None);
+    }
+
+    #[test]
+    fn a_jpeg_frame_far_past_any_buffer_is_reached_by_seeking() {
+        // Ten 64 KB segments, over 600 KB of metadata ahead of the frame.
+        let mut bytes = vec![0xff, 0xd8];
+        for _ in 0..10 {
+            bytes.extend([0xff, 0xe1, 0xff, 0xff]);
+            bytes.extend(std::iter::repeat_n(0u8, 0xffff - 2));
+        }
+        bytes.extend([0xff, 0xc0, 0x00, 0x11, 0x08, 0x04, 0x38, 0x07, 0x80]);
+        assert!(bytes.len() > 600 * 1024);
+        assert_eq!(width(&bytes), Some(1920));
     }
 }
