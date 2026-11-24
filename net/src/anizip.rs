@@ -222,6 +222,13 @@ fn episode_of(key: &str, raw: RawEpisode) -> AniZipEpisode {
     }
 }
 
+/// Whether a `Clearlogo` url is TheTVDB's clear logo art, a transparent
+/// name wider than it is tall, rather than the square icon ani.zip also
+/// files under that kind.
+pub fn is_clear_logo(url: &str) -> bool {
+    url.to_ascii_lowercase().contains("/clearlogo/")
+}
+
 fn show_of(reply: Reply) -> AniZipShow {
     let mut episodes: Vec<AniZipEpisode> = reply
         .episodes
@@ -249,6 +256,11 @@ fn show_of(reply: Reply) -> AniZipShow {
             continue;
         };
         if !url.starts_with("https://") || images.iter().any(|i| i.kind == *kind && i.url == url) {
+            continue;
+        }
+        // ani.zip labels TheTVDB's square icons Clearlogo too (#1463). Only
+        // TheTVDB's own clear logo art is the show's name drawn as a logo.
+        if *kind == "Clearlogo" && !is_clear_logo(&url) {
             continue;
         }
         images.push(AniZipImage {
@@ -375,6 +387,17 @@ mod tests {
         let kinds: Vec<&str> = show.images.iter().map(|i| i.kind.as_str()).collect();
         assert_eq!(kinds, ["Banner", "Clearlogo", "Clearlogo", "Fanart"]);
         assert_eq!(show.images[2].lang.as_deref(), Some("en"));
+        // The icon filed as an English Clearlogo is not one, and is gone:
+        // the English logo kept is the clear logo art.
+        assert!(
+            show.images[2].url.ends_with("/clearlogo/logo-en.png"),
+            "{:?}",
+            show.images
+        );
+        assert!(is_clear_logo(
+            "https://example.com/series/1/ClearLogo/a.png"
+        ));
+        assert!(!is_clear_logo("https://example.com/series/1/icons/a.jpg"));
     }
 
     #[tokio::test]

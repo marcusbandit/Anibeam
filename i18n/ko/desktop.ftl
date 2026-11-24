@@ -1141,6 +1141,8 @@ series-open-anilist = AniList에서 열기
 series-open-mal = MyAnimeList에서 열기
 series-add-notes = 메모 추가
 series-unhide = 숨김 해제
+series-show-title-text = 제목을 텍스트로 표시
+series-show-logo = 로고 표시
 series-hide = 숨기기
 series-hidden-toast = { $title }을(를) 여기서 숨겼고, Anibeam이 AniList와 MyAnimeList 동기화를 멈춰요
 series-unhidden-toast = { $title }이(가) 다시 보이고, 동기화도 재개돼요
@@ -2747,6 +2749,7 @@ settings-library-folder-added = 폴더 추가됨, 스캔 중
 
 settings-appearance-language = 언어
 settings-appearance-title-language = 제목 표시 언어
+settings-appearance-series-logos = 제목 대신 로고 표시
 settings-appearance-title-language-english = 영어
 settings-appearance-language-system = 시스템과 동일({ $language })
 settings-appearance-text-smaller = 작게

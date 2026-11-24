@@ -198,7 +198,8 @@ pub fn write_match_only(
     tx.execute(
         "UPDATE series SET provider = ?2, anilist_id = ?3, mal_id = ?4, tmdb_id = NULL, tmdb_kind = NULL, tvmaze_id = NULL,
                 confirmed = ?5, matched_at = ?6, attempted_at = ?6, attempt_version = ?7,
-                episodes_set = CASE WHEN anilist_id IS ?3 AND mal_id IS ?4 THEN episodes_set END
+                episodes_set = CASE WHEN anilist_id IS ?3 AND mal_id IS ?4 THEN episodes_set END,
+                logo_choice = CASE WHEN anilist_id IS ?3 THEN logo_choice END
          WHERE id = ?1",
         params![
             as_i64(series),
@@ -338,7 +339,8 @@ pub fn write_tvmaze_match(
     tx.execute(
         "UPDATE series SET provider = 'tvmaze', anilist_id = NULL, mal_id = NULL, tmdb_id = NULL, tmdb_kind = NULL,
                 tvmaze_id = ?2, confirmed = ?3, matched_at = ?4, attempted_at = ?4, attempt_version = ?5,
-                episodes_set = CASE WHEN tvmaze_id IS ?2 THEN episodes_set END
+                episodes_set = CASE WHEN tvmaze_id IS ?2 THEN episodes_set END,
+                logo_choice = CASE WHEN tvmaze_id IS ?2 THEN logo_choice END
          WHERE id = ?1",
         params![
             as_i64(series),

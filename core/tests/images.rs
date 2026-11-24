@@ -64,12 +64,19 @@ fn ensure_fetches_once_and_clear_images_empties_everything() {
     // fetched url is never asked for twice.
     assert_eq!(http.requests().len(), 1);
 
+    // An episode frame and a remembered miss sit beside the image cache
+    let frames = dir.path().join("cache").join("frames");
+    std::fs::create_dir_all(&frames).unwrap();
+    std::fs::write(frames.join("0000000000000001.jpg"), [0xFF, 0xD8]).unwrap();
+    std::fs::write(frames.join("0000000000000002.miss"), []).unwrap();
+
     let clear = match core.call(Call::ClearImages).unwrap() {
         Reply::Started { job } => job,
         other => panic!("{other:?}"),
     };
     common::wait_job(&c, clear);
     assert!(!std::path::Path::new(&poster).exists());
+    assert!(!frames.exists(), "Clear images leaves the frames");
     assert!(matches!(
         core.call(Call::GetStorage).unwrap(),
         Reply::Storage { image_count: 0, .. }

@@ -1285,6 +1285,8 @@ series-open-anilist = Auf AniList öffnen
 series-open-mal = Auf MyAnimeList öffnen
 series-add-notes = Notiz anlegen
 series-unhide = Einblenden
+series-show-title-text = Titel als Text anzeigen
+series-show-logo = Logo anzeigen
 series-hide = Ausblenden
 series-hidden-toast = { $title } ist hier ausgeblendet, und Anibeam synct es nicht mehr mit AniList und MyAnimeList
 series-unhidden-toast = { $title } ist wieder da und wird gesynct
@@ -2968,6 +2970,7 @@ settings-library-folder-added = Ordner hinzugefügt, scanne
 
 settings-appearance-language = Sprache
 settings-appearance-title-language = Titel anzeigen auf
+settings-appearance-series-logos = Logos statt Titeln anzeigen
 settings-appearance-title-language-english = Englisch
 settings-appearance-language-system = Wie das System ({ $language })
 settings-appearance-text-smaller = Kleiner

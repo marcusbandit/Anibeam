@@ -1067,6 +1067,8 @@ async fn import_preferences(
                 // And the name and relay its rooms use.
                 room_name: current.room_name.clone(),
                 room_relay: current.room_relay.clone(),
+                // And whether its series pages draw logos.
+                series_logos: current.series_logos,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {
