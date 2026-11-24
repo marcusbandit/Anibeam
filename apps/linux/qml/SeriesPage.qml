@@ -693,8 +693,8 @@ Item {
             width: parent.width
             readonly property real posterH: theme.space(72)
             // Room above the poster for the art to show, and below the actions for the fade
-            readonly property real topPad: page.hasBanner ? theme.space(28) : theme.space(10)
-            readonly property real tail: theme.space(20)
+            readonly property real topPad: page.hasBanner ? theme.space(52) : theme.space(10)
+            readonly property real tail: theme.space(10)
             readonly property real contentH: Math.max(posterH, bandWords.implicitHeight)
             height: topPad + contentH + tail
 
@@ -716,27 +716,36 @@ Item {
                     verticalAlignment: Image.AlignTop
                     asynchronous: true
                 }
-                // Toward the band's tone at the left, where the words sit
+                // A quiet scrim over the whole art, so it reads as a backdrop
+                Rectangle {
+                    visible: art.visible
+                    anchors.fill: parent
+                    color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.35)
+                }
+                // Darker at the left, where the words sit
                 Rectangle {
                     visible: art.visible
                     anchors.fill: parent
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
-                        GradientStop { position: 0; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.8) }
-                        GradientStop { position: 0.4; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.35) }
-                        GradientStop { position: 0.75; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0) }
+                        GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.7) }
+                        GradientStop { position: 0.5; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.3) }
+                        GradientStop { position: 0.85; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
                     }
                 }
-                // Down into the band's tone under the words, then into the page
+                // A long, even fade into the page: it starts above the poster and is the
+                // page's own colour by the time the actions sit on it, so the card's lower
+                // half rests on the dark
                 Rectangle {
                     id: fade
                     anchors.fill: parent
-                    readonly property real wordsTop: (band.topPad - hero.y) / hero.height
-                    readonly property real tailTop: (band.height - band.tail - hero.y) / hero.height
+                    readonly property real start: Math.max(0.05, (band.topPad - theme.space(24) - hero.y) / hero.height)
+                    readonly property real solid: Math.min(0.98, (band.topPad + band.contentH * 0.8 - hero.y) / hero.height)
                     gradient: Gradient {
-                        GradientStop { position: 0; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, art.visible ? 0.05 : 0) }
-                        GradientStop { position: Math.max(0.01, fade.wordsTop); color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, art.visible ? 0.2 : 0) }
-                        GradientStop { position: Math.max(0.02, fade.tailTop); color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, art.visible ? 0.7 : 0) }
+                        GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, art.visible ? 0 : 0) }
+                        GradientStop { position: fade.start; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
+                        GradientStop { position: fade.start + (fade.solid - fade.start) * 0.5; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.6) }
+                        GradientStop { position: fade.solid; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, art.visible ? 0.97 : 1) }
                         GradientStop { position: 1; color: theme.bg }
                     }
                 }
@@ -918,7 +927,7 @@ Item {
                     Pill { visible: page.seasonText !== ""; icon: "calendar"; text: page.seasonText }
                     Pill { visible: !!page.detail; icon: page.isMovie ? "film" : "tv"; text: page.formatLabel(card.format) }
                     Pill { visible: !page.isMovie && !!card.total_episodes; text: card.total_episodes ? words.t(card.total_is_estimate ? "series-facts-episodes-estimate" : "count-episodes", { count: card.total_episodes }) : "" }
-                    Pill { visible: !!(page.detail && page.detail.episode_minutes); icon: "clock"; text: page.detail && page.detail.episode_minutes ? words.runtime(page.detail.episode_minutes) : "" }
+                    Pill { visible: !!(page.detail && page.detail.episode_minutes); icon: "clock"; text: page.detail && page.detail.episode_minutes ? (card.film ? words.runtime(page.detail.episode_minutes) : words.t("series-facts-each", { runtime: words.runtime(page.detail.episode_minutes) })) : "" }
                     Pill { visible: !!page.detail && !page.isMovie; icon: "folder"; text: page.detail ? words.t("series-facts-on-disk", { count: page.detail.progress.on_disk }) : "" }
                     Pill {
                         id: airing
@@ -995,25 +1004,37 @@ Item {
                         onClicked: page.openSchedule()
                     }
                 }
-                // The progress: the cubes and the count
-                Row {
-                    visible: !!page.detail && (page.card.cubes || page.progressText)
-                    spacing: theme.space(3)
+                // The progress: the cubes and the count, never wider than the head (#783); the
+                // cubes give up room to the words first, then the words elide
+                Item {
+                    id: progressBox
+                    objectName: "series-progress-box"
+                    visible: !!page.detail && !!(page.card.cubes || page.progressText)
+                    width: parent.width
+                    height: Math.max(cubes.height, progressLabel.height)
+                    readonly property bool hasCubes: cubes.codes.length > 0
+                    readonly property real gap: theme.space(3)
+                    readonly property real cubesW: hasCubes ? Math.max(0, Math.min(cubes.implicitWidth, theme.space(70), width - gap - progressLabel.implicitWidth)) : 0
                     EpisodeCubes {
-                        visible: codes.length > 0
+                        id: cubes
+                        visible: progressBox.hasCubes && progressBox.cubesW > theme.space(8)
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, theme.space(70))
+                        width: progressBox.cubesW
                         height: implicitHeight
                         codes: page.card && page.card.cubes ? page.card.cubes : ""
                         cubeSize: theme.space(2.25)
                         maxRows: 2
                     }
                     Label {
+                        id: progressLabel
                         objectName: "series-progress"
                         anchors.verticalCenter: parent.verticalCenter
+                        x: cubes.visible ? progressBox.cubesW + progressBox.gap : 0
+                        width: Math.max(0, Math.min(implicitWidth, progressBox.width - x))
                         text: page.progressText
                         role: "ledger"
                         color: page.inkDim
+                        elide: Text.ElideRight
                     }
                 }
                 // One row of actions, every one the same height: play, the list, get
@@ -1037,13 +1058,20 @@ Item {
                         id: statusButton
                         objectName: "series-status"
                         readonly property bool settable: frame.canSetListStatus(card)
-                        visible: !!card.list_status || settable
+                        visible: settable
                         ghost: true
                         icon: card.list_status ? page.listIcon(card.list_status) : "bookmark"
                         text: card.list_status ? page.listStatus(card.list_status) : words.t("series-add-to-list")
-                        enabled: settable
                         onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) }
                         Tooltip { text: statusButton.settable ? frame.listHome(card) : "" }
+                    }
+                    // With no tracker to change it, the status only reads, at the buttons' height
+                    Pill {
+                        objectName: "fact-list"
+                        visible: !statusButton.settable && !!card.list_status
+                        height: statusButton.implicitHeight
+                        icon: page.listIcon(card.list_status)
+                        text: card.list_status ? page.listStatus(card.list_status) : ""
                     }
                     // The phone's Get episodes: primary when there is nothing to play
                     Button {
@@ -1103,7 +1131,7 @@ Item {
                         icon: "ellipsis"
                         accessibleName: words.t("series-more")
                         onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, page.moreItems()) }
-                        Tooltip { msg: "series-more-tip" }
+                        Tooltip { msg: "series-more" }
                     }
                 }
             }
