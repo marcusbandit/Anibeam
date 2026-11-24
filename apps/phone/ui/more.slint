@@ -1,0 +1,1147 @@
+// More: the settings, in the desktop's model. It opens on an index of sections, each with
+// a line saying how it stands right now, under a search that lands on the setting a word
+// names. A section opens as its own page with a pill back to the index; Back goes there too.
+// Inside, the desktop's flat sections: a heading in the display cut with its line of fact,
+// over one pane of rows closed by hairlines.
+
+import { Theme } from "theme.slint";
+import { AppData, EpisodeVersionLine, Nav } from "data.slint";
+import { PlayerData } from "player.slint";
+import { Button, Field, Figure, ListGroup, ListRow, Lit, PageTitle, SearchField, SectionHead, Segmented, Slider } from "widgets.slint";
+import { RepoData, RepoPanes } from "repos.slint";
+import { Area, Fold } from "fold.slint";
+import { Leaf } from "panes.slint";
+import { NotifyRow } from "notify.slint";
+import { SubtitleRows } from "subtitles.slint";
+import { StatsBody, StatsData } from "stats.slint";
+import { BackupData, DataBody } from "backup.slint";
+import { ActivityBody } from "activity.slint";
+import { MoveData, MoveWaiting } from "listmove.slint";
+import { LookBody, LookData } from "look.slint";
+import { LangData, LangList } from "lang.slint";
+import { Tr } from "tr.slint";
+
+// Questions a page asks over everything else; the window draws them.
+export global Ask {
+    // "Download over mobile data?", before Wi-Fi only goes off.
+    in-out property <bool> mobile;
+    // A poster of this phone's held down: its series and its title. -1 is none.
+    in-out property <int> menu-id: -1;
+    in-out property <string> menu-title;
+    // An episode kept in more than one release: its versions chip lists them to pick from.
+    in-out property <bool> versions-open;
+    in-out property <string> versions-title;
+    in-out property <[EpisodeVersionLine]> versions;
+    // The versions are the other device's, so a pick streams from there.
+    in-out property <bool> versions-remote;
+    // The file the row plays now, marked in the list.
+    in-out property <int> versions-current;
+    // An episode row held down: its code and title, and what marking it needs.
+    in-out property <bool> mark-open;
+    in-out property <string> mark-title;
+    in-out property <float> mark-number;
+    in-out property <int> mark-season;
+    in-out property <bool> mark-watched;
+}
+
+// A setting the search found: the section it lives in, its label, and the section's name.
+export struct SettingHit {
+    section: int,
+    label: string,
+    place: string,
+}
+
+// Where More is: the index or one section, and the search over every setting.
+export global Settings {
+    // The open section, -1 for the index. 0 Accounts, 1 Downloads, 2 Streaming, 3 Search
+    // sites, 4 Connection, 5 Your computer, 6 About, 7 App icon, 8 Stats, 9 Data, 10 Activity, 11 Appearance,
+    // 12 Subtitles, 13 Language.
+    in-out property <int> section: -1;
+    in-out property <string> query;
+    in property <[SettingHit]> hits;
+    // The label of the setting the search landed on; it glows when its section opens.
+    in-out property <string> lit;
+    callback find(string);
+
+    public function open(to: int, label: string) {
+        Settings.lit = label;
+        Settings.section = to;
+    }
+}
+
+// How each section stands right now, for its row in the index and its page's head.
+global Status {
+    out property <string> accounts: AppData.trackers-line == "" ? Tr.t("common-reading") : AppData.trackers-line;
+    out property <bool> accounts-warn: AppData.sign-in-failed;
+    out property <string> downloads: AppData.wifi-only
+        ? (AppData.limit-on ? Tr.s("more-dl-status-wifi-cap", "cap", AppData.limit-label) : Tr.t("more-dl-status-wifi"))
+        : (AppData.limit-on ? Tr.s("more-dl-status-mobile-cap", "cap", AppData.limit-label) : Tr.t("more-dl-status-mobile"));
+    out property <string> streaming: AppData.stream-quality == 0 ? Tr.t("more-stream-status-auto") : AppData.stream-quality == 1 ? Tr.t("more-stream-status-original") : Tr.s("more-stream-status-converted", "quality", AppData.stream-qualities[AppData.stream-quality]);
+    out property <string> sites: RepoData.repos.length == 0 && RepoData.on-count == 0 ? Tr.t("more-sites-status-none") : RepoData.repos.length == 0 ? Tr.n("more-sites-status-on", "sites", RepoData.on-count) : Tr.n2("more-sites-status-on-from", "sites", RepoData.on-count, "repos", RepoData.repos.length);
+    out property <bool> sites-warn: RepoData.repos.length > 0 && RepoData.on-count == 0;
+    out property <string> connection: AppData.checking ? Tr.t("common-checking") : AppData.checks.length == 0 ? Tr.t("more-conn-status-unchecked") : AppData.check-failed == 0 ? Tr.t("more-conn-status-ok") : Tr.n2("more-conn-status-failed", "failed", AppData.check-failed, "total", AppData.checks.length);
+    out property <bool> connection-warn: !AppData.checking && AppData.check-failed > 0;
+    out property <string> computer: AppData.host-result != "" ? AppData.host-result : Tr.t("more-computer-status-none");
+    out property <bool> computer-warn: AppData.host-tone == 1;
+    out property <string> about: AppData.update-new ? Tr.t("more-about-status-update") : AppData.version;
+    // A newer version's line, as About's row says it.
+    out property <string> update-line: Tr.s("more-update-out", "version", AppData.update-version);
+    out property <string> icon: [Tr.t("more-icon-default"), Tr.t("more-icon-dark"), Tr.t("more-icon-line")][AppData.app-icon];
+    out property <string> subtitles: Tr.t("more-subs-status");
+    out property <string> data: BackupData.busy ? Tr.t("common-working") : Tr.t("more-data-status");
+    out property <string> activity: Tr.t("more-activity-status");
+    out property <string> language: LangData.pick < 0 ? Tr.s("more-language-phone", "lang", LangData.phone) : LangData.langs[LangData.pick].name;
+    out property <string> look: [Tr.t("look-dark"), Tr.t("look-light"), Tr.t("more-look-status-phone")][LookData.mode];
+    out property <string> stats: StatsData.loaded && !StatsData.empty ? Tr.ns2("more-stats-status", "count", StatsData.hours.to-float(), "hours", StatsData.hours, "year", StatsData.years[StatsData.year-index]) : Tr.t("more-stats-status-empty");
+}
+
+// The computer's address, editable in place, with its last test underneath. More shows it under
+// its heading; onboarding asks for it on a step of its own (#736).
+export component HostField inherits VerticalLayout {
+    spacing: Theme.unit * 3;
+    Field {
+        text <=> AppData.host-address;
+        figure: true;
+        placeholder: Tr.t("more-computer-placeholder");
+    }
+    if AppData.host-person != "": Text {
+        text: AppData.host-person;
+        color: Theme.text;
+        font-size: Theme.small;
+        wrap: word-wrap;
+    }
+    // Its height is its own row's at the width set outright, so a long result that wraps
+    // onto several lines pushes the buttons down rather than under the card's edge (#935).
+    if AppData.host-result != "": Rectangle {
+        height: result.preferred-height;
+        result := HorizontalLayout {
+            width: parent.width;
+            spacing: Theme.unit * 2;
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: 2.5 * Theme.unit;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: AppData.host-tone == 0 ? Theme.ok : AppData.host-tone == 1 ? Theme.bad : Theme.dim;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: AppData.host-result;
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.gap;
+        alignment: start;
+        Button {
+            text: Tr.t("common-test");
+            small: true;
+            clicked => { AppData.test-host(AppData.host-address); }
+        }
+        Button {
+            text: Tr.t("common-save");
+            small: true;
+            primary: true;
+            clicked => { AppData.save-host(AppData.host-address); }
+        }
+    }
+}
+
+component HostRow inherits Rectangle {
+    height: column.preferred-height;
+    column := VerticalLayout {
+        padding: Theme.pad;
+        spacing: Theme.unit * 3;
+        Text {
+            text: Tr.t("more-set-computer");
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Text {
+            text: Tr.t("more-computer-note");
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HostField { }
+    }
+}
+
+// A newer version is out: its name, and Download, which opens it in the browser (#809).
+component UpdateRow inherits Rectangle {
+    height: Math.max(15 * Theme.unit, label.preferred-height + 7 * Theme.unit);
+    label := Text {
+        x: Theme.pad;
+        width: parent.width - 3 * Theme.pad - get.width;
+        height: parent.height;
+        text: Status.update-line;
+        color: Theme.text;
+        font-family: Theme.strong-face;
+        vertical-alignment: center;
+        wrap: word-wrap;
+    }
+    get := Button {
+        x: parent.width - self.width - Theme.pad;
+        y: (parent.height - self.height) / 2;
+        width: self.min-width;
+        text: Tr.t("more-update-download");
+        small: true;
+        primary: true;
+        clicked => { AppData.open-update(); }
+    }
+    Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// Which builds the update check hears about, as the desktop's Updates choice: Stable or
+// Nightly (#809).
+component TrackRow inherits Rectangle {
+    height: column.preferred-height;
+    column := VerticalLayout {
+        padding: Theme.unit * 3;
+        padding-left: Theme.pad;
+        padding-right: Theme.pad;
+        spacing: Theme.unit * 2;
+        Text {
+            text: Tr.t("more-updates");
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Segmented {
+            options: [Tr.t("more-updates-stable"), Tr.t("more-updates-nightly")];
+            picked: AppData.update-nightly ? 1 : 0;
+            pick(i) => { AppData.set-update-nightly(i == 1); }
+        }
+    }
+    Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// One source the phone searches: its name, its address in the faint ledger cut, Remove.
+component SourceItem inherits Rectangle {
+    in property <string> name;
+    in property <string> url;
+    in property <bool> removable;
+    callback remove();
+    height: column.preferred-height + 7 * Theme.unit;
+    column := VerticalLayout {
+        x: Theme.pad;
+        y: 3.5 * Theme.unit;
+        height: self.preferred-height;
+        width: parent.width - 2 * Theme.pad - (root.removable ? 24 * Theme.unit : 0);
+        spacing: Theme.unit;
+        Text {
+            text: root.name;
+            color: Theme.text;
+            font-size: Theme.large;
+            font-family: Theme.display-face;
+        }
+        Text {
+            text: root.url;
+            color: Theme.faint;
+            font-size: Theme.small - 1px;
+            font-family: Theme.ledger-face;
+            overflow: elide;
+        }
+    }
+    if root.removable: Button {
+        x: parent.width - self.width - Theme.pad;
+        y: (parent.height - self.height) / 2;
+        width: self.min-width;
+        text: Tr.t("common-remove");
+        small: true;
+        danger: true;
+        clicked => { root.remove(); }
+    }
+    Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// A section in the index: its glyph, its name, how it stands, and a chevron.
+component IndexRow inherits Rectangle {
+    in property <image> icon;
+    in property <string> name;
+    in property <string> status;
+    in property <bool> warn;
+    // The dot's colour: a warning by default, the accent for news.
+    in property <color> dot-color: Theme.warn;
+    in property <bool> last;
+    // The section the row opens; split, the open one is lit.
+    in property <int> section: -2;
+    property <bool> active: Fold.split && Math.max(Settings.section, 0) == root.section;
+    callback clicked();
+    height: Math.max(17 * Theme.unit, texts.preferred-height + 7 * Theme.unit);
+    background: touch.pressed || root.active ? Theme.raised : transparent;
+    Image {
+        x: Theme.pad;
+        y: (parent.height - self.height) / 2;
+        width: 5.5 * Theme.unit;
+        height: self.width;
+        source: root.icon;
+        colorize: Theme.dim;
+    }
+    texts := VerticalLayout {
+        x: Theme.pad + 10 * Theme.unit;
+        width: parent.width - self.x - Theme.pad - 9 * Theme.unit;
+        alignment: center;
+        spacing: Theme.unit;
+        Text {
+            text: root.name;
+            color: Theme.text;
+            font-size: Theme.heading;
+            font-family: Theme.strong-face;
+        }
+        HorizontalLayout {
+            spacing: Theme.unit * 1.5;
+            if root.warn: Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: 1.5 * Theme.unit;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: root.dot-color;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.status;
+                color: Theme.dim;
+                font-size: Theme.small;
+                overflow: elide;
+            }
+        }
+    }
+    Image {
+        x: parent.width - Theme.pad - self.width;
+        y: (parent.height - self.height) / 2;
+        width: 5 * Theme.unit;
+        height: self.width;
+        source: @image-url("icons/chevron-right.svg");
+        colorize: Theme.faint;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+    if !root.last: Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// One launcher icon to pick: how it looks on the home screen, its name under it, and a ring
+// round the one showing now.
+component IconChoice inherits Rectangle {
+    in property <image> source;
+    in property <string> name;
+    in property <bool> picked;
+    // The line art: its outline tinted on the phone's own colours rather than a finished picture.
+    in property <bool> line;
+    callback clicked();
+    height: col.preferred-height;
+    col := VerticalLayout {
+        spacing: Theme.unit * 2;
+        HorizontalLayout {
+            alignment: center;
+            ring := Rectangle {
+                width: 20 * Theme.unit;
+                height: self.width;
+                border-radius: self.width * 0.26;
+                border-width: 2px;
+                border-color: root.picked ? Theme.accent : transparent;
+                if root.line: Rectangle {
+                    x: 2 * Theme.unit;
+                    y: self.x;
+                    width: parent.width - 2 * self.x;
+                    height: self.width;
+                    border-radius: self.width * 0.22;
+                    background: AppData.line-ground;
+                    Image {
+                        width: parent.width;
+                        height: parent.height;
+                        source: root.source;
+                        colorize: AppData.line-ink;
+                    }
+                }
+                if !root.line: Image {
+                    x: 2 * Theme.unit;
+                    y: self.x;
+                    width: parent.width - 2 * self.x;
+                    height: self.width;
+                    source: root.source;
+                }
+            }
+        }
+        Text {
+            horizontal-alignment: center;
+            text: root.name;
+            color: root.picked ? Theme.text : Theme.dim;
+            font-size: Theme.small + 0.5px;
+            font-family: root.picked ? Theme.strong-face : "";
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+// One section as its own page: the pill back to the index, the section's name with how it
+// stands, then its settings. `reveal` scrolls a setting the search landed on into view.
+// A number set with a slider: the row says what it is and where it stands, the slider sits
+// under it, and each whole step is passed on.
+component NumberRow inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <string> helper;
+    in property <int> minimum;
+    in property <int> maximum;
+    in property <int> at;
+    in property <bool> last;
+    callback moved(int);
+    ListRow {
+        label: root.label;
+        value: root.value;
+        helper: root.helper;
+        last: true;
+    }
+    Rectangle {
+        height: slider-column.preferred-height;
+        slider-column := VerticalLayout {
+            padding-left: Theme.pad;
+            padding-right: Theme.pad;
+            padding-bottom: Theme.unit * 3;
+            Slider {
+                minimum: root.minimum;
+                maximum: root.maximum;
+                value: root.at;
+                moved(v) => {
+                    if (Math.round(v) != root.at) {
+                        root.moved(Math.round(v));
+                    }
+                }
+            }
+        }
+    }
+    if !root.last: Rectangle {
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+component SectionPage inherits Rectangle {
+    in property <string> title;
+    in property <string> note;
+    public function reveal(y: length) {
+        // Where the setting sits in the scrolled content, a little below the top.
+        flick.content-y = Math.max(Math.min(0px, flick.height - flick.content-height), Math.min(0px, -(y - root.absolute-position.y - flick.content-y - 6 * Theme.unit)));
+    }
+    flick := Flickable {
+        // Only ever as wide as the pane, as a page's Scroll is: a section never scrolls
+        // sideways, and its cards fit the width they are given.
+        content-width: self.width;
+        VerticalLayout {
+            width: flick.width;
+            alignment: start;
+            padding-left: Theme.grout + Theme.unit;
+            padding-right: Theme.grout + Theme.unit;
+            padding-top: Theme.unit * 4;
+            padding-bottom: Theme.pad * 2;
+            spacing: Theme.unit * 4;
+            PageTitle {
+                back: Fold.split ? "" : Tr.t("nav-more");
+                title: root.title;
+                note: root.note;
+                go-back => { Settings.section = -1; }
+            }
+            @children
+        }
+    }
+}
+
+// The index: the search, then the sections, or what the search found while it has words.
+component IndexPage inherits Rectangle {
+    Flickable {
+        VerticalLayout {
+            alignment: start;
+            padding-left: Theme.grout + Theme.unit;
+            padding-right: Theme.grout + Theme.unit;
+            padding-top: Theme.unit * 4;
+            padding-bottom: Theme.pad * 2;
+            spacing: Theme.unit * 4;
+            PageTitle {
+                title: Tr.t("nav-more");
+                note: Tr.t("more-settings");
+            }
+            SearchField {
+                placeholder: Tr.t("more-search");
+                text <=> Settings.query;
+                edited(text) => { Settings.find(text); }
+                accepted => {
+                    if (Settings.hits.length > 0) {
+                        Settings.open(Settings.hits[0].section, Settings.hits[0].label);
+                    }
+                }
+            }
+            if Settings.query == "": ListGroup {
+                IndexRow {
+                    section: 0;
+                    icon: @image-url("icons/user.svg");
+                    name: Tr.t("more-accounts");
+                    status: Status.accounts;
+                    warn: Status.accounts-warn;
+                    clicked => { Settings.open(0, ""); }
+                }
+                IndexRow {
+                    section: 1;
+                    icon: @image-url("icons/download.svg");
+                    name: Tr.t("phone-nav-downloads");
+                    status: Status.downloads;
+                    clicked => { Settings.open(1, ""); }
+                }
+                IndexRow {
+                    section: 2;
+                    icon: @image-url("icons/play.svg");
+                    name: Tr.t("more-streaming");
+                    status: Status.streaming;
+                    clicked => { Settings.open(2, ""); }
+                }
+                IndexRow {
+                    section: 12;
+                    icon: @image-url("icons/captions.svg");
+                    name: Tr.t("more-subtitles");
+                    status: Status.subtitles;
+                    clicked => { Settings.open(12, ""); }
+                }
+                IndexRow {
+                    section: 3;
+                    icon: @image-url("icons/globe.svg");
+                    name: Tr.t("onb-sites-title");
+                    status: Status.sites;
+                    warn: Status.sites-warn;
+                    clicked => { Settings.open(3, ""); }
+                }
+                IndexRow {
+                    section: 4;
+                    icon: @image-url("icons/wifi.svg");
+                    name: Tr.t("more-connection");
+                    status: Status.connection;
+                    warn: Status.connection-warn;
+                    clicked => { Settings.open(4, ""); }
+                }
+                IndexRow {
+                    section: 5;
+                    icon: @image-url("icons/monitor.svg");
+                    name: Tr.t("more-computer");
+                    status: Status.computer;
+                    warn: Status.computer-warn;
+                    clicked => { Settings.open(5, ""); }
+                }
+                IndexRow {
+                    section: 7;
+                    icon: @image-url("icons/palette.svg");
+                    name: Tr.t("more-icon");
+                    status: Status.icon;
+                    clicked => { Settings.open(7, ""); }
+                }
+                IndexRow {
+                    section: 8;
+                    icon: @image-url("icons/chart-pie.svg");
+                    name: Tr.t("more-stats");
+                    status: Status.stats;
+                    clicked => { Settings.open(8, ""); }
+                }
+                IndexRow {
+                    section: 9;
+                    icon: @image-url("icons/archive.svg");
+                    name: Tr.t("more-data");
+                    status: Status.data;
+                    clicked => { Settings.open(9, ""); }
+                }
+                IndexRow {
+                    section: 11;
+                    icon: @image-url("icons/sliders.svg");
+                    name: Tr.t("more-appearance");
+                    status: Status.look;
+                    clicked => { Settings.open(11, ""); }
+                }
+                IndexRow {
+                    section: 13;
+                    icon: @image-url("icons/languages.svg");
+                    name: Tr.t("more-language");
+                    status: Status.language;
+                    clicked => { Settings.open(13, ""); }
+                }
+                IndexRow {
+                    section: 10;
+                    icon: @image-url("icons/scroll-text.svg");
+                    name: Tr.t("more-activity");
+                    status: Status.activity;
+                    clicked => { Settings.open(10, ""); }
+                }
+                IndexRow {
+                    section: 6;
+                    icon: @image-url("icons/info.svg");
+                    name: Tr.t("more-about");
+                    status: Status.about;
+                    warn: AppData.update-new;
+                    dot-color: Theme.accent;
+                    last: true;
+                    clicked => { Settings.open(6, ""); }
+                }
+            }
+            if Settings.query != "": SectionHead {
+                title: Settings.hits.length == 0 ? Tr.t("more-search-none") : Tr.n("more-search-hits", "count", Settings.hits.length);
+                note: Settings.hits.length == 0 ? "" : Tr.t("more-search-tap");
+            }
+            if Settings.query != "" && Settings.hits.length == 0: Text {
+                text: Tr.t("more-search-hint");
+                color: Theme.dim;
+                wrap: word-wrap;
+            }
+            if Settings.query != "" && Settings.hits.length > 0: ListGroup {
+                for hit[i] in Settings.hits: ListRow {
+                    label: hit.label;
+                    helper: hit.place;
+                    tappable: true;
+                    chevron: true;
+                    last: i == Settings.hits.length - 1;
+                    clicked => { Settings.open(hit.section, hit.label); }
+                }
+            }
+        }
+    }
+}
+
+// Folded, the index and a section take turns. Open or half folded, the index stays on the
+// left and the section picked, Accounts to begin with, fills the right.
+export component MorePage inherits Rectangle {
+    property <int> shown: Fold.split ? Math.max(Settings.section, 0) : Settings.section;
+    if !Fold.split && Settings.section == -1: IndexPage { }
+    if Fold.split: Leaf {
+        area: Fold.pick(0.42);
+        IndexPage { }
+    }
+    detail := Leaf {
+        area: Fold.split ? Fold.show(0.42) : { x: 0, y: 0, width: root.width, height: root.height };
+
+    if root.shown == 0: accounts := SectionPage {
+        init => { MoveData.read(); }
+        title: Tr.t("more-accounts");
+        note: Status.accounts;
+        ListGroup {
+            Lit {
+                on: Settings.lit == Tr.t("tracker-anilist");
+                reveal(y) => { accounts.reveal(y); }
+                ListRow {
+                    label: Tr.t("tracker-anilist");
+                    helper: AppData.anilist-state;
+                    tappable: true;
+                    chevron: true;
+                    clicked => { AppData.connect-tracker(0); }
+                }
+            }
+            Lit {
+                on: Settings.lit == Tr.t("tracker-mal");
+                reveal(y) => { accounts.reveal(y); }
+                ListRow {
+                    label: Tr.t("tracker-mal");
+                    helper: AppData.mal-state;
+                    tappable: true;
+                    chevron: true;
+                    last: true;
+                    clicked => { AppData.connect-tracker(1); }
+                }
+            }
+        }
+        Text {
+            text: Tr.t("more-accounts-note");
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        MoveWaiting { }
+    }
+
+    if root.shown == 1: downloads := SectionPage {
+        title: Tr.t("phone-nav-downloads");
+        note: Status.downloads;
+        SectionHead {
+            title: Tr.t("more-storage");
+            note: AppData.limit-on ? Tr.s("more-storage-capped", "cap", AppData.limit-label) : Tr.t("more-storage-no-cap");
+        }
+        HorizontalLayout {
+            spacing: Theme.unit * 8;
+            alignment: start;
+            Figure {
+                value: AppData.used-figure;
+                caption: Tr.t("more-storage-used");
+            }
+            Figure {
+                value: AppData.limit-on ? AppData.limit-label : Tr.t("common-none");
+                caption: Tr.t("more-storage-cap-caption");
+            }
+            if AppData.free-figure != "": Figure {
+                value: AppData.free-figure;
+                caption: Tr.t("more-storage-free");
+            }
+        }
+        Lit {
+            on: Settings.lit == Tr.t("more-set-storage-cap");
+            reveal(y) => { downloads.reveal(y); }
+            corner: Theme.radius;
+            ListGroup {
+                ListRow {
+                    label: Tr.t("more-set-storage-cap");
+                    helper: AppData.limit-on ? Tr.s("more-storage-cap-on", "cap", AppData.limit-label) : Tr.t("more-storage-cap-off");
+                    switch: true;
+                    on: AppData.limit-on;
+                    toggled => { AppData.set-limit(!AppData.limit-on, AppData.limit-gb); }
+                }
+                Rectangle {
+                    height: limit-column.preferred-height;
+                    limit-column := VerticalLayout {
+                        padding-left: Theme.pad;
+                        padding-right: Theme.pad;
+                        padding-bottom: Theme.unit * 2;
+                        Slider {
+                            minimum: 1;
+                            maximum: AppData.disk-gb;
+                            value: AppData.limit-gb;
+                            moved(gb) => { AppData.set-limit(AppData.limit-on, gb); }
+                        }
+                    }
+                }
+            }
+        }
+        SectionHead {
+            title: Tr.t("more-network");
+            note: AppData.wifi-only ? Tr.t("more-network-wifi") : Tr.t("more-network-mobile");
+        }
+        ListGroup {
+            Lit {
+                on: Settings.lit == Tr.t("onb-wifi-only");
+                reveal(y) => { downloads.reveal(y); }
+                ListRow {
+                    label: Tr.t("onb-wifi-only");
+                    helper: AppData.wifi-only ? Tr.t("more-wifi-on") : Tr.t("onb-wifi-off");
+                    switch: true;
+                    on: AppData.wifi-only;
+                    last: true;
+                    toggled => {
+                        if (AppData.wifi-only) {
+                            Ask.mobile = true;
+                        } else {
+                            AppData.set-wifi-only(true);
+                        }
+                    }
+                }
+            }
+        }
+        SectionHead {
+            title: Tr.t("more-set-rolling");
+            note: AppData.roll-big ? Tr.n("more-roll-note-over", "count", AppData.roll-over) : Tr.t("more-roll-note-asked");
+        }
+        Lit {
+            on: Settings.lit == Tr.t("more-set-rolling");
+            reveal(y) => { downloads.reveal(y); }
+            corner: Theme.radius;
+            ListGroup {
+                ListRow {
+                    label: Tr.t("more-roll-big");
+                    helper: Tr.n("more-roll-big-help", "count", AppData.roll-over);
+                    switch: true;
+                    on: AppData.roll-big;
+                    toggled => { AppData.set-roll(!AppData.roll-big, AppData.roll-ahead, AppData.roll-over, AppData.roll-delete, AppData.roll-keep); }
+                }
+                NumberRow {
+                    label: Tr.t("more-roll-ahead");
+                    value: Tr.n("common-episodes", "count", AppData.roll-ahead);
+                    helper: Tr.t("more-roll-ahead-help");
+                    minimum: 1;
+                    maximum: 52;
+                    at: AppData.roll-ahead;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, n, AppData.roll-over, AppData.roll-delete, AppData.roll-keep); }
+                }
+                NumberRow {
+                    label: Tr.t("more-roll-over");
+                    value: Tr.n("common-episodes", "count", AppData.roll-over);
+                    helper: Tr.t("more-roll-over-help");
+                    minimum: 12;
+                    maximum: 200;
+                    at: AppData.roll-over;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, n, AppData.roll-delete, AppData.roll-keep); }
+                }
+                VerticalLayout {
+                    padding: Theme.unit * 3;
+                    padding-left: Theme.pad;
+                    padding-right: Theme.pad;
+                    spacing: Theme.unit * 2;
+                    Text {
+                        text: Tr.t("more-roll-watched");
+                        color: Theme.text;
+                        font-family: Theme.strong-face;
+                    }
+                    Segmented {
+                        options: [Tr.t("more-roll-delete"), Tr.t("more-roll-keep-all")];
+                        picked: AppData.roll-delete ? 0 : 1;
+                        pick(i) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, AppData.roll-over, i == 0, AppData.roll-keep); }
+                    }
+                    Text {
+                        text: AppData.roll-delete ? Tr.t("more-roll-delete-help") : Tr.t("more-roll-keep-all-help");
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                }
+                if AppData.roll-delete: Rectangle {
+                    height: 1px;
+                    background: Theme.line;
+                }
+                if AppData.roll-delete: NumberRow {
+                    label: Tr.t("more-roll-behind");
+                    value: Tr.n("common-episodes", "count", AppData.roll-keep);
+                    helper: Tr.n2("more-roll-behind-help", "count", AppData.roll-keep, "episode", AppData.roll-keep + 2);
+                    minimum: 0;
+                    maximum: 12;
+                    at: AppData.roll-keep;
+                    last: true;
+                    moved(n) => { AppData.set-roll(AppData.roll-big, AppData.roll-ahead, AppData.roll-over, AppData.roll-delete, n); }
+                }
+            }
+        }
+        SectionHead {
+            title: Tr.t("onb-notify-title");
+            note: AppData.notify == 0 ? Tr.t("common-on") : Tr.t("common-off");
+        }
+        ListGroup {
+            Lit {
+                on: Settings.lit == Tr.t("onb-notify-title");
+                reveal(y) => { downloads.reveal(y); }
+                NotifyRow {
+                    last: true;
+                    in-more: true;
+                }
+            }
+        }
+    }
+
+    if root.shown == 2: streaming := SectionPage {
+        title: Tr.t("more-streaming");
+        note: Status.streaming;
+        Lit {
+            on: Settings.lit == Tr.t("more-set-stream-quality");
+            reveal(y) => { streaming.reveal(y); }
+            corner: Theme.radius;
+            ListGroup {
+                VerticalLayout {
+                    padding: Theme.unit * 3;
+                    spacing: Theme.unit * 2;
+                    Text {
+                        text: Tr.t("more-stream-question");
+                        color: Theme.text;
+                        font-family: Theme.strong-face;
+                        wrap: word-wrap;
+                    }
+                    Segmented {
+                        options: AppData.stream-qualities;
+                        picked: AppData.stream-quality;
+                        pick(i) => { AppData.set-stream-quality(i); }
+                    }
+                    Text {
+                        text: AppData.stream-quality == 0
+                            ? Tr.t("more-stream-auto-note")
+                            : AppData.stream-quality == 1
+                                ? Tr.t("more-stream-original-note")
+                                : Tr.s("more-stream-converted-note", "quality", AppData.stream-qualities[AppData.stream-quality]);
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+    }
+
+    if root.shown == 3: sites := SectionPage {
+        title: Tr.t("onb-sites-title");
+        note: Status.sites;
+        RepoPanes {
+            lit: Settings.lit;
+            reveal(y) => { sites.reveal(y); }
+        }
+        // Feeds saved on this phone before repos existed; a new phone has none.
+        if AppData.sources.length > 0: SectionHead {
+            title: Tr.t("more-set-feeds");
+            note: Tr.t("more-feeds-note");
+        }
+        if AppData.sources.length > 0: Lit {
+            on: Settings.lit == Tr.t("more-set-feeds");
+            reveal(y) => { sites.reveal(y); }
+            corner: Theme.radius;
+            ListGroup {
+                for source[i] in AppData.sources: SourceItem {
+                    name: source.name;
+                    url: source.url;
+                    removable: true;
+                    remove => { AppData.remove-source(i); }
+                }
+            }
+        }
+    }
+
+    if root.shown == 4: connection := SectionPage {
+        title: Tr.t("more-connection");
+        note: Status.connection;
+        Lit {
+            on: Settings.lit == Tr.t("more-set-check");
+            reveal(y) => { connection.reveal(y); }
+            corner: Theme.radius;
+            ListGroup {
+                ListRow {
+                    label: AppData.checking ? Tr.t("common-checking") : Tr.t("more-set-check");
+                    helper: AppData.check-summary != "" ? AppData.check-summary : Tr.t("more-check-note");
+                    tappable: !AppData.checking;
+                    chevron: !AppData.checking;
+                    last: AppData.checks.length == 0;
+                    clicked => { AppData.run-check(); }
+                }
+                for c[i] in AppData.checks: Rectangle {
+                    height: check-row.preferred-height + 5 * Theme.unit;
+                    check-row := HorizontalLayout {
+                        x: Theme.pad;
+                        y: 2.5 * Theme.unit;
+                        width: parent.width - 2 * Theme.pad;
+                        spacing: Theme.unit * 3;
+                        Rectangle {
+                            y: Theme.unit * 1.5;
+                            width: 2.5 * Theme.unit;
+                            height: self.width;
+                            border-radius: self.width / 2;
+                            background: c.ok ? Theme.ok : Theme.bad;
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: Theme.unit / 2;
+                            Text {
+                                text: c.name;
+                                color: Theme.text;
+                                font-family: Theme.strong-face;
+                            }
+                            Text {
+                                text: c.detail;
+                                color: Theme.dim;
+                                font-size: Theme.small - 0.5px;
+                                font-family: Theme.ledger-face;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                    Rectangle {
+                        x: Theme.pad;
+                        y: parent.height - 1px;
+                        width: parent.width - 2 * Theme.pad;
+                        height: 1px;
+                        background: Theme.line;
+                    }
+                }
+                if AppData.checks.length > 0 && !AppData.checking: Rectangle {
+                    height: copy-row.preferred-height + 6 * Theme.unit;
+                    copy-row := HorizontalLayout {
+                        x: Theme.pad;
+                        y: 3 * Theme.unit;
+                        alignment: start;
+                        Button {
+                            text: Tr.t("more-check-copy");
+                            small: true;
+                            clicked => { AppData.copy-check(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.shown == 5: computer := SectionPage {
+        title: Tr.t("more-computer");
+        // The card says how the last test went, with its dot; the head says it only before
+        // there is one (#935).
+        note: AppData.host-result != "" ? "" : Status.computer;
+        Lit {
+            on: Settings.lit == Tr.t("more-set-computer");
+            reveal(y) => { computer.reveal(y); }
+            corner: Theme.radius;
+            ListGroup {
+                HostRow { }
+            }
+        }
+    }
+
+    if root.shown == 12: subtitles := SectionPage {
+        title: Tr.t("more-subtitles");
+        note: Status.subtitles;
+        SubtitleRows { }
+        Text {
+            text: Tr.t("more-subs-note");
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+    }
+
+    if root.shown == 7: icons := SectionPage {
+        init => { AppData.read-app-icon(); }
+        title: Tr.t("more-icon");
+        note: Status.icon;
+        Lit {
+            on: Settings.lit == Tr.t("more-icon");
+            reveal(y) => { icons.reveal(y); }
+            corner: Theme.radius;
+            ListGroup {
+                VerticalLayout {
+                    padding: Theme.unit * 3;
+                    spacing: Theme.unit * 3;
+                    Text {
+                        text: Tr.t("more-icon-note");
+                        color: Theme.text;
+                        font-family: Theme.strong-face;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.unit * 2;
+                        IconChoice {
+                            source: @image-url("icons/app.png");
+                            name: Tr.t("more-icon-default");
+                            picked: AppData.app-icon == 0;
+                            clicked => { AppData.set-app-icon(0); }
+                        }
+                        IconChoice {
+                            source: @image-url("icons/app-dark.png");
+                            name: Tr.t("more-icon-dark");
+                            picked: AppData.app-icon == 1;
+                            clicked => { AppData.set-app-icon(1); }
+                        }
+                        IconChoice {
+                            source: @image-url("icons/app-line.png");
+                            name: Tr.t("more-icon-line");
+                            line: true;
+                            picked: AppData.app-icon == 2;
+                            clicked => { AppData.set-app-icon(2); }
+                        }
+                    }
+                    Text {
+                        text: AppData.app-icon == 2
+                            ? Tr.t("more-icon-line-note")
+                            : Tr.t("more-icon-moved-note");
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+    }
+
+    if root.shown == 8: stats := SectionPage {
+        title: Tr.t("more-stats");
+        note: StatsData.loaded ? StatsData.year-line : Tr.t("more-stats-status-empty");
+        StatsBody { }
+    }
+
+    if root.shown == 9: data := SectionPage {
+        title: Tr.t("more-data");
+        note: Status.data;
+        DataBody { }
+    }
+
+    if root.shown == 10: activity := SectionPage {
+        title: Tr.t("more-activity");
+        note: Status.activity;
+        ActivityBody { }
+    }
+
+    if root.shown == 11: look := SectionPage {
+        title: Tr.t("more-appearance");
+        note: Status.look;
+        LookBody { }
+    }
+
+    if root.shown == 13: language := SectionPage {
+        title: Tr.t("more-language");
+        note: Status.language;
+        LangList { }
+    }
+
+    if root.shown == 6: about := SectionPage {
+        // A newer version counts as seen only while About is on screen: More stays alive
+        // behind the other tabs, with this page open in it
+        property <string> offered: AppData.update-version;
+        // Nor while What's new, onboarding or the player covers it
+        property <bool> on-screen: Nav.page == 3 && AppData.foreground
+            && !AppData.notes-open && !AppData.onboarding && !PlayerData.open;
+        init => { AppData.mark-update-seen(); }
+        changed offered => {
+            if (self.on-screen) {
+                AppData.mark-update-seen();
+            }
+        }
+        changed on-screen => {
+            if (self.on-screen) {
+                AppData.mark-update-seen();
+            }
+        }
+        title: Tr.t("more-about");
+        note: AppData.version;
+        ListGroup {
+            if AppData.update-new: UpdateRow { }
+            if AppData.update-offered: Lit {
+                on: Settings.lit == Tr.t("more-updates");
+                reveal(y) => { about.reveal(y); }
+                TrackRow { }
+            }
+            Lit {
+                on: Settings.lit == Tr.t("more-set-whats-new");
+                reveal(y) => { about.reveal(y); }
+                ListRow {
+                    label: Tr.t("more-set-whats-new");
+                    tappable: true;
+                    chevron: true;
+                    clicked => { AppData.open-notes(); }
+                }
+            }
+            Lit {
+                on: Settings.lit == Tr.t("more-set-onboarding");
+                reveal(y) => { about.reveal(y); }
+                ListRow {
+                    label: Tr.t("more-set-onboarding");
+                    tappable: true;
+                    chevron: true;
+                    clicked => { AppData.restart-onboarding(); }
+                }
+            }
+            Lit {
+                on: Settings.lit == AppData.ratings-label;
+                reveal(y) => { about.reveal(y); }
+                ListRow {
+                    label: AppData.ratings-label;
+                    helper: AppData.ratings-credit;
+                    last: true;
+                }
+            }
+        }
+    }
+    }
+}

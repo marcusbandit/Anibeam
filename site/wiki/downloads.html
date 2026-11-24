@@ -1,68 +1,120 @@
 <section>
-  <h2 id="how">What downloading needs</h2>
+  <h2 id="how">What you need to download episodes</h2>
+  <p>Downloading inside Anibeam uses two pieces working together:</p>
   <ul>
-    <li>At least one source to search, from a source list you add. <a href="../sources/">Sources</a> covers it.</li>
-    <li>A torrent client, the qBittorrent that does the downloading. Anibeam brings its own, or uses one you already run.</li>
+    <li><b>At least one download source:</b> Tells Anibeam where to search for episodes. See <a href="../sources/">Download sources</a> if you haven't added a source list or feed yet.</li>
+    <li><b>A torrent client:</b> The background engine that downloads the episode files. Anibeam already includes a built-in qBittorrent client, so most people don't need to install or configure anything extra.</li>
   </ul>
+  <div class="callout callout-tip">
+    <span class="callout-title">Already have a magnet link?</span>
+    <p>You can paste any <code>magnet:</code> link straight into the search box on the <b>Downloads</b> page (or click magnet links in your browser) to download straight into the right show folder. See <a href="#magnets">Paste or open a magnet link</a> below.</p>
+  </div>
 </section>
 
 <section>
-  <h2 id="client">Pick a torrent client</h2>
-  <ol class="steps">
-    <li>Open <span class="where"><b>Settings</b><b>Downloads</b></span>.</li>
-    <li>Under <b class="ui">Torrent client</b>, set <b class="ui">Which client</b>.</li>
-  </ol>
-  <ul>
-    <li><b class="ui">Built-in</b> runs a qBittorrent of Anibeam's own, quietly in the background. Nothing to install and nothing to fill in. Only this computer can reach it. It keeps going after Anibeam quits, so new episodes still arrive.</li>
-    <li><b class="ui">My own</b> uses a qBittorrent you run yourself, on this computer, another one or a seedbox.</li>
-    <li><b class="ui">Pick for me</b> uses a qBittorrent that answers at the address you give, and runs the built-in one when none does.</li>
-  </ul>
+  <h2 id="client">Built-in client vs. your own qBittorrent</h2>
+  <p>You can choose how downloads run under <span class="where"><b>Settings</b><b>Downloads</b></span> &gt; <b>Torrent client</b> &gt; <b>Which client</b>:</p>
+  <div class="wiki-grid">
+    <div class="wiki-box">
+      <span class="wiki-box-tag">Easiest</span>
+      <h3>Built-in</h3>
+      <p>Anibeam runs its own private qBittorrent quietly in the background. Nothing to install, no passwords to type, and episodes save straight into your library folder.</p>
+      <p>It keeps running after you close Anibeam so subscribed shows still finish downloading.</p>
+    </div>
+    <div class="wiki-box">
+      <h3>My own</h3>
+      <p>Connects to a qBittorrent you already manage yourself, whether it runs on this computer, a home server, or a remote seedbox.</p>
+      <p>You can save several clients and switch between them right from the Downloads page.</p>
+    </div>
+  </div>
+  <p>There is also an <b class="ui">Auto</b> option: it connects to your own qBittorrent if one is already answering at the configured address, and seamlessly falls back to the built-in client otherwise.</p>
 </section>
 
 <section>
-  <h2 id="own-client">Use your own qBittorrent</h2>
+  <h2 id="own-client">Connect your own qBittorrent</h2>
+  <p>If you already use qBittorrent and want Anibeam to send downloads there instead of using the built-in client:</p>
   <ol class="steps">
-    <li>In qBittorrent, open <span class="where"><b>Tools</b><b>Options</b><b>Web UI</b></span>.</li>
-    <li>Tick <b class="ui">Web User Interface (Remote control)</b>, and set a username and a password.</li>
-    <li>In Anibeam, set <b class="ui">Which client</b> to <b class="ui">My own</b>.</li>
-    <li>Fill in <b class="ui">Address</b> with the Web UI's address, such as <code>http://localhost:8080</code>, then <b class="ui">Username</b> and <b class="ui">Password</b>.</li>
-    <li>Press <b class="ui">Save and test</b>. It says which qBittorrent version answered.</li>
+    <li>Open qBittorrent and go to <span class="where"><b>Tools</b><b>Options</b><b>Web UI</b></span>.</li>
+    <li>Check <b class="ui">Web User Interface (Remote control)</b>, note the port (usually <code>8080</code>), and set a username and password.</li>
+    <li>In Anibeam, open <span class="where"><b>Settings</b><b>Downloads</b></span> and set <b>Which client</b> to <b class="ui">My own</b>.</li>
+    <li>Enter the <b>Address</b> (for example, <code>http://localhost:8080</code>), along with your <b>Username</b> and <b>Password</b>.</li>
+    <li>Click <b class="ui">Save and test</b>. When the connection works, Anibeam displays the qBittorrent version that answered.</li>
   </ol>
-  <p>The password goes in your system's password store. <b class="ui">Saved clients</b> keeps more than one, such as a seedbox and the one on this computer; the client chip on the Downloads page switches between them.</p>
+  <p>Your password is stored in your system's password manager. If you switch between multiple setups (such as a local client and a remote server), use <b>Saved clients</b> to store more than one and switch between them from the client chip at the top of the <b>Downloads</b> page.</p>
 </section>
 
 <section>
-  <h2 id="where">Where downloads go</h2>
-  <p>The built-in client saves into your library folder, each show in a folder of its own, so a finished episode shows up in the library by itself. A show already in the library downloads into its own folder, and films go into a <code>Movies</code> folder.</p>
+  <h2 id="where">Where downloaded episodes are saved</h2>
+  <p><b>With the built-in client:</b> Anibeam automatically saves episodes straight into your library folder, putting each show in its own subfolder (or into the show's existing folder if it is already in your library) and movies into a <code>Movies</code> folder. As soon as an episode finishes, it pops into your library on its own.</p>
+  <p>Want to save new downloads somewhere else?</p>
   <ol class="steps">
-    <li>Open <span class="where"><b>Settings</b><b>Downloads</b></span>. <b class="ui">Save to</b> shows the folder in use.</li>
-    <li>Press <b class="ui">Choose folder</b> and pick another one. New downloads go there at once.</li>
-    <li><b class="ui">Reset</b> goes back to the library folder.</li>
+    <li>Open <span class="where"><b>Settings</b><b>Downloads</b></span> and look at the <b>Save to</b> row.</li>
+    <li>Click <b class="ui">Choose folder</b> and pick your preferred folder. New downloads use it right away.</li>
+    <li>Click <b class="ui">Reset</b> anytime to go back to your library folder.</li>
   </ol>
-  <p>Your own qBittorrent saves where it is told to. Make sure that folder is inside a folder Anibeam reads, or add it in <span class="where"><b>Settings</b><b>Library</b></span>. An episode saved anywhere else downloads fine and never reaches the library.</p>
+  <div class="callout callout-warn">
+    <span class="callout-title">Using your own qBittorrent?</span>
+    <p>Your own qBittorrent saves files wherever its own settings tell it to. Make sure that download folder is added under <span class="where"><b>Settings</b><b>Library</b></span> (or is inside a folder already listed there), otherwise finished episodes will never show up in your Anibeam library.</p>
+  </div>
 </section>
 
 <section>
-  <h2 id="get">Get episodes of a show</h2>
+  <h2 id="get">Download episodes of a show</h2>
+  <p>There are three ways to grab episodes depending on how you like to browse:</p>
+  <h3>Option 1: From any show's page (recommended)</h3>
   <ol class="steps">
-    <li>Open the show, from the Library, Airing or a search, and press <b class="ui">Get episodes</b>.</li>
-    <li>Pick the episodes you want. Episodes already on disk are left out unless you turn on replacing them.</li>
-    <li>Press the button that counts them, such as <b class="ui">Get 12 episodes</b>.</li>
+    <li>Open any show from <b>Library</b>, <b>Airing</b>, or <b>Home</b> recommendations and click <b class="ui">Get episodes</b>.</li>
+    <li>Anibeam searches your sources and groups results cleanly by release group and episode cubes. Pick a row or individual episodes you want. Episodes you already have on disk are automatically skipped unless you turn on <b class="ui">Replace current episodes</b>.</li>
+    <li>Click the download button (such as <b class="ui">Get 12 episodes</b>).</li>
   </ol>
-  <p>To find a release by name instead, open the Downloads page and type into <b class="ui">Search for a show, or a release name</b>. Pick the show, then press <b class="ui">Show releases</b> next to a source under <b class="ui">Found on</b> to see what it found. Tick the releases you want and press <b class="ui">Download</b>.</p>
+  <div class="callout callout-tip">
+    <span class="callout-title">Watch while the rest downloads</span>
+    <p>Turn on <b class="ui">Download in order</b> (or <b class="ui">Download in episode order</b>) so Episode 1 finishes first instead of downloading random pieces across the whole season.</p>
+  </div>
+  <h3>Option 2: Search directly on the Downloads page</h3>
+  <p>Open <b>Downloads</b> and type into the search box at the top. Click a show from the suggestions to open the episode grid, or press <kbd>Enter</kbd> to search raw release names across your enabled sources. From the release table, filter by release group, quality, or keyword (prefix a word with <code>-</code> to exclude it), check the releases you want, and click <b class="ui">Download</b>.</p>
+  <h3>Option 3: Paste a magnet link</h3>
+  <p>If you already copied a <code>magnet:</code> link from your browser, paste it directly into the search box on the <b>Downloads</b> page instead of searching. See <a href="#magnets">Paste or open a magnet link</a> right below.</p>
+</section>
+
+<section>
+  <h2 id="magnets">Paste or open a magnet link</h2>
+  <p>Already have a torrent magnet link from your browser? You do not need to open a separate torrent app or sort the files by hand:</p>
+  <ol class="steps">
+    <li>Copy any <code>magnet:</code> link from your browser.</li>
+    <li>Open the <b>Downloads</b> page and paste it straight into the search box at the top.</li>
+    <li>Anibeam reads the torrent name and offers matching shows from your library and AniList, plus <b class="ui">Download as a film</b> at the bottom.</li>
+    <li>Click the right match (or press <kbd>Enter</kbd>) to download it directly into that show's folder (or your <code>Movies</code> folder).</li>
+  </ol>
+  <div class="callout callout-tip">
+    <span class="callout-title">One-click magnet links from your browser (Linux)</span>
+    <p>Under <span class="where"><b>Settings</b><b>Downloads</b></span> &gt; <b>Magnet links</b>, click <b class="ui">Open them in Anibeam</b>. From then on, clicking any magnet link in your browser jumps straight into Anibeam's Downloads picker (this even works before you add any download sources).</p>
+  </div>
+  <p>Pasted magnets always download the whole torrent you picked (Rolling downloads is skipped for them). If a magnet link turns out to contain something other than video files, Anibeam lets you know and moves the download out to your regular system <code>Downloads</code> folder so it does not clutter your anime library.</p>
 </section>
 
 <section>
   <h2 id="follow">Follow a show as it airs</h2>
+  <p>For seasonal anime that release a new episode every week, you can subscribe once and let Anibeam grab every new episode automatically:</p>
   <ol class="steps">
-    <li>On <b class="ui">Get episodes</b>, turn on <b class="ui">Subscribe for new episodes</b>, or press <b class="ui">Subscribe</b> after a search on Downloads.</li>
-    <li>Each new episode downloads as it comes out, into the same folder.</li>
+    <li>Open <b class="ui">Get episodes</b> on an airing show, pick your preferred release group, and turn on <b class="ui">Subscribe for new episodes</b> (or click <b class="ui">Subscribe</b> after narrowing a search on the <b>Downloads</b> page).</li>
+    <li>Each week when a matching episode comes out, Anibeam downloads it straight into that show's folder.</li>
   </ol>
-  <p><b class="ui">Following</b> on the Downloads page lists every show you follow. <b class="ui">Unsubscribe</b> stops one. A show is dropped by itself 16 days after its last episode airs, while <b class="ui">Unsubscribe from finished shows</b> is on.</p>
+  <p>View and manage all of your active subscriptions under the <b>Following</b> tab on the <b>Downloads</b> page, and click <b class="ui">Unsubscribe</b> anytime to stop following a show. When <b class="ui">Unsubscribe from finished shows</b> is enabled in <span class="where"><b>Settings</b><b>Downloads</b></span>, Anibeam automatically tidies up a subscription 16 days after the season's finale airs.</p>
 </section>
 
 <section>
-  <h2 id="long">Long shows and disk space</h2>
-  <p>A long show downloads a few episodes at a time, and each one you finish starts the next. Set it under <b class="ui">Keep the next few ready</b> in <span class="where"><b>Settings</b><b>Downloads</b></span>: how many episodes stay ahead, what counts as long, and whether watched episodes are deleted or kept.</p>
-  <p><b class="ui">Gaps in your library</b> on the Downloads page lists aired episodes that are not on disk. <b class="ui">Downloaded</b> lists what is on disk, the biggest first, with <b class="ui">Delete watched</b> to free space. Deleted files go to the trash.</p>
+  <h2 id="long">Save disk space with Rolling downloads</h2>
+  <p>Downloading a 100-episode or 500-episode anime all at once can easily eat up hundreds of gigabytes. <b>Rolling downloads</b> solves that by keeping just a small buffer of upcoming episodes on disk:</p>
+  <ul>
+    <li>Instead of downloading the whole show upfront, Anibeam downloads a set number of episodes ahead of where you are (12 episodes by default).</li>
+    <li>Each time you finish watching an episode, Anibeam automatically starts downloading the next one in line.</li>
+    <li>If you turn on automatic cleanup, older watched episodes are moved to your trash once you move past them.</li>
+  </ul>
+  <p>Configure your defaults under <span class="where"><b>Settings</b><b>Downloads</b></span> &gt; <b>Rolling downloads</b>: toggle <b class="ui">Auto-enable for long shows</b>, choose how many <b>Episodes ahead</b> to keep ready, pick how long a show has to be before rolling kicks in, and choose whether watched episodes are deleted or kept.</p>
+  <h3>Other ways to tidy up disk space</h3>
+  <ul>
+    <li><b>Gaps in your library</b> (on the <b>Downloads</b> page): Shows any aired episodes missing from shows you already have, so you can fill in gaps with a click.</li>
+    <li><b>Downloaded</b> (on the <b>Downloads</b> page): Lists every show on disk sorted biggest first, with a <b class="ui">Delete watched</b> menu to clear watched episodes or completely watched finished shows in one go. Everything deleted through Anibeam goes to your system trash so you can recover it if you change your mind.</li>
+  </ul>
 </section>
