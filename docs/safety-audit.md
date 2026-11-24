@@ -42,7 +42,7 @@ Every hardcoded external host in non-test source code belongs to one of these ca
 
 | Purpose | Host(s) | Where to look |
 | --- | --- | --- |
-| Metadata, posters, ratings, skip times | `graphql.anilist.co`, `api.tvmaze.com`, `api.jikan.moe`, `api.aniskip.com`, `datasets.imdbws.com`, `query.wikidata.org` | `net/src/anilist.rs`, `net/src/tvmaze.rs`, `net/src/jikan.rs`, `net/src/aniskip.rs`, `net/src/imdb.rs`, `net/src/wikidata.rs` |
+| Metadata, posters, ratings, skip times | `graphql.anilist.co`, `api.tvmaze.com`, `api.jikan.moe`, `api.aniskip.com`, `datasets.imdbws.com`, `query.wikidata.org`, `thetvdb.com` (series and artwork pages, for clear logo languages), `artworks.thetvdb.com` (the logo files) | `net/src/anilist.rs`, `net/src/tvmaze.rs`, `net/src/jikan.rs`, `net/src/aniskip.rs`, `net/src/imdb.rs`, `net/src/wikidata.rs`, `net/src/tvdb.rs`, `net/src/images.rs` |
 | Tracker OAuth & list sync (opt-in) | `anilist.co`, `myanimelist.net`, `api.myanimelist.net` | `trackers/src/oauth.rs`, `trackers/src/accounts.rs`, `trackers/src/cache.rs`, `trackers/src/writes.rs` |
 | Update checks | `api.github.com`, `aur.archlinux.org`, `anibeam.app` | `core/src/update.rs` |
 | Watch together relay (only when creating/joining a room) | `rooms.anibeam.app` (default `ROOM_RELAY`, configurable to self-host) | Default in `contract/src/records.rs`; relay server code in `relay/worker/src/lib.rs` (deletes room Durable Object storage on close) and `apps/relay/src/`; client crypto in `playback/src/room/seal.rs` (X25519 + HKDF-SHA256 + XChaCha20-Poly1305 for peer payloads; note comment on unauthenticated relay-relayed member keys). |
