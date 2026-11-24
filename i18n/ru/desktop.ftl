@@ -3284,6 +3284,10 @@ settings-library-folder-added = Папка добавлена, сканиров�
 settings-appearance-language = Язык
 settings-appearance-title-language = Показывать названия на
 settings-appearance-series-logos = Показывать логотипы вместо названий
+settings-appearance-logo-language = Logo language
+settings-appearance-logo-language-titles = Same as titles
+settings-appearance-logo-language-english = English
+settings-appearance-logo-language-japanese = Japanese
 settings-appearance-title-language-english = Английский
 # $language is the system's language in its own name ("Dansk")
 settings-appearance-language-system = Как в системе ({ $language })

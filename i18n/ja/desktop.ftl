@@ -2488,6 +2488,10 @@ settings-library-folder-added = フォルダを追加しました。スキャン
 settings-appearance-language = 言語
 settings-appearance-title-language = タイトルの表示
 settings-appearance-series-logos = タイトルの代わりにロゴを表示
+settings-appearance-logo-language = Logo language
+settings-appearance-logo-language-titles = Same as titles
+settings-appearance-logo-language-english = English
+settings-appearance-logo-language-japanese = Japanese
 settings-appearance-title-language-english = 英語
 # $language is the system's language in its own name ("Dansk")
 settings-appearance-language-system = システムと同じ（{ $language }）
