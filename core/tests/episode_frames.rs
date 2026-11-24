@@ -76,17 +76,16 @@ fn the_next_episode_with_no_still_gets_a_frame_from_its_own_file() {
     assert!(again.episodes.iter().filter(|e| e.frame.is_some()).count() == 1);
 }
 
+/// The decision itself, off a real read: Continue, and so the frame, takes
+/// only a series Home's `startedOf` would put there. The detail's next up is
+/// pinned to its one file, so the started test is all that decides.
 #[test]
-fn a_series_never_started_takes_no_frame() {
+fn only_a_series_home_puts_in_continue_takes_a_frame() {
+    use anibeam_core::library::frames::continue_episode;
     let (dir, core, _c) = common::open_core();
     let lib = dir.path().join("lib");
     let show = lib.join("Show");
     std::fs::create_dir_all(&show).unwrap();
-    let first = show.join("01.mkv");
-    if !clip(&first) {
-        eprintln!("skipped: no ffmpeg");
-        return;
-    }
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(&core, &lib.to_string_lossy());
     let series = fixtures::insert_series(
@@ -96,9 +95,40 @@ fn a_series_never_started_takes_no_frame() {
         &show.to_string_lossy(),
         "Show",
     );
-    fixtures::insert_episode_file(&core, series, &first.to_string_lossy(), 1.0, now);
-    let d = detail(&core, series);
-    assert!(d.episodes.iter().all(|e| e.frame.is_none()));
-    let frames = std::path::Path::new(&dir.path().join("cache")).join("frames");
-    assert!(!frames.exists() || std::fs::read_dir(&frames).unwrap().next().is_none());
+    let file = fixtures::insert_episode_file(
+        &core,
+        series,
+        &show.join("01.mkv").to_string_lossy(),
+        1.0,
+        now,
+    );
+    let mut d = detail(&core, series);
+    d.next_up = Some(file);
+    let with = |status: Option<ListStatus>, viewed: bool, watched: Option<u32>| {
+        let mut d = d.clone();
+        d.card.list_status = status;
+        d.card.last_viewed_at = viewed.then(std::time::SystemTime::now);
+        d.card.watched = watched;
+        continue_episode(&d)
+    };
+
+    // Never started: no view here, nothing seen on the tracker
+    assert_eq!(with(None, false, None), None);
+    assert_eq!(with(Some(ListStatus::Watching), false, Some(0)), None);
+    // Played here
+    assert_eq!(with(None, true, None), Some(0));
+    assert_eq!(with(Some(ListStatus::Planning), true, None), Some(0));
+    // Seen on the tracker counts only while watching or rewatching there
+    assert_eq!(with(Some(ListStatus::Watching), false, Some(3)), Some(0));
+    assert_eq!(with(Some(ListStatus::Repeating), false, Some(3)), Some(0));
+    assert_eq!(with(Some(ListStatus::Planning), false, Some(3)), None);
+    assert_eq!(with(None, false, Some(3)), None);
+    // Completed, dropped and paused never, even played here
+    for status in [
+        ListStatus::Completed,
+        ListStatus::Dropped,
+        ListStatus::Paused,
+    ] {
+        assert_eq!(with(Some(status), true, Some(3)), None, "{status:?}");
+    }
 }
