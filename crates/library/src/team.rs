@@ -4,6 +4,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use crate::frames::Frames;
 use crate::reads::KeptLoad;
 use crate::scan::{self, LibraryState, ScanScope};
 use crate::watcher::{self, Trigger, Watcher};
@@ -54,11 +55,15 @@ pub struct Library {
     /// What is still downloading, for the cards, and the torrents a delete
     /// takes with it: the downloads, through the library's own trait.
     pub incoming: Above<dyn Incoming>,
+    /// The episode frames Continue shows where an episode has no still
+    /// (#1469), taken one at a time off the reads that find them missing.
+    pub frames: Arc<Frames>,
 }
 
 impl Library {
     pub fn new(services: Arc<Services>, net: Arc<Net>, closed: Arc<AtomicBool>) -> Library {
         Library {
+            frames: Frames::new(services.clone(), closed.clone()),
             services,
             net,
             state: LibraryState::default(),
