@@ -1151,15 +1151,25 @@ Item {
                 if (prevId >= 0 && indexOf(prevId) < 0) prevId = -1
                 index = Math.max(0, indexOf(shownId))
             }
+            // A step asked for while a crossfade runs waits for it to end, so the picture never
+            // jumps from a half faded slide
+            property int pendingId: -1
             function show(i) {
                 if (count < 2) return
                 i = (i % count + count) % count
                 var id = heroIds.get(i).sid
+                lastInput = Date.now()
+                if (fadeIn.running) { pendingId = id === shownId ? -1 : id; return }
                 if (id === shownId) return
+                // Focus on the outgoing slide goes to the incoming one's Resume, since the
+                // outgoing slide is disabled and would drop it
+                var old = slides.itemAt(index)
+                var refocus = false
+                for (var f = hero.Window.activeFocusItem; f; f = f.parent) if (f === old) { refocus = true; break }
                 prevId = shownId
                 shownId = id
                 index = i
-                lastInput = Date.now()
+                if (refocus) slides.itemAt(i).focusResume()
                 if (theme.reducedMotion) { fadeIn.stop(); fade = 1; prevId = -1 }
                 else fadeIn.restart()
             }
@@ -1169,7 +1179,12 @@ Item {
                 from: 0; to: 1
                 duration: 900
                 easing.type: Easing.InOutQuad
-                onFinished: hero.prevId = -1
+                onFinished: {
+                    hero.prevId = -1
+                    var next = hero.indexOf(hero.pendingId)
+                    hero.pendingId = -1
+                    if (next >= 0) hero.show(next)
+                }
             }
             // On by itself after eight seconds with no input, and never while the pointer
             // rests on the hero, the keyboard focus is inside it, or it is scrolled away. Any
@@ -1212,6 +1227,7 @@ Item {
                     readonly property string still: ep && ep.still ? ep.still : ""
                     readonly property bool hasMinutes: !!(d && d.episode_minutes)
                     readonly property real frac: page.resumeFrac(entry)
+                    function focusResume() { resumeButton.forceActiveFocus() }
                     // The incoming slide fades in over the outgoing one, which stays whole
                     // under it, so the art never dips to the page between the two
                     z: current ? 2 : leaving ? 1 : 0
@@ -1364,7 +1380,7 @@ Item {
                                 height: logoShown ? Math.min(theme.space(22), Math.round(logoW * logo.implicitHeight / logo.implicitWidth)) : titleLabel.height
                                 Image {
                                     id: logo
-                                    objectName: "home-hero-logo"
+                                    objectName: slide.current ? "home-hero-logo" : ""
                                     visible: titleBlock.logoShown
                                     width: titleBlock.logoW
                                     height: parent.height
@@ -1400,14 +1416,14 @@ Item {
                             }
                             // The facts as pills, the genres quieter
                             Flow {
-                                objectName: "home-hero-facts"
+                                objectName: slide.current ? "home-hero-facts" : ""
                                 width: parent.width
                                 spacing: theme.space(2)
                                 HeroPill { visible: (slide.c.community_score || 0) > 0; icon: "star"; ink: slide.inkAccent; text: visible ? words.score(slide.c.community_score) : "" }
                                 HeroPill { visible: !!(slide.d && slide.d.year); text: visible ? String(slide.d.year) : "" }
                                 HeroPill { visible: slide.hasMinutes; icon: "clock"; text: slide.hasMinutes ? words.t("series-facts-each", { runtime: words.runtime(slide.d.episode_minutes) }) : "" }
                                 HeroPill {
-                                    objectName: "hero-downloading"
+                                    objectName: slide.current ? "hero-downloading" : ""
                                     visible: !!(slide.c.downloading && slide.c.downloading.length > 0)
                                     icon: "download"
                                     ink: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3)
@@ -1424,7 +1440,7 @@ Item {
                                 width: parent.width
                                 spacing: theme.space(1.5)
                                 Label {
-                                    objectName: "home-hero-episode"
+                                    objectName: slide.current ? "home-hero-episode" : ""
                                     width: parent.width
                                     text: page.episodeLabel(slide.ep)
                                     role: "title"
@@ -1474,7 +1490,8 @@ Item {
                             Row {
                                 spacing: theme.space(2.5)
                                 Button {
-                                    objectName: "home-resume"
+                                    id: resumeButton
+                                    objectName: slide.current ? "home-resume" : ""
                                     // The top of the page's vertical key order: Down from here
                                     // lands on the first card, Up from the first row comes back
                                     readonly property bool gridStop: slide.current
