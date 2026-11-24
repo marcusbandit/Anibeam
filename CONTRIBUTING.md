@@ -24,7 +24,8 @@ the branch, every commit, the PR title and the squash commit it becomes.
    on the branch, and every check green. Never amend and force-push a pushed
    branch.
 7. **Squash merge** with `gh pr merge --squash --delete-branch`. The PR title
-   becomes the one commit on main, with `(#N)` appended by GitHub.
+   becomes the one commit on main, with `(#N)` appended by GitHub. The owner's
+   PRs can merge themselves instead: see "Merging on its own" below.
 
 ## Types
 
@@ -253,14 +254,14 @@ It is named for that shape, never for a site, and it knows nothing about which s
 A new kind is welcome when no existing one can read a source; open an issue for it first.
 
 The site itself comes from an endpoint repo the user attaches by URL
-(`docs/superpowers/specs/2026-10-24-endpoint-repos.md` has the format). Its definition says
+(the template repo's README below has the format). Its definition says
 which kind to use and where to point it, and installing it is what tells the app how to handle
-that site. A new source goes in one of two places:
-
-- A PR to [`marcusbandit/anibeam-endpoints`](https://github.com/marcusbandit/anibeam-endpoints),
-  the owner's own repo. Its README says how to write a definition.
-- A repo of your own, signed with your own key, that anyone can add in Anibeam beside or
-  instead of the owner's.
+that site. Anibeam has no official list of sources and links to none, here, on the website
+or in the app. A new source goes in a repo of your own, signed with your own key, that anyone
+can add in Anibeam by its URL.
+[`marcusbandit/anibeam-endpoints-template`](https://github.com/marcusbandit/anibeam-endpoints-template)
+holds the schema, the checks and the signing workflow to start from, with example definitions
+only. Don't open a PR or issue here that links to a list of sources.
 
 Endpoints are not part of this project, and that is final. No PR here decides which sources
 exist, whether one is hidden or shown, or how a particular one is handled. A source that only
@@ -304,6 +305,41 @@ When the PR works on Linux and is ready, put the `full ci` label on it. Full CI 
 and tests its head on Linux with the AppImage and distro smoke tests, Windows, macOS, the
 Arch tarball and the iPhone IPA. A push while the label is on builds again, so put it on
 last; take it off to push without a rebuild. Merge when Full CI is green on the head commit.
+
+### Merging on its own
+
+A PR from the owner's account with both the `automerge` and the `full ci` labels merges
+itself. `.github/workflows/ios-automerge.yml` runs `.github/ios-automerge.sh` from main
+whenever a PR workflow finishes or the `automerge` label lands. It squash merges the PR, titled
+with the PR title and `(#N)`, once:
+
+- it is ready for review and aimed at main;
+- every check and workflow run on its head commit has passed or skipped, counting only the
+  newest run of each workflow;
+- Full CI has built that head and passed. A Full CI run whose jobs all skipped, such as the
+  one another label starts, proves nothing; the newest run that built decides, and a Full CI
+  run still going means wait. PR build, which the `test build` label gates, counts the same
+  way, so a red test build still blocks after another label lands.
+
+The order for a PR that should merge itself: `.github/local-ci.sh` passes, the PR opens with
+its category label, the code review pass (`code-review --comment`) runs and its findings are
+fixed or answered, and only then do `full ci` and `automerge` go on. Nothing has to watch it
+after that.
+
+A red check leaves the PR open, with no comment. Push a fix as a new commit: with `full ci`
+still on, the push builds the new head and the PR merges once that is green. Take `automerge`
+off to stop it merging.
+
+The merge uses the `NIGHTLY_TOKEN` secret when it is set: a fine-grained token on this repo
+with Contents and Workflows write, the same token the nightly publishes with. A merge made
+with it starts main's push workflows, the Site deploy and the nightly's build. Without it the
+workflow's own token merges, and GitHub starts no workflows for a push made with that token,
+so the site waits for the next deploy and the build for the next nightly. The workflow's own
+token also may not merge a PR that changes a file under `.github/workflows`; such a PR stays
+open until someone merges it by hand.
+
+The same workflow merges the iPhone and Mac contributors' PRs that only touch iPhone or Mac
+files (#909), without any label; the repo variable `IOS_AUTOMERGE_AUTHORS` lists them.
 
 ## Releases
 
@@ -377,6 +413,10 @@ Release workflow deploy the site automatically. Nobody writes these pages by han
   `git tag v2.5.1 origin/release/2.5 && git push origin v2.5.1`. The Release workflow refuses
   a tag that is not on its own branch. The branch is never merged back, since everything on
   it came from main.
+
+Every Release run, by hand or from a tag, waits for the repo owner to approve it in the
+`release` environment before any job starts. Only an admin can move or delete a shipped
+`v*` or `android-v*` tag.
 
 Every phone APK on a release is signed with one key, the `ANIBEAM_ANDROID_KEYSTORE`
 secret (a base64 keystore), because Android installs an update only over an install signed

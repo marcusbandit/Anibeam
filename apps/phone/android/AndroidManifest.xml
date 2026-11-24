@@ -89,6 +89,23 @@
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:configChanges="orientation|screenSize|keyboardHidden" />
+        <!-- anibeam://add-repo?url=... from a browser (LinkActivity.java): it keeps the link
+             and brings the app forward, which shows the list and asks before adding it.
+             Its own empty task, so it never lands in the browser's. -->
+        <activity
+            android:name="com.marcusrosado.anibeam.LinkActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="anibeam" android:host="add-repo" />
+            </intent-filter>
+        </activity>
         <!-- Where the fold's crease runs, as the phone reports it (Crease.java). Optional:
              a phone without the library installs and runs, and the layout guesses. -->
         <uses-library android:name="androidx.window.extensions" android:required="false" />

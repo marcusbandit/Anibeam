@@ -17,13 +17,16 @@ Write for people who use Anibeam, not as a commit log:
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
-## 2.4.3 · iPhone nightly & full show pages · 2026-11-21
+## 2.6.0 · 2026-11-22
+
+## 2.5.1 · iPhone nightly & full show pages · 2026-11-22
 
 We're happy to bring the first sideloadable iPhone nightly builds, along with full show and list management, rolling downloads, Stats, and 13 languages across the phone app.
 
 - **iPhone nightly & sideload source.** Install Anibeam and Anibeam Nightly side by side on iPhone through AltStore, SideStore, or LiveContainer using one shared source, with local and streamed playback.
 - **Full show & list management.** Set list status, score, notes, start/finish dates, and rewatches from any show page, browse characters, related shows, recommendations, and IMDb scores, fix wrong matches, edit episode counts and air dates, and long-press episodes to mark watched up to there.
 - **Rolling downloads & send to computer.** Keep long shows a few episodes ahead automatically, delete watched episodes to reclaim storage, hide shows, send downloads straight to your computer's library, and follow progress in notifications.
+- **One-tap source list links.** Opening an `anibeam://add-repo?url=...` link from a web page or guide opens More > Source lists with a preview of the list's address. Nothing is added until you tap Trust, and non-HTTPS links are refused.
 - **Home feed, Stats, and 13 languages.** Browse recently released and upcoming episodes on Home, check your watching Stats and year recap in More, explore any Airing season back to 1940, and use Anibeam in 13 languages.
 - **Appearance, subtitles, and player controls.** Customize theme, accent color, text size, and subtitle styling in More, adjust audio/subtitle delay and jump chapter notches in the player, carry playback speed across episodes, pick between multiple files for an episode, and cast transcoded desktop streams to DLNA TVs.
 - **Updates, backups, and Tailscale profiles.** GitHub APKs now notify you about Stable or Nightly updates in More, libraries can be backed up and restored, and shared Tailscale hosts show each person's own progress with automatic quality over relayed links.

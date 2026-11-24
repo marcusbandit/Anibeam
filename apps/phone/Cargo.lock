@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-android"
-version = "2.4.3"
+version = "2.6.0"
 dependencies = [
  "anibeam-companion",
  "anibeam-core",
@@ -155,11 +155,13 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-io-surface",
  "objc2-metal 0.3.2",
+ "percent-encoding",
  "rustix 1.1.5",
  "serde",
  "serde_json",
  "slint",
  "slint-build",
+ "url",
 ]
 
 [[package]]

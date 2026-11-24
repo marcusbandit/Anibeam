@@ -29,6 +29,7 @@ mod files;
 mod find;
 mod focus;
 mod inspect;
+mod link;
 mod listmove;
 mod local;
 mod look;
@@ -69,6 +70,10 @@ pub use platform::ios_main;
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub(crate) fn foreground(on: bool) {
     newer::foreground(on);
+    // An anibeam:// link may be what brought it.
+    if on {
+        link::resumed();
+    }
 }
 
 /// The device's light or dark setting or its language changed: Appearance's System mode
