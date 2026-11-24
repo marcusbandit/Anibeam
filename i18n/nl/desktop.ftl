@@ -2699,7 +2699,7 @@ settings-about-credits = Credits
 settings-about-ratings = Beoordelingen
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
 settings-about-series = Series en afleveringen
-settings-about-series-helper = AniList en TVmaze. Overslaantijden van AniSkip.
+settings-about-series-helper = AniList en TVmaze. Afleveringsdetails en afbeeldingen van ani.zip, met gegevens van AniDB en TheTVDB. Overslaantijden van AniSkip.
 
 ## SettingsPlaybackTab
 

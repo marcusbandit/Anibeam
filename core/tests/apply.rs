@@ -409,6 +409,8 @@ fn refresh_refuses_an_unmatched_series_and_refetches_a_matched_one() {
     );
     http.push_json(200, bare_enrichment(7, None));
     http.push_json(200, empty_schedule(7));
+    // ani.zip is asked too, and has no entry for it (#1036).
+    http.push_for("api.ani.zip", 404, "\"Not Found\"");
 
     let job = started(&core, Call::RefreshSeries { series: matched });
     let done = common::wait_job(&c, job);
@@ -420,7 +422,7 @@ fn refresh_refuses_an_unmatched_series_and_refetches_a_matched_one() {
         }
     );
     assert_eq!(done.level, Level::Info);
-    assert_eq!(http.requests().len(), 3);
+    assert_eq!(http.requests().len(), 4);
 
     let cards = common::cards(&core, Tab::All, false);
     assert_eq!(
@@ -579,6 +581,7 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
     );
     http.push_json(200, bare_enrichment(11, None));
     http.push_json(200, empty_schedule(11));
+    http.push_for("api.ani.zip", 404, "\"Not Found\"");
     let job = anibeam_core::metadata::apply::backfill_stubs(core.metadata());
     let done = common::wait_job(&c, job);
     assert_eq!(
@@ -589,7 +592,8 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
         }
     );
     assert_eq!(done.message, "backfill: 1 refreshed, 0 failed");
-    assert_eq!(http.requests().len(), 3);
+    // AniList's three and ani.zip's one.
+    assert_eq!(http.requests().len(), 4);
     assert_eq!(
         common::cards(&core, Tab::All, false)
             .iter()
@@ -609,7 +613,7 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
             failed: 0
         }
     );
-    assert_eq!(http.requests().len(), 3);
+    assert_eq!(http.requests().len(), 4);
 
     // RefreshAll takes both, in id order.
     for (anilist_id, romaji) in [(10, "Fetched again"), (11, "Stub again")] {
@@ -619,6 +623,7 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
         );
         http.push_json(200, bare_enrichment(anilist_id, None));
         http.push_json(200, empty_schedule(anilist_id));
+        http.push_for("api.ani.zip", 404, "\"Not Found\"");
     }
     let job = started(&core, Call::RefreshAll);
     let done = common::wait_job(&c, job);
@@ -630,7 +635,7 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
         }
     );
     assert_eq!(done.message, "refresh: 2 refreshed, 0 failed");
-    assert_eq!(http.requests().len(), 9);
+    assert_eq!(http.requests().len(), 12);
     let cards = common::cards(&core, Tab::All, false);
     assert_eq!(
         cards.iter().find(|s| s.id == fetched).unwrap().title,
@@ -718,6 +723,7 @@ fn the_backfill_sweeps_the_image_cache_like_every_other_refresh() {
     );
     http.push_json(200, bare_enrichment(11, None));
     http.push_json(200, empty_schedule(11));
+    http.push_for("api.ani.zip", 404, "\"Not Found\"");
     let job = anibeam_core::metadata::apply::backfill_stubs(core.metadata());
     common::wait_job(&c, job);
 

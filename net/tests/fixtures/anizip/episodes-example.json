@@ -1,0 +1,71 @@
+{
+  "titles": { "en": "Example Lighthouse", "x-jat": "Toudai no Rei" },
+  "episodes": {
+    "2": {
+      "tvdbShowId": 9000001,
+      "seasonNumber": "1",
+      "episodeNumber": 2,
+      "absoluteEpisodeNumber": 2,
+      "title": { "en": "The Storm", "x-jat": "Arashi" },
+      "airDate": "not a date",
+      "airdate": "2031-04-13",
+      "length": 23,
+      "summary": "The storm comes in.\nSource: example",
+      "image": null,
+      "episode": "2",
+      "rating": "7.10"
+    },
+    "1": {
+      "tvdbShowId": 9000001,
+      "tvdbId": 9100001,
+      "seasonNumber": 1,
+      "episodeNumber": 1,
+      "absoluteEpisodeNumber": 1,
+      "title": { "en": "  The Lighthouse`s First Night ", "x-jat": "Toudai no Hajimari", "ja": null },
+      "airDate": "2031-04-06",
+      "airDateUtc": "2031-04-06T15:00:00Z",
+      "runtime": 24,
+      "overview": "A keeper arrives at an island lighthouse.",
+      "image": "https://images.example.com/still/1.jpg",
+      "episode": "1",
+      "anidbEid": 900011,
+      "length": 25,
+      "summary": "An AniDB synopsis that loses to the overview.\nSource: example"
+    },
+    "3": {
+      "seasonNumber": 1,
+      "episodeNumber": 3,
+      "absoluteEpisodeNumber": 3,
+      "title": { "en": "Episode 3" },
+      "runtime": { "odd": true },
+      "image": "https://images.example.com/still/3.jpg"
+    },
+    "S1": {
+      "seasonNumber": 0,
+      "episodeNumber": 1,
+      "title": { "en": "Recap at the Harbour" },
+      "airDate": "2031-06-01",
+      "image": "https://images.example.com/still/s1.jpg",
+      "episode": "S1"
+    }
+  },
+  "episodeCount": 3,
+  "specialCount": 1,
+  "images": [
+    { "coverType": "Banner", "url": "https://images.example.com/banner.jpg" },
+    { "coverType": "Banner", "url": "https://images.example.com/banner.jpg" },
+    { "coverType": "Clearlogo", "url": "https://images.example.com/logo-ja.png" },
+    { "coverType": "Clearlogo", "url": "https://images.example.com/logo-en.png", "lang": "en" },
+    { "coverType": "Thumb", "url": "https://images.example.com/thumb.jpg" },
+    { "coverType": "Fanart", "url": "https://images.example.com/fanart.jpg" },
+    { "coverType": "Poster", "url": "http://images.example.com/poster.jpg" }
+  ],
+  "mappings": {
+    "mal_id": 900101,
+    "type": "TV",
+    "anilist_id": 900001,
+    "anidb_id": 90001,
+    "thetvdb_id": 9000001,
+    "notifymoe_id": null
+  }
+}

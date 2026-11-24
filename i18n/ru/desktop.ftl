@@ -2970,7 +2970,7 @@ settings-about-credits = Благодарности
 settings-about-ratings = Рейтинги
 settings-about-ratings-helper = Данные предоставлены IMDb (https://www.imdb.com) с разрешения.
 settings-about-series = Сериалы и серии
-settings-about-series-helper = AniList и TVmaze. Время пропуска от AniSkip.
+settings-about-series-helper = AniList и TVmaze. Сведения о сериях и изображения от ani.zip на основе данных AniDB и TheTVDB. Время пропуска от AniSkip.
 
 ## SettingsPlaybackTab
 

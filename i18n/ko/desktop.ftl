@@ -2502,7 +2502,7 @@ settings-about-credits = 크레딧
 settings-about-ratings = 평점
 settings-about-ratings-helper = 정보 제공: IMDb (https://www.imdb.com). 허가를 받아 사용해요.
 settings-about-series = 작품과 에피소드
-settings-about-series-helper = AniList와 TVmaze. 스킵 구간은 AniSkip 제공.
+settings-about-series-helper = AniList와 TVmaze. 에피소드 정보와 이미지는 AniDB와 TheTVDB 데이터를 사용하는 ani.zip 제공. 스킵 구간은 AniSkip 제공.
 
 ## SettingsPlaybackTab
 

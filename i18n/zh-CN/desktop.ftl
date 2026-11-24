@@ -2193,7 +2193,7 @@ settings-about-credits = 致谢
 settings-about-ratings = 评分
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
 settings-about-series = 番剧和剧集
-settings-about-series-helper = AniList 和 TVmaze。跳过时间来自 AniSkip。
+settings-about-series-helper = AniList 和 TVmaze。剧集详情和图片来自 ani.zip，数据源自 AniDB 和 TheTVDB。跳过时间来自 AniSkip。
 
 ## SettingsPlaybackTab
 
