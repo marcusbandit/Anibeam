@@ -1286,16 +1286,14 @@ series-page-rewatched =
        *[other] Genset { $count } gange
     }
 series-your-notes = Dine noter
+series-studio = Studie
+series-open-anilist = Åbn på AniList
+series-open-mal = Åbn på MyAnimeList
 series-add-notes = Tilføj noter
-series-notes-tip = Noter på din listepost, gemt på { $sites }
 series-unhide = Vis igen
 series-hide = Skjul
 series-hidden-toast = { $title } er skjult her, og Anibeam stopper med at synkronisere den med AniList og MyAnimeList
 series-unhidden-toast = { $title } er tilbage og synkroniseres igen
-series-hide-tip-tracked = Skjult på alle sider her, og Anibeam stopper med at synkronisere den med AniList og MyAnimeList
-series-hide-tip = Skjult på alle lister
-series-fixes = Rettelser
-series-fixes-tip = Ret filer, antal afsnit, matchet, eller genscan
 series-quick-fix = Hurtig rettelse
 series-film = Film
 series-episodes = Afsnit

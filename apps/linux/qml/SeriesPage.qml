@@ -1,13 +1,13 @@
-// A series, flat (DESIGN.md, the flat home pass): a band at the head in the poster's own
-// colour, the way Home's hero is, carrying the poster, the title, the other titles on one
-// quiet line (panned on hover, unfolded on a click when they run past the band), the facts
-// as one ledger line, Continue with the progress beside it, and a quiet row of the scores,
-// the list status and the actions. Under it two columns on a wide window: the episodes (then the
-// extras and the stray files) as flat rows at the left, and at the right the synopsis, the
-// characters, the recommendations, the tags and the franchise. One GetSeries draws it all;
-// the relations come from GetFranchiseGraph and follow the crawl through graphChanged. An
-// unmatched series draws the same band off its folder name, with the match where the
-// synopsis would be.
+// A series, flat (DESIGN.md, the flat home pass). The head (#1452) fills the window's width
+// with the banner, washed into the poster's own tone under the words and faded into the page;
+// on it the poster, the other titles on one quiet line (panned on hover, unfolded on a click
+// when they run past), the logo or the title, the facts and the genres as pills, the studio,
+// the progress, and one row of actions of one height. Under it two columns on a wide window:
+// the episodes (then the extras and the stray files) as flat rows at the left, and at the
+// right the synopsis, the characters, the recommendations, the tags and the franchise. One
+// GetSeries draws it all; the relations come from GetFranchiseGraph and follow the crawl
+// through graphChanged. An unmatched series draws the same head off its folder name, with
+// the match where the synopsis would be.
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -131,6 +131,26 @@ Item {
             : { text: words.t("series-fix-rescan-folder"), icon: "refresh-cw", action: page.rescan })
         items.push({ text: page.matched ? words.t("series-fix-match") : words.t("series-find-match"), icon: "link", action: function() { matchPanel.openFor(page.props.id, page.title, card.match_info) } })
         return items
+    }
+    // The head's More: the notes on your list entry, hide, and the fixes
+    function moreItems() {
+        var items = []
+        if (frame.canSetListStatus(card) && card.list_status)
+            items.push({ text: page.detail && page.detail.notes ? words.t("series-your-notes") : words.t("series-add-notes"), icon: "pencil",
+                         action: function() { notesSheet.openFor(page.props.id, page.title, page.detail ? page.detail.notes : "", page.trackerSites) } })
+        items.push({ text: card.hidden ? words.t("series-unhide") : words.t("series-hide"), icon: card.hidden ? "eye" : "eye-off", action: page.toggleHidden })
+        var fixes = page.fixItems()
+        fixes[0].gapBefore = true
+        return items.concat(fixes)
+    }
+    function toggleHidden() {
+        var hide = !card.hidden
+        // The id is kept here: Undo can come after the page is gone
+        var id = props.id
+        var r = Door.setHidden(id, hide)
+        var said = hide ? words.t("series-hidden-toast", { title: page.title }) : words.t("series-unhidden-toast", { title: page.title })
+        if (r.error) { frame.fail(r.error, page.retry(function() { return Door.setHidden(id, hide) }, said)); return }
+        frame.toast(said, 6, words.t("series-undo"), function() { Door.setHidden(id, !hide) })
     }
     function contextItems() {
         return [
@@ -480,31 +500,20 @@ Item {
     readonly property real progressFraction: tracked && detail.progress.total ? Math.min(1, watchedCount / detail.progress.total) : 0
     readonly property bool airsAhead: !!card.next_airing && card.next_airing.at * 1000 > nowMs
     readonly property bool hasBanner: !!(detail && detail.banner)
-    // The art needs the right two thirds to itself; on a narrow band the words reach into
-    // them, so the band goes plain
-    readonly property bool showArt: hasBanner && band.width >= theme.space(275)
+    // Fall 2026: AniList's season word and the year, or the year alone
+    readonly property string seasonText: {
+        if (!detail || !detail.year) return ""
+        var w = { WINTER: "Winter", SPRING: "Spring", SUMMER: "Summer", FALL: "Fall" }[detail.season || ""]   // i18n: none
+        return w ? words.t("airing-season", { season: w, year: detail.year }) : String(detail.year)
+    }
+    // The show's page on each tracker it is linked to
+    readonly property string anilistUrl: card.match_info && card.match_info.anilist_id ? "https://anilist.co/anime/" + card.match_info.anilist_id : ""   // i18n: none
+    readonly property string malUrl: card.match_info && card.match_info.mal_id ? "https://myanimelist.net/anime/" + card.match_info.mal_id : ""   // i18n: none
     readonly property bool hasScore: card.my_score !== null && card.my_score !== undefined
     readonly property bool hasAverage: card.community_score !== null && card.community_score !== undefined
     readonly property bool hasImdb: card.imdb_score !== null && card.imdb_score !== undefined
     function listIcon(s) { return { Watching: "play", Repeating: "rotate-ccw", Completed: "circle-check", Paused: "pause", Dropped: "ban", Planning: "bookmark" }[s] || "bookmark" }
 
-    // ---- The facts, one ledger line: format, year, studio, a film's runtime, episodes and how
-    // long each runs, on disk, status. A film is a loose file or a MOVIE record in its own
-    // folder, the core's `film` flag. The average score, the IMDb score and the
-    // list status sit in the quiet row, beside your own score.
-    readonly property string factsLine: {
-        if (!detail) return ""
-        var film = !!card.film
-        var f = [formatLabel(card.format)]
-        if (detail.year) f.push(String(detail.year))
-        if (detail.studio) f.push(detail.studio)
-        if (film && detail.episode_minutes) f.push(words.runtime(detail.episode_minutes))
-        if (!isMovie && card.total_episodes) f.push(words.t(card.total_is_estimate ? "series-facts-episodes-estimate" : "count-episodes", { count: card.total_episodes }))
-        if (!film && detail.episode_minutes) f.push(words.t("series-facts-each", { runtime: words.runtime(detail.episode_minutes) }))
-        if (!isMovie) f.push(words.t("series-facts-on-disk", { count: detail.progress.on_disk }))
-        if (card.status) f.push(status(card.status))
-        return f.join("  ")
-    }
     readonly property string episodesFact: {
         if (!detail) return ""
         if (nextEpisode) return words.t("series-next", { episode: words.episodeName("", nextEpisode.number) })
@@ -552,41 +561,29 @@ Item {
         }
         Item { id: actionSlot; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); width: childrenRect.width; height: childrenRect.height }
     }
-    // A fact in the band's quiet row: a ghost button's size and ink, outlined instead of
-    // filled, since it reads rather than acts
-    component Fact: Corner {
-        id: fact
+    // A fact on the head: a glass pill over the art, one height for all of them; `quiet`
+    // drops the fill for the genres
+    component Pill: Corner {
+        id: pill
         property string icon: ""
         property string text: ""
-        // A pill that opens a menu: a chevron after the text, and the pointer says so
-        property bool menu: false
-        signal clicked()
-        implicitWidth: factContent.implicitWidth + theme.space(3) * 2
-        implicitHeight: theme.space(6)
+        property bool quiet: false
+        property color ink: page.ink
+        implicitWidth: pillContent.implicitWidth + theme.space(3) * 2
+        implicitHeight: theme.space(7)
         radius: height / 2
         smoothing: theme.cornerSmoothing
-        color: "transparent"
-        borderColor: Qt.rgba(1, 1, 1, 0.22)
+        color: quiet ? "transparent" : Qt.rgba(0, 0, 0, 0.32)
+        borderColor: Qt.rgba(1, 1, 1, quiet ? 0.22 : 0.14)
         borderWidth: 1
+        Accessible.role: Accessible.StaticText
+        Accessible.name: text
         Row {
-            id: factContent
+            id: pillContent
             anchors.centerIn: parent
             spacing: theme.space(1.5)
-            Icon { anchors.verticalCenter: parent.verticalCenter; glyph: fact.icon; color: Qt.rgba(1, 1, 1, 0.82); size: theme.space(3.5) }
-            Label { anchors.verticalCenter: parent.verticalCenter; text: fact.text; role: "ui"; font.pointSize: theme.typeSmall; color: Qt.rgba(1, 1, 1, 0.82) }
-            Icon { visible: fact.menu; anchors.verticalCenter: parent.verticalCenter; glyph: "chevron-down"; color: Qt.rgba(1, 1, 1, 0.82); size: theme.space(3) }
-        }
-        // The menu pill's own name, for drive scripts to click
-        property string pressName: ""
-        MouseArea {
-            Accessible.role: Accessible.Button
-            Accessible.onPressAction: fact.clicked()
-            Accessible.name: theme.nameNear(parent)
-            objectName: fact.pressName
-            anchors.fill: parent
-            visible: fact.menu
-            cursorShape: Qt.PointingHandCursor
-            onClicked: fact.clicked()
+            Icon { visible: pill.icon !== ""; anchors.verticalCenter: parent.verticalCenter; glyph: pill.icon; color: pill.ink; size: theme.space(3.5) }
+            Label { anchors.verticalCenter: parent.verticalCenter; text: pill.text; role: "ui"; font.pointSize: theme.typeSmall; color: pill.ink }
         }
     }
     component Caption: Label {
@@ -683,48 +680,73 @@ Item {
             onClicked: frame.nav.back()
         }
 
-        // ---- The band: the series' own colour, the banner art fading in from the right
+        // ---- The head (#1452): the banner fills the window's width behind the poster and the
+        // words, washed toward the band's dark tone under them and fading into the page at the
+        // bottom; without a banner the poster's tone fills the same space. Over it, one left
+        // edge for everything: the poster, then the other titles, the logo (or the title), the
+        // facts, the genres, the studio, the progress and one row of actions, all one height.
         Item {
             id: band
+            objectName: "series-head"
+            // Under Back in the column, so the art can run up behind it
+            z: -1
             width: parent.width
-            readonly property real pad: theme.space(8)
             readonly property real posterH: theme.space(72)
-            height: Math.max(posterH, bandWords.implicitHeight) + pad * 2
+            // Room above the poster for the art to show, and below the actions for the fade
+            readonly property real topPad: page.hasBanner ? theme.space(52) : theme.space(10)
+            readonly property real tail: theme.space(10)
+            readonly property real contentH: Math.max(posterH, bandWords.implicitHeight)
+            height: topPad + contentH + tail
 
-            Rectangle { anchors.fill: parent; radius: theme.radiusXl; color: page.bandBase; antialiasing: true }
-            // The art sits in the right two thirds, under a wash of the band's colour that
-            // clears to the right
             Item {
-                anchors.fill: parent
+                id: hero
+                x: -scroll.gutter
+                // Up to the top of the page, under Back and the column's own top margin
+                y: -(band.y + theme.space(7))
+                width: scroll.width
+                height: band.height - y
                 clip: true
-                Corner {
-                    visible: page.showArt
-                    x: Math.round(parent.width * 0.3); y: 0
-                    width: parent.width - x; height: parent.height
-                    radius: theme.radiusXl
-                    color: "transparent"
-                    fillItem: page.showArt && art.status === Image.Ready ? art : null
-                    Image {
-                        id: art; visible: false
-                        width: parent.width; height: parent.height
-                        source: page.hasBanner ? Fmt.fileUrl(page.detail.banner) : ""
-                        fillMode: Image.PreserveAspectCrop; asynchronous: true
-                    }
-                }
-                // The wash shares the band's rounding, so no square corner of it shows past
-                // the band's own; it stays solid until past the art's left edge, and nearly
-                // solid under the words that run on over the art, so they never sit on it
-                Rectangle {
-                    visible: page.showArt
+                Rectangle { anchors.fill: parent; color: page.bandBase }
+                Image {
+                    id: art
+                    visible: page.hasBanner && status === Image.Ready
                     anchors.fill: parent
-                    radius: theme.radiusXl
-                    antialiasing: true
+                    source: page.hasBanner ? Fmt.fileUrl(page.detail.banner) : ""
+                    fillMode: Image.PreserveAspectCrop
+                    verticalAlignment: Image.AlignTop
+                    asynchronous: true
+                }
+                // A quiet scrim over the whole art, so it reads as a backdrop
+                Rectangle {
+                    visible: art.visible
+                    anchors.fill: parent
+                    color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.35)
+                }
+                // Darker at the left, where the words sit
+                Rectangle {
+                    visible: art.visible
+                    anchors.fill: parent
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
-                        GradientStop { position: 0.33; color: page.bandBase }
-                        GradientStop { position: 0.55; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.9) }
-                        GradientStop { position: 0.75; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.45) }
-                        GradientStop { position: 1; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.1) }
+                        GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.7) }
+                        GradientStop { position: 0.5; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.3) }
+                        GradientStop { position: 0.85; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
+                    }
+                }
+                // A long, even fade into the page: it starts above the poster and is the
+                // page's own colour by the time the actions sit on it, so the card's lower
+                // half rests on the dark
+                Rectangle {
+                    id: fade
+                    anchors.fill: parent
+                    readonly property real start: Math.max(0.05, (band.topPad - theme.space(24) - hero.y) / hero.height)
+                    readonly property real solid: Math.min(0.98, (band.topPad + band.contentH * 0.8 - hero.y) / hero.height)
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, art.visible ? 0 : 0) }
+                        GradientStop { position: fade.start; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
+                        GradientStop { position: fade.start + (fade.solid - fade.start) * 0.5; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.6) }
+                        GradientStop { position: fade.solid; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, art.visible ? 0.97 : 1) }
+                        GradientStop { position: 1; color: theme.bg }
                     }
                 }
             }
@@ -732,8 +754,8 @@ Item {
             // The poster
             Corner {
                 id: posterBox
-                x: band.pad
-                anchors.verticalCenter: parent.verticalCenter
+                x: 0
+                y: band.topPad + Math.max(0, band.contentH - band.posterH)
                 height: band.posterH
                 width: Math.round(height * 2 / 3)
                 radius: theme.radiusTile
@@ -749,25 +771,14 @@ Item {
                 Label { visible: !card.poster; anchors.centerIn: parent; msg: "series-no-poster"; color: page.inkDim; role: "ui"; font.pointSize: theme.typeSmall }
             }
 
+            // The words end on the poster's bottom edge, so the actions line up with it
             Column {
                 id: bandWords
-                anchors.left: posterBox.right
-                anchors.leftMargin: theme.space(8)
-                anchors.right: parent.right
-                anchors.rightMargin: band.pad
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(2.5)
+                x: posterBox.width + theme.space(8)
+                y: band.topPad + band.contentH - implicitHeight
+                width: band.width - x
+                spacing: theme.space(3)
 
-                Label {
-                    width: parent.width
-                    text: page.title
-                    role: "display"
-                    color: page.ink
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    lineHeight: 0.92
-                }
                 // The other titles. One line; when they run past the band, hovering pans it
                 // to the end and back at a reading pace, and a click (or Return) unfolds it,
                 // a title to a line, wrapped.
@@ -857,22 +868,73 @@ Item {
                     HoverHandler { id: akaHover; cursorShape: aka.foldable ? Qt.PointingHandCursor : Qt.ArrowCursor }
                     TapHandler { enabled: aka.foldable; onTapped: aka.open = !aka.open }
                 }
-                // The facts, and the next episode's countdown in the band's ink accent
-                Row {
+
+                // The show's logo when the record has one, drawn from its left edge and no
+                // taller than a few lines of the title; the title in the display cut otherwise
+                Item {
+                    id: titleBlock
                     width: parent.width
-                    spacing: theme.space(2)
-                    Label {
-                        id: factsLabel
-                        width: Math.min(implicitWidth, parent.width - (airing.visible ? airing.width + parent.spacing : 0) - (downloadingFact.visible ? downloadingFact.width + parent.spacing : 0))
-                        text: page.factsLine
-                        role: "ledger"
-                        color: page.inkDim
-                        elide: Text.ElideRight
+                    readonly property bool logoShown: logo.status === Image.Ready && logo.implicitWidth > 0
+                    readonly property real logoW: Math.min(width, theme.space(140))
+                    height: logoShown ? Math.min(theme.space(30), Math.round(logoW * logo.implicitHeight / logo.implicitWidth)) : titleLabel.height
+                    Image {
+                        id: logo
+                        objectName: "series-logo"
+                        visible: titleBlock.logoShown
+                        width: titleBlock.logoW
+                        height: parent.height
+                        source: page.detail && page.detail.logo ? Fmt.fileUrl(page.detail.logo) : ""
+                        fillMode: Image.PreserveAspectFit
+                        horizontalAlignment: Image.AlignLeft
+                        verticalAlignment: Image.AlignBottom
+                        asynchronous: true
+                        smooth: true
+                        mipmap: true
+                        Accessible.role: Accessible.Heading
+                        Accessible.name: page.title
                     }
                     Label {
+                        id: titleLabel
+                        visible: !titleBlock.logoShown
+                        width: parent.width
+                        text: page.title
+                        role: "display"
+                        color: page.ink
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                        lineHeight: 0.92
+                    }
+                }
+
+                // The facts as pills: the average score, IMDb, status, season, format, the
+                // episode count and length, what is on disk; the next episode's countdown and
+                // the downloads in their own ink
+                Flow {
+                    objectName: "series-facts"
+                    width: parent.width
+                    spacing: theme.space(2)
+                    Pill { objectName: "fact-average"; visible: page.hasAverage; icon: "star"; text: page.hasAverage ? words.score(card.community_score) : ""; ink: page.inkAccent
+                        Tooltip { text: page.hasAverage ? words.t("series-page-average-score", { score: words.score(card.community_score) }) : "" } }
+                    Pill {
+                        objectName: "fact-imdb"
+                        visible: page.hasImdb
+                        icon: "clapperboard"
+                        text: page.hasImdb ? words.t("series-page-imdb", { score: words.score(card.imdb_score) }) : ""
+                        Tooltip { text: page.hasImdb && card.imdb_votes ? words.t("series-page-imdb-votes", { votes: Number(card.imdb_votes).toLocaleString(Qt.locale(), "f", 0) }) : "" }
+                    }
+                    Pill { visible: !!card.status; text: card.status ? page.status(card.status) : "" }
+                    Pill { visible: page.seasonText !== ""; icon: "calendar"; text: page.seasonText }
+                    Pill { visible: !!page.detail; icon: page.isMovie ? "film" : "tv"; text: page.formatLabel(card.format) }
+                    Pill { visible: !page.isMovie && !!card.total_episodes; text: card.total_episodes ? words.t(card.total_is_estimate ? "series-facts-episodes-estimate" : "count-episodes", { count: card.total_episodes }) : "" }
+                    Pill { visible: !!(page.detail && page.detail.episode_minutes); icon: "clock"; text: page.detail && page.detail.episode_minutes ? (card.film ? words.runtime(page.detail.episode_minutes) : words.t("series-facts-each", { runtime: words.runtime(page.detail.episode_minutes) })) : "" }
+                    Pill { visible: !!page.detail && !page.isMovie; icon: "folder"; text: page.detail ? words.t("series-facts-on-disk", { count: page.detail.progress.on_disk }) : "" }
+                    Pill {
                         id: airing
                         objectName: "fact-airing"
                         visible: page.airsAhead
+                        icon: "calendar-clock"
+                        ink: page.inkAccent
                         text: {
                             var next = card.next_airing
                             if (!next) return ""
@@ -882,19 +944,33 @@ Item {
                                 return words.t("series-next-predicted", { span: span, date: Qt.formatDate(new Date(next.at * 1000), words.t("series-next-date-format")), wait: words.countdown(next.at - page.nowMs / 1000) })
                             return words.t("series-next-airs", { span: span, count: next.through ? 2 : 1, wait: words.countdownSeconds(next.at - page.nowMs / 1000) })
                         }
-                        role: "ledger"
-                        font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
-                        color: page.inkAccent
                     }
-                    Label {
+                    Pill {
                         id: downloadingFact
                         objectName: "fact-downloading"
                         visible: page.downloadingNow.length > 0
+                        icon: "download"
+                        ink: page.downloadInk
                         text: words.t("series-downloading-episodes", { count: page.downloadingNow.length })
-                        role: "ledger"
-                        font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
-                        color: page.downloadInk
                     }
+                    Pill { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? words.t("series-page-rewatched", { count: page.detail.rewatch_count }) : "" }
+                }
+                // The genres, quieter than the facts
+                Flow {
+                    objectName: "series-genres"
+                    visible: !!page.detail && page.detail.genres.length > 0
+                    width: parent.width
+                    spacing: theme.space(2)
+                    Repeater {
+                        model: page.detail ? page.detail.genres : []
+                        Pill { required property string modelData; text: modelData; quiet: true }
+                    }
+                }
+                Row {
+                    visible: !!(page.detail && page.detail.studio)
+                    spacing: theme.space(1.5)
+                    Label { msg: "series-studio"; role: "ui"; color: page.inkDim }
+                    Label { text: page.detail && page.detail.studio ? page.detail.studio : ""; role: "ui"; font.weight: 600; color: page.ink }
                 }
                 // What the user told the season, on one line (#432): the episode count set by hand
                 // (#239, a TVmaze show's is its current season's, #283) and a break in the
@@ -928,16 +1004,47 @@ Item {
                         onClicked: page.openSchedule()
                     }
                 }
-                Item { width: 1; height: theme.space(1.5) }
-                // Continue, with the progress beside it. A Flow, so on a band too narrow for
-                // all of it the progress drops under the buttons instead of running past the
-                // band's edge (#783)
-                Flow {
-                    id: playRow
+                // The progress: the cubes and the count, never wider than the head (#783); the
+                // cubes give up room to the words first, then the words elide
+                Item {
+                    id: progressBox
+                    objectName: "series-progress-box"
+                    visible: !!page.detail && !!(page.card.cubes || page.progressText)
                     width: parent.width
-                    spacing: theme.space(4)
+                    height: Math.max(cubes.height, progressLabel.height)
+                    readonly property bool hasCubes: cubes.codes.length > 0
+                    readonly property real gap: theme.space(3)
+                    readonly property real cubesW: hasCubes ? Math.max(0, Math.min(cubes.implicitWidth, theme.space(70), width - gap - progressLabel.implicitWidth)) : 0
+                    EpisodeCubes {
+                        id: cubes
+                        visible: progressBox.hasCubes && progressBox.cubesW > theme.space(8)
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: progressBox.cubesW
+                        height: implicitHeight
+                        codes: page.card && page.card.cubes ? page.card.cubes : ""
+                        cubeSize: theme.space(2.25)
+                        maxRows: 2
+                    }
+                    Label {
+                        id: progressLabel
+                        objectName: "series-progress"
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: cubes.visible ? progressBox.cubesW + progressBox.gap : 0
+                        width: Math.max(0, Math.min(implicitWidth, progressBox.width - x))
+                        text: page.progressText
+                        role: "ledger"
+                        color: page.inkDim
+                        elide: Text.ElideRight
+                    }
+                }
+                // One row of actions, every one the same height: play, the list, get
+                // episodes, your score, then the trackers' own pages and the rest in a menu
+                Flow {
+                    id: actions
+                    objectName: "series-actions"
+                    width: parent.width
+                    spacing: theme.space(2.5)
                     Button {
-                        id: continueButton
                         objectName: "series-continue"
                         primary: true
                         tint: page.inkAccent
@@ -946,9 +1053,28 @@ Item {
                         enabled: page.playEpisode !== null && !page.waitingOnDownload
                         onClicked: if (page.playEpisode) page.openFile(page.playEpisode.file)
                     }
+                    // The list status, and with a tracker connected the menu that changes it
+                    Button {
+                        id: statusButton
+                        objectName: "series-status"
+                        readonly property bool settable: frame.canSetListStatus(card)
+                        visible: settable
+                        ghost: true
+                        icon: card.list_status ? page.listIcon(card.list_status) : "bookmark"
+                        text: card.list_status ? page.listStatus(card.list_status) : words.t("series-add-to-list")
+                        onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) }
+                        Tooltip { text: statusButton.settable ? frame.listHome(card) : "" }
+                    }
+                    // With no tracker to change it, the status only reads, at the buttons' height
+                    Pill {
+                        objectName: "fact-list"
+                        visible: !statusButton.settable && !!card.list_status
+                        height: statusButton.implicitHeight
+                        icon: page.listIcon(card.list_status)
+                        text: card.list_status ? page.listStatus(card.list_status) : ""
+                    }
                     // The phone's Get episodes: primary when there is nothing to play
                     Button {
-                        id: getButton
                         objectName: "series-get"
                         visible: !!page.detail && !page.isMovie
                         primary: page.playEpisode === null
@@ -958,124 +1084,54 @@ Item {
                         msg: "series-get-episodes"
                         onClicked: page.getEpisodes()
                     }
-                    // The cubes and the words, never wider than the band. Beside the buttons
-                    // when they fit there with the cubes at their shortest run, else on a line
-                    // of their own; either way the cubes give up room to the words first, then
-                    // the words elide
-                    Item {
-                        id: progressBox
-                        objectName: "series-progress-box"
-                        visible: !!page.detail
-                        readonly property bool hasCubes: cubes.codes.length > 0
-                        readonly property real gap: theme.space(3)
-                        readonly property real wordsW: progressLabel.implicitWidth
-                        readonly property real cubesLeast: hasCubes ? Math.min(cubes.implicitWidth, theme.space(24)) + gap : 0
-                        readonly property real beside: playRow.width - continueButton.width - playRow.spacing
-                            - (page.detail && !page.isMovie ? getButton.width + playRow.spacing : 0)
-                        readonly property real room: beside >= cubesLeast + wordsW ? beside : playRow.width
-                        readonly property real cubesW: hasCubes
-                            ? Math.min(cubes.implicitWidth, Math.max(theme.space(24), Math.min(theme.space(70), room - gap - wordsW)))
-                            : 0
-                        width: Math.min(room, cubesW + (hasCubes ? gap : 0) + wordsW)
-                        height: Math.max(continueButton.height, cubes.height, progressLabel.height)
-                        EpisodeCubes {
-                            id: cubes
-                            visible: progressBox.hasCubes
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: progressBox.cubesW
-                            height: implicitHeight
-                            codes: page.card && page.card.cubes ? page.card.cubes : ""
-                            cubeSize: theme.space(2.25)
-                            maxRows: 2
-                        }
-                        Label {
-                            id: progressLabel
-                            objectName: "series-progress"
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: progressBox.hasCubes ? progressBox.cubesW + progressBox.gap : 0
-                            width: Math.max(0, Math.min(implicitWidth, progressBox.width - x))
-                            text: page.progressText
-                            role: "ledger"
-                            color: page.inkDim
-                            elide: Text.ElideRight
-                        }
-                    }
-                }
-                // The quiet row: your score (rate, on a tracker), the average score, the IMDb
-                // score with its votes on hover, the list status and rewatches, then hide, the
-                // record's site, and Fixes
-                Flow {
-                    width: parent.width
-                    spacing: theme.space(2)
                     Button {
                         id: rateButton
                         objectName: "fact-mine"
                         // With no tracker behind the series the score stays on this device (#213)
                         visible: !card.hidden
-                        small: true; ghost: true
+                        ghost: true
                         icon: "star"
                         text: page.hasScore ? words.t("series-your-score", { score: words.score(card.my_score) }) : words.t("series-rate")
                         onClicked: scorePicker.openAt(rateButton, page.hasScore ? card.my_score : -1)
                     }
-                    Fact { objectName: "fact-average"; visible: page.hasAverage; icon: "users"; text: page.hasAverage ? words.t("series-page-average-score", { score: words.score(card.community_score) }) : "" }
-                    Fact {
-                        objectName: "fact-imdb"
-                        visible: page.hasImdb
-                        icon: "clapperboard"
-                        text: page.hasImdb ? words.t("series-page-imdb", { score: words.score(card.imdb_score) }) : ""
-                        Tooltip { text: page.hasImdb && card.imdb_votes ? words.t("series-page-imdb-votes", { votes: Number(card.imdb_votes).toLocaleString(Qt.locale(), "f", 0) }) : "" }
-                    }
-                    // The list status, and with a tracker connected the menu that changes it
-                    Fact {
-                        id: statusFact
-                        objectName: "fact-list"
-                        readonly property bool settable: frame.canSetListStatus(card)
-                        visible: !!card.list_status || settable
-                        menu: settable
-                        icon: page.listIcon(card.list_status)
-                        text: card.list_status ? page.listStatus(card.list_status) : words.t("series-add-to-list")
-                        pressName: "series-status"
-                        onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, frame.listStatusItems(page.props.id, card.list_status)) }
-                        Tooltip { text: statusFact.settable ? frame.listHome(card) : "" }
-                    }
-                    Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? words.t("series-page-rewatched", { count: page.detail.rewatch_count }) : "" }
-                    // The list entry's notes, written to every connected tracker (#211); a show not
-                    // on a list yet has no entry to write them on
                     Button {
-                        id: notesButton
-                        objectName: "series-notes"
-                        visible: statusFact.settable && !!card.list_status
-                        small: true; ghost: true
-                        icon: "pencil"
-                        text: page.detail && page.detail.notes ? words.t("series-your-notes") : words.t("series-add-notes")
-                        onClicked: notesSheet.openFor(page.props.id, page.title, page.detail ? page.detail.notes : "", page.trackerSites)
-                        Tooltip { text: page.detail && page.detail.notes ? page.detail.notes : words.t("series-notes-tip", { sites: page.trackerSites }) }
+                        objectName: "series-anilist"
+                        visible: page.anilistUrl !== ""
+                        width: height
+                        ghost: true
+                        icon: "anilist"
+                        accessibleName: words.t("series-open-anilist")
+                        onClicked: frame.openLink(page.anilistUrl)
+                        Tooltip { msg: "series-open-anilist" }
                     }
                     Button {
-                        objectName: "series-hide"
-                        small: true; ghost: true
-                        text: card.hidden ? words.t("series-unhide") : words.t("series-hide")
-                        icon: card.hidden ? "eye" : "eye-off"
-                        onClicked: {
-                            var hide = !card.hidden
-                            // The id is kept here: Undo can come after the page is gone
-                            var id = props.id
-                            var r = Door.setHidden(id, hide)
-                            var said = hide ? words.t("series-hidden-toast", { title: page.title }) : words.t("series-unhidden-toast", { title: page.title })
-                            if (r.error) { frame.fail(r.error, page.retry(function() { return Door.setHidden(id, hide) }, said)); return }
-                            frame.toast(said, 6, words.t("series-undo"),
-                                        function() { Door.setHidden(id, !hide) })
-                        }
-                        Tooltip { text: page.hasTracker ? words.t("series-hide-tip-tracked") : words.t("series-hide-tip") }
+                        objectName: "series-mal"
+                        visible: page.malUrl !== ""
+                        width: height
+                        ghost: true
+                        icon: "myanimelist"
+                        accessibleName: words.t("series-open-mal")
+                        onClicked: frame.openLink(page.malUrl)
+                        Tooltip { msg: "series-open-mal" }
                     }
-                    Button { objectName: "series-site"; visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: page.siteName; icon: "external-link"; onClicked: frame.openLink(page.detail.site_url) }
+                    // The record's own site when it is neither tracker (TVmaze)
                     Button {
-                        id: fixesButton
-                        objectName: "series-fixes"
-                        small: true; ghost: true
-                        msg: "series-fixes"; icon: "wrench"
-                        onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, page.fixItems()) }
-                        Tooltip { msg: "series-fixes-tip" }
+                        objectName: "series-site"
+                        visible: !!(page.detail && page.detail.site_url) && page.anilistUrl === "" && page.malUrl === ""
+                        ghost: true
+                        text: page.siteName
+                        icon: "external-link"
+                        onClicked: frame.openLink(page.detail.site_url)
+                    }
+                    Button {
+                        id: moreButton
+                        objectName: "series-more"
+                        width: height
+                        ghost: true
+                        icon: "ellipsis"
+                        accessibleName: words.t("series-more")
+                        onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, page.moreItems()) }
+                        Tooltip { msg: "series-more" }
                     }
                 }
             }
