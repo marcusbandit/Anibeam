@@ -137,9 +137,10 @@ mod tests {
     use chrono::FixedOffset;
 
     fn fixture() -> Cache {
-        let snapshot: Snapshot =
-            serde_json::from_str(include_str!("../../../../crates/host-api/fixtures/snapshot.json"))
-                .unwrap();
+        let snapshot: Snapshot = serde_json::from_str(include_str!(
+            "../../../../crates/host-api/fixtures/snapshot.json"
+        ))
+        .unwrap();
         Cache {
             address: "desktop:8790".into(),
             host: "desktop".into(),
