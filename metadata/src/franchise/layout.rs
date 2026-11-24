@@ -552,7 +552,14 @@ fn label_of(relation: &str) -> String {
         "CHARACTER" => "core-franchise-relation-character",
         "CONTAINS" => "anilist-relation-contains",
         "OTHER" => "anilist-relation-other",
-        other => return other.replace('_', " ").to_lowercase(),
+        other => {
+            let words = other.replace('_', " ").to_lowercase();
+            let mut letters = words.chars();
+            return match letters.next() {
+                Some(first) => first.to_uppercase().chain(letters).collect(),
+                None => words,
+            };
+        }
     };
     anibeam_contract::i18n::tr(id, &[])
 }
@@ -659,10 +666,19 @@ pub(crate) fn plan(closure: &Closure, current: u64) -> Plan {
             })
         })
         .collect();
+    // The series' own chain, else the root's, else the first run with
+    // anything on screen in it. A run of novel or manga volumes is never a
+    // line of seasons: `order_rows` puts what the root was adapted from
+    // above it, so on a lone film's page the first row is often a book's.
+    let on_screen = |chain: &Chain| chain.iter().any(|id| !is_print(by_id.get(id)));
     let main_line = rows
         .iter()
         .position(|chain| chain.contains(&current))
-        .or(if rows.is_empty() { None } else { Some(0) });
+        .or_else(|| {
+            rows.iter()
+                .position(|chain| chain.contains(&closure.root) && on_screen(chain))
+        })
+        .or_else(|| rows.iter().position(on_screen));
     let anchors = main_line
         .map(|i| anchors(&rows[i], &edges))
         .unwrap_or_default();
@@ -1017,7 +1033,12 @@ mod tests {
 
     #[test]
     fn an_unknown_relation_reads_as_its_own_words() {
-        assert_eq!(label_of("WEIRD_NEW_TYPE"), "weird new type");
+        assert_eq!(
+            label_of("WEIRD_NEW_TYPE"),
+            "Weird new type",
+            "in sentence case, like every relation the catalog names"
+        );
+        assert_eq!(label_of(""), "");
         assert_eq!(label_of("CHARACTER"), "Shared characters");
         assert_eq!(
             relation_to(1, 7, &[], &[]),
@@ -1257,6 +1278,55 @@ mod tests {
         let p = plan(&two_lines(), 30);
         assert_eq!(p.main_line, Some(p.chains[&1].0));
         assert!(!p.chains.contains_key(&30));
+    }
+
+    /// The anime 1, 2 was adapted from the novels 10, 11, which sit above
+    /// it as the first row. A film in neither run still reads the anime as
+    /// its seasons, never the books.
+    #[test]
+    fn a_series_in_no_chain_never_takes_a_run_of_books_as_its_seasons() {
+        let closure = closure_of(
+            1,
+            vec![
+                anime(1, 2010),
+                anime(2, 2011),
+                node(10, "MANGA", "NOVEL", Some(2005)),
+                node(11, "MANGA", "NOVEL", Some(2006)),
+                node(30, "ANIME", "MOVIE", Some(2012)),
+            ],
+            vec![
+                e(1, 2, "SEQUEL"),
+                e(10, 11, "SEQUEL"),
+                e(10, 1, "ADAPTATION"),
+                e(2, 30, "SIDE_STORY"),
+            ],
+            &[],
+        );
+        let p = plan(&closure, 30);
+        assert_eq!(p.chains[&10].0, 0, "the books are the first row");
+        assert_eq!(p.main_line, Some(p.chains[&1].0));
+        assert_eq!(p.anchors.get(&30), Some(&2));
+
+        // With the root a book, the first run on screen still wins.
+        let mut books_first = closure;
+        books_first.root = 10;
+        let p = plan(&books_first, 30);
+        assert_eq!(p.main_line, Some(p.chains[&1].0));
+    }
+
+    #[test]
+    fn only_books_in_chains_is_no_main_line() {
+        let closure = closure_of(
+            10,
+            vec![
+                node(10, "MANGA", "MANGA", Some(2005)),
+                node(11, "MANGA", "MANGA", Some(2006)),
+                anime(30, 2012),
+            ],
+            vec![e(10, 11, "SEQUEL"), e(10, 30, "ADAPTATION")],
+            &[],
+        );
+        assert_eq!(plan(&closure, 30).main_line, None);
     }
 
     #[test]
