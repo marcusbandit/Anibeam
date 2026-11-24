@@ -1485,7 +1485,6 @@ series-your-notes = Twoje notatki
 series-studio = Studio
 series-open-anilist = Otwórz w AniList
 series-open-mal = Otwórz w MyAnimeList
-series-more = Więcej
 series-add-notes = Dodaj notatki
 # $sites is AniList, MyAnimeList, or both
 series-unhide = Pokaż

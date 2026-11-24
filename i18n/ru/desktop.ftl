@@ -1460,7 +1460,6 @@ series-your-notes = Ваши заметки
 series-studio = Студия
 series-open-anilist = Открыть на AniList
 series-open-mal = Открыть на MyAnimeList
-series-more = Ещё
 series-add-notes = Заметки
 # $sites is AniList, MyAnimeList, or both
 series-unhide = Показать

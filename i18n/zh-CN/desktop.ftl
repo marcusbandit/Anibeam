@@ -976,7 +976,6 @@ series-your-notes = 你的笔记
 series-studio = 制作公司
 series-open-anilist = 在 AniList 上打开
 series-open-mal = 在 MyAnimeList 上打开
-series-more = 更多
 series-add-notes = 添加笔记
 series-unhide = 取消隐藏
 series-hide = 隐藏
