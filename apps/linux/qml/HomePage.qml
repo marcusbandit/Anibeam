@@ -1082,22 +1082,56 @@ Item {
             target = lead
             pos = lead
         }
-        // A step of one glides; anything else (a reload that moved the hero's series) snaps
+        // The card standing at `place` once the row is still, by its index
+        function cardAt(place) {
+            var n = count
+            return n ? cards.itemAt(((target + place) % n + n) % n) : null
+        }
+        // The focused card's place, or -1 with the focus elsewhere
+        function focusedPlace() {
+            for (var i = 0; i < cards.count; i++) {
+                var c = cards.itemAt(i)
+                if (c && c.activeFocus) return Math.round(c.place)
+            }
+            return -1
+        }
+        // A step of the hero's glides the row by one. A focused card that would glide out of
+        // reach hands the focus to the card that takes its place.
         function follow() {
+            if (reloading) return
             if (!loops || count === 0) { snap(); return }
             var at = ((target % count) + count) % count
             var d = ((lead - at) % count + count) % count
             if (d > count / 2) d -= count
             if (d === 0) return
-            if (Math.abs(d) !== 1 || theme.reducedMotion) { snap(); return }
-            target += d
-            glide.from = pos
-            glide.to = target
-            glide.restart()
+            var had = focusedPlace()
+            if (Math.abs(d) !== 1 || theme.reducedMotion) snap()
+            else {
+                target += d
+                glide.from = pos
+                glide.to = target
+                glide.restart()
+            }
+            if (had >= 0) {
+                var to = cardAt(had)
+                if (to) to.forceActiveFocus()
+            }
         }
+        // A reload rebuilds every card in the new order, so the row snaps to the hero's place
+        // once the reload has settled, and a lead change that came with it never glides
+        property bool reloading: false
+        function settle() { reloading = false; snap() }
+        onEntriesChanged: { reloading = true; Qt.callLater(row.settle) }
         onLeadChanged: follow()
-        onCountChanged: snap()
         onLoopsChanged: snap()
+        // Left and Right walk the cards in the order they stand on screen, which is not their
+        // order in the model once the row has come round
+        function stepFocus(from, by) {
+            if (!loops) return false
+            var to = cardAt(Math.round(from.place) + by)
+            if (to && to.reachable) to.forceActiveFocus()
+            return true
+        }
         NumberAnimation {
             id: glide
             target: row; property: "pos"
@@ -1126,6 +1160,7 @@ Item {
                 height: parent.height + theme.space(2)
                 clip: true
                 Repeater {
+                    id: cards
                     model: row.entries
                     EpisodeCard {
                         id: slot
@@ -1145,7 +1180,10 @@ Item {
                         x: scroll.gutter + place * row.pitch
                         y: theme.space(1)
                         visible: x + width > 0 && x < lane.width
-                        reachable: place > -0.01 && place < row.cols - 0.99
+                        // Inside the row, and clear of the right edge's shadow when it loops
+                        reachable: place > -0.01 && place < row.cols - (row.loops ? 1.99 : 0.99)
+                        Keys.onLeftPressed: function(event) { event.accepted = row.stepFocus(slot, -1) }
+                        Keys.onRightPressed: function(event) { event.accepted = row.stepFocus(slot, 1) }
                         onHeightChanged: if (index === 0) row.cardH = height
                         Component.onCompleted: if (index === 0) row.cardH = height
                     }
@@ -1312,9 +1350,10 @@ Item {
                     readonly property var c: entry ? entry.card : ({})
                     readonly property var d: entry ? entry.detail : null
                     readonly property var ep: entry ? entry.episode : null
-                    // The logo when the record has one that loads; the title and a larger
-                    // poster otherwise
-                    readonly property bool hasLogo: !!(d && d.logo) && logo.status !== Image.Error
+                    // The layout follows the record alone: a logo that is slow or fails to load
+                    // shows the title in its box and never moves anything. No logo: the title
+                    // and a larger poster.
+                    readonly property bool hasLogo: !!(d && d.logo)
                     readonly property real posterH: hasLogo ? hero.frameH : hero.bigFrameH
                     readonly property real blockH: Math.max(hero.framed ? posterH : 0, wordsCol.implicitHeight)
                     readonly property string banner: d && d.banner ? d.banner : ""
@@ -1327,7 +1366,7 @@ Item {
                     enabled: current
                     width: hero.width
                     height: hero.height
-                    PosterTone { id: tone; source: slide.poster ? Fmt.fileUrl(slide.poster) : "" }
+                    PosterTone { id: tone; source: slide.loaded && slide.poster ? Fmt.fileUrl(slide.poster) : "" }
                     readonly property color bandBase: theme.bandBase(tone.tone, slide.poster ? 0.5 : 0.25)
                     readonly property color inkAccent: theme.bandAccent(tone.tone, bandBase)
                     readonly property color ink: "#f4f6f8"
@@ -1447,7 +1486,7 @@ Item {
                             Item {
                                 id: titleBlock
                                 width: parent.width
-                                readonly property bool logoShown: slide.hasLogo && logo.status === Image.Ready
+                                readonly property bool logoShown: logo.status === Image.Ready
                                 height: slide.hasLogo ? theme.space(24) : titleLabel.height
                                 Image {
                                     id: logo
@@ -1455,7 +1494,9 @@ Item {
                                     visible: titleBlock.logoShown
                                     width: Math.min(parent.width, theme.space(130))
                                     height: parent.height
-                                    source: slide.d && slide.d.logo ? Fmt.fileUrl(slide.d.logo) : ""
+                                    source: slide.loaded && slide.hasLogo ? Fmt.fileUrl(slide.d.logo) : ""
+                                    // Decoded no larger than the box it fits into
+                                    sourceSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
                                     fillMode: Image.PreserveAspectFit
                                     horizontalAlignment: Image.AlignLeft
                                     verticalAlignment: Image.AlignBottom
@@ -1463,13 +1504,15 @@ Item {
                                     smooth: true
                                     mipmap: true
                                 }
+                                // In the logo's box until the logo is there, from its foot
                                 Label {
                                     id: titleLabel
-                                    visible: !slide.hasLogo
+                                    visible: !titleBlock.logoShown
+                                    anchors.bottom: parent.bottom
                                     width: parent.width
                                     text: slide.c.title || ""
                                     role: "display"
-                                    font.pointSize: theme.typeDisplay * (hero.framed ? 1.2 : 1)
+                                    font.pointSize: theme.typeDisplay * (hero.framed && !slide.hasLogo ? 1.2 : 1)
                                     color: slide.ink
                                     wrapMode: Text.Wrap
                                     maximumLineCount: 2
@@ -1525,9 +1568,12 @@ Item {
                                     primary: true
                                     tint: slide.inkAccent
                                     icon: "play"
-                                    // The series page's wording, the same for every show
-                                    text: !slide.ep ? "" : words.episodeNumber(slide.ep.number) === null ? words.t("series-play-continue")
-                                          : words.t("series-play-continue-episode", { number: words.episodeNumber(slide.ep.number) })
+                                    // The series page's wording: Continue for an episode
+                                    // stopped partway, Play for the next one
+                                    readonly property var number: slide.ep ? words.episodeNumber(slide.ep.number) : null
+                                    readonly property bool partial: !!(slide.entry && slide.entry.partial)
+                                    text: !slide.ep ? "" : number === null ? words.t(partial ? "series-play-continue" : "action-play")
+                                          : words.t(partial ? "series-play-continue-episode" : "series-play-episode", { number: number })
                                     onClicked: page.playEntry(slide.entry)
                                 }
                                 Button {
