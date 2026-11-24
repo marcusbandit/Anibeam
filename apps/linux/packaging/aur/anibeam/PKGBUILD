@@ -20,9 +20,12 @@ optdepends=(
 # link step never asks for LTO, so the GCC LTO objects come back as undefined C++ bridge
 # symbols. Rust's own LTO is a Cargo profile matter, not a makepkg one.
 options=(!lto)
-# The Discord application the release builds show presence as, the same one CI's secret
-# names. Every presence carries its id, so it is public; the AUR cannot read CI's secrets.
+# The apps the release builds use, the same ones CI's secrets name. The AUR cannot read
+# CI's secrets, and none of these are secret: every presence carries the Discord id, and
+# every AniList and MyAnimeList sign-in page shows its app's id in the address.
 _discord_client_id=1570603971393880194
+_anilist_client_id=40628
+_mal_client_id=5993649f550436936d26ce59b50f159a
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
@@ -45,16 +48,22 @@ _env() {
   export GIT_CEILING_DIRECTORIES="$srcdir"
   # A release built from source: the release icon, not the dev one a checkout gets.
   export ANIBEAM_ICON=release
-  # A builder's own Discord application wins over the release one.
+  # A builder's own applications win over the release ones.
   export ANIBEAM_DISCORD_CLIENT_ID="${ANIBEAM_DISCORD_CLIENT_ID:-$_discord_client_id}"
+  export ANIBEAM_ANILIST_CLIENT_ID="${ANIBEAM_ANILIST_CLIENT_ID:-$_anilist_client_id}"
+  export ANIBEAM_MAL_CLIENT_ID="${ANIBEAM_MAL_CLIENT_ID:-$_mal_client_id}"
 }
 
 build() {
   _src
   _env
   cargo build --frozen --release -p anibeam
-  # option_env! keeps the id as a string, so a binary without it never shows presence.
-  grep -qa -- "$ANIBEAM_DISCORD_CLIENT_ID" target/release/anibeam
+  # option_env! keeps each id as a string, so a binary missing one never shows presence
+  # or signs in without the user's own app.
+  local id
+  for id in "$ANIBEAM_DISCORD_CLIENT_ID" "$ANIBEAM_ANILIST_CLIENT_ID" "$ANIBEAM_MAL_CLIENT_ID"; do
+    grep -qa -- "$id" target/release/anibeam
+  done
 }
 
 check() {
