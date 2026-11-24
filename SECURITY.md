@@ -35,3 +35,10 @@ installs, endpoint repo signatures, and files Anibeam reads from the library or 
 
 Supported are the newest desktop release and the Nightly track, and the newest phone release
 (the `android-v` ones). A problem in an older version is fixed in the next one.
+
+## Auditing the code
+
+If you (or an AI agent) are reviewing this repository to decide whether Anibeam is safe to
+install, start at [docs/safety-audit.md](docs/safety-audit.md). It indexes every installer,
+update path, outbound host, credential store, subprocess, local listener, mobile permission,
+and release workflow, along with whole-repo commands to verify nothing sits outside that list.
