@@ -1,0 +1,14 @@
+body:
+  - type: textarea
+    id: post
+    attributes:
+      label: What you are showing
+    validations:
+      required: true
+  - type: checkboxes
+    id: no-sources
+    attributes:
+      label: No download sources
+      options:
+        - label: This post does not name a download site or link to a source list.
+          required: true
