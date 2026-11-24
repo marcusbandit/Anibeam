@@ -1,44 +1,69 @@
 <section>
-  <h2 id="how">How a room works</h2>
-  <p>Everyone in a room plays their own copy of the episode, on their own computer. Play, pause and seek stay in step for all of you. A room takes up to 10 people.</p>
+  <h2 id="how">How Watch together works</h2>
+  <p>Instead of streaming compressed video over a laggy screen share, everyone in a Watch together room plays their own local copy of the episode at full quality and with their own subtitles and audio track.</p>
+  <p>Anibeam connects everyone through a lightweight room server so <b>play, pause, seeking, and playback speed stay in sync</b> across up to 10 people.</p>
 </section>
 
 <section>
-  <h2 id="start">Start a room</h2>
+  <h2 id="start">Start a room and invite friends</h2>
+  <p>You can start a room while already watching an episode, or open an empty room first and pick the episode together:</p>
   <ol class="steps">
-    <li>Play the episode you want to watch.</li>
-    <li>Press <b class="ui">Watch together</b> in the player, or <kbd>Ctrl</kbd>+<kbd>J</kbd>.</li>
-    <li>Press <b class="ui">Start a room</b>. The first time, type the name the others will see and press <b class="ui">Start the room</b>.</li>
-    <li>Press <b class="ui">Copy link</b> and send the link to your friends, or read them the six-character <b class="ui">Room code</b>.</li>
+    <li>Click <b class="ui">Watch together</b> in the top-right corner of the player (or press <kbd>Ctrl</kbd>+<kbd>J</kbd> or click <b class="ui">Join room</b> at the bottom of the sidebar from anywhere in the app).</li>
+    <li>Click <b class="ui">Start a room</b>. If it is your first time, type the display name you want friends to see and click <b class="ui">Start the room</b>.</li>
+    <li>Share the room with your friends using whichever way is easiest:
+      <ul>
+        <li>Click <b class="ui">Copy link</b> to send a clickable <code>rooms.anibeam.app</code> link.</li>
+        <li>Read or send them the 6-character <b>Room code</b>.</li>
+        <li>Let friends scan the <b>QR code</b> displayed right in the room panel.</li>
+        <li>If <a href="../playback/#discord">Discord status</a> is enabled, friends can also join via Discord (switch between <b class="ui">Invite only</b> and <b class="ui">Open</b> in the room panel).</li>
+      </ul>
+    </li>
   </ol>
+  <div class="callout callout-tip">
+    <span class="callout-title">Wait for everyone to get ready</span>
+    <p>As the host, Anibeam shows who has the episode open and ready. You can click <b class="ui">Wait for everyone</b> so playback starts automatically once everyone is ready, or <b class="ui">Start anyway</b> whenever you want to begin.</p>
+  </div>
 </section>
 
 <section>
-  <h2 id="join">Join a room</h2>
+  <h2 id="join">Join a friend's room</h2>
+  <p>You can jump into a room in three ways:</p>
   <ul>
-    <li>Open the link a friend sent. The room page in your browser offers <b class="ui">Open in Anibeam</b>.</li>
-    <li>Or press <b class="ui">Join room</b> in the sidebar, or <kbd>Ctrl</kbd>+<kbd>J</kbd>, type the code and press <b class="ui">Join</b>. Lower case and a pasted link work too.</li>
-    <li>Or type the code on <a href="https://rooms.anibeam.app/">rooms.anibeam.app</a>, which opens the room's page.</li>
+    <li><b>Click the link:</b> Open the <code>rooms.anibeam.app</code> link your friend sent and click <b class="ui">Open in Anibeam</b>.</li>
+    <li><b>Enter the code in Anibeam:</b> Click <b class="ui">Join room</b> in the sidebar (or press <kbd>Ctrl</kbd>+<kbd>J</kbd>), type the 6-letter code (or paste the full link), and click <b class="ui">Join</b>. Uppercase and lowercase both work.</li>
+    <li><b>From the web:</b> Visit <a href="https://rooms.anibeam.app/">rooms.anibeam.app</a> and type the code there to open the room's join page.</li>
   </ul>
-  <p>When the room's episode is in your library, <b class="ui">Open the episode</b> plays it in step with the others.</p>
+  <p>If the room's episode is already in your library, click <b class="ui">Open the episode</b> in the room panel and Anibeam jumps straight into playback synced with the host.</p>
 </section>
 
 <section>
-  <h2 id="get-media">You don't have the episode</h2>
-  <p>Your row in the room says <b class="ui">Doesn't have it</b>. Press <b class="ui">Get media</b>: Anibeam asks the host's app for the torrent the episode came from, or the release's name, and downloads it into your library. The room shows your progress and the time left.</p>
-  <p>This needs downloads set up on your side. See <a href="../downloads/">Downloads</a>.</p>
+  <h2 id="get-media">What if you don't have the episode yet?</h2>
+  <p>If the host picks an episode that isn't in your library, your name shows <em>Doesn't have it</em> with a <b class="ui">Get media</b> button right next to it:</p>
+  <ol class="steps">
+    <li>Click <b class="ui">Get media</b>. If the show has multiple episodes, Anibeam asks whether you want <b class="ui">This episode</b> or the <b class="ui">Whole show</b>.</li>
+    <li>Anibeam asks the host's app which release they are watching and downloads the matching episode straight into your library.</li>
+    <li>Everyone in the room sees a clean progress bar and time remaining under your name. As soon as it finishes, you're ready to watch in sync!</li>
+  </ol>
+  <div class="callout">
+    <span class="callout-title">Requires downloads set up</span>
+    <p>Fetching episodes in a room uses your own torrent client and download sources. Make sure <a href="../downloads/">Downloads</a> are working on your computer first.</p>
+  </div>
 </section>
 
 <section>
-  <h2 id="offset">You're slightly out of step</h2>
-  <p>Under <b class="ui">Your offset</b>, <b class="ui">Half a second earlier</b> and <b class="ui">Half a second later</b> shift your copy. When your release and the host's differ, the room can suggest an offset from the openings, as in <b class="ui">The openings suggest 1.5 s</b>. Press <b class="ui">Use it</b> to take it.</p>
-</section>
-
-<section>
-  <h2 id="leave">Leave and settings</h2>
+  <h2 id="offset">Fix slight timing differences between copies</h2>
+  <p>If you and the host downloaded different video releases of the same episode, one file might have an extra second or two of studio logo or black screen at the start. You don't need to re-download the same file to stay in step:</p>
   <ul>
-    <li><b class="ui">Leave the room</b> in the room panel leaves it.</li>
-    <li>Your name in rooms is under <span class="where"><b>Settings</b><b>Playback</b></span>.</li>
-    <li><b class="ui">Room server</b> in the same place is where rooms are made. Change it only for a server you run yourself.</li>
+    <li><b>Use the automatic suggestion:</b> When Anibeam detects a difference in where the opening theme begins, the room panel shows a line like <em>The openings suggest 1.5 s</em>. Click <b class="ui">Use it</b> to align your copy immediately.</li>
+    <li><b>Nudge it by ear:</b> Under <b>Your offset</b> in the room panel, click the <b class="ui">-</b> (<em>Half a second earlier</em>) or <b class="ui">+</b> (<em>Half a second later</em>) buttons until the dialogue lines up with your friends.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="leave">Leave a room and room settings</h2>
+  <ul>
+    <li><b>Leave:</b> Click <b class="ui">Leave the room</b> at the bottom of the room panel at any time.</li>
+    <li><b>Change your display name:</b> Click <b class="ui">Change</b> next to your name in the room panel before joining, or edit <b>Your name in watch together rooms</b> under <span class="where"><b>Settings</b><b>Playback</b></span>.</li>
+    <li><b>Room server (advanced):</b> Under <span class="where"><b>Settings</b><b>Playback</b></span> &gt; <b>Advanced</b>, <b>Room server</b> points to Anibeam's public relay by default. Leave this untouched unless you host your own room server.</li>
   </ul>
 </section>

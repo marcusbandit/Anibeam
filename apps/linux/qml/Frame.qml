@@ -552,6 +552,39 @@ FocusScope {
         roomState.join(code)
     }
     Connections { target: Shell; function onRoomLinkOpened(code) { frame.joinRoomLink(code) } }
+    // A magnet link (#1391) from the command line or a second launch: Downloads, with the link
+    // in its field. A Downloads page already open takes it where it is; one that opens for it
+    // takes it once from here, never from its props, which the rail would hand it again
+    property string pendingMagnet: ""
+    function openMagnet(link) {
+        if (!link) return
+        if (nav.current.page === "downloads" && page.item && page.item.takeMagnet) { page.item.takeMagnet(link); return }
+        frame.pendingMagnet = link
+        frame.go("downloads", {}, words.t("nav-downloads"))
+    }
+    function takePendingMagnet() { var link = frame.pendingMagnet; frame.pendingMagnet = ""; return link }
+    Connections { target: Shell; function onMagnetLinkOpened(link) { frame.openMagnet(link) } }
+    // A source list link (#1406, anibeam://add-repo?url=...) from the command line or a second
+    // launch: Settings, Downloads, where the source lists panel asks before adding it. A web
+    // page can hand over the link but never the yes. `refused` says why a link adds nothing.
+    // The panel reads this and clears it on Add or Cancel; a newer link replaces an older one.
+    // A first run's walkthrough covers the whole frame, so while it shows the link waits here
+    // and Settings, Downloads opens with it once the walkthrough closes, however it closes.
+    property var repoLink: null
+    function openRepoLink(url, host, refused) {
+        if (!url && !refused) return
+        frame.repoLink = { url: url, host: host, refused: refused }
+        if (!onboarding.visible) frame.showRepoLink()
+    }
+    function showRepoLink() {
+        if (!frame.repoLink) return
+        var focus = words.t("endpoint-repos-panel-title")
+        if (nav.current.page === "settings" && page.item && page.item.open) { page.item.open("downloads", focus); return }
+        frame.go("settings", { tab: "downloads", focus: focus }, words.t("nav-settings"))
+    }
+    Connections { target: Shell; function onRepoLinkOpened(url, host, refused) { frame.openRepoLink(url, host, refused) } }
+    // Later, so the walkthrough's own last page (Library, or Settings) is gone first
+    Connections { target: onboarding; function onVisibleChanged() { if (!onboarding.visible && frame.repoLink) Qt.callLater(frame.showRepoLink) } }
     // Discord (#966): an Ask to Join comes up as an island, and a Join or an accepted invite
     // takes the same road as a room link
     Connections {
@@ -711,6 +744,8 @@ FocusScope {
         roomState.refresh()
         // Started from a room link: join it once the first page is up
         if (Shell.roomLink !== "") Qt.callLater(function() { frame.joinRoomLink(Shell.roomLink) })
+        if (Shell.magnetLink !== "") Qt.callLater(function() { frame.openMagnet(Shell.magnetLink) })
+        if (Shell.repoLinkUrl !== "" || Shell.repoLinkRefused !== "") Qt.callLater(function() { frame.openRepoLink(Shell.repoLinkUrl, Shell.repoLinkHost, Shell.repoLinkRefused) })
         Qt.callLater(frame.takeDiscordJoin)
         if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }

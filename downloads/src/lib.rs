@@ -1029,6 +1029,17 @@ async fn read_native_endpoints(downloads: &Arc<Downloads>) -> Result<(), CoreErr
     Ok(())
 }
 
+/// `repos::endpoint_http` for an async task: building the paced client may read
+/// endpoint credentials from the secret store, so it runs on a blocking thread.
+pub(crate) async fn endpoint_http(
+    services: &Arc<Services>,
+) -> Result<anibeam_releases::repos::Paced, CoreError> {
+    let services = services.clone();
+    tokio::task::spawn_blocking(move || anibeam_releases::repos::endpoint_http(&services))
+        .await
+        .map_err(|e| CoreError::internal(e.to_string()))
+}
+
 /// Health, endpoints and anirss's view of qBittorrent, into the state, while the
 /// settings the client was built from are still the ones in use. A save that lands
 /// while anirss answers has dropped that anirss: what it said is thrown away rather
@@ -1662,7 +1673,7 @@ fn enrich(
             if spec.feed_url.is_empty() {
                 return Err(CoreError::internal("no feed named for this search"));
             }
-            let http = anibeam_releases::repos::endpoint_http(&owner);
+            let http = endpoint_http(&owner).await?;
             if searched_elsewhere {
                 http.passed(&spec.feed_url);
             }
@@ -1964,7 +1975,7 @@ async fn swap_feed(
 /// same for any endpoint whose feed carries a search. A feed that cannot be
 /// read rejects that word; the rule keeps every word either way.
 async fn tightest_feed(
-    services: &Services,
+    services: &Arc<Services>,
     ctx: &Arc<JobCtx>,
     feed_url: &str,
     words: &[String],
@@ -1977,7 +1988,10 @@ async fn tightest_feed(
     if words.is_empty() || items.is_empty() {
         return feed_url.to_string();
     }
-    let http = &anibeam_releases::repos::endpoint_http(services);
+    let Ok(http) = endpoint_http(services).await else {
+        return feed_url.to_string();
+    };
+    let http = &http;
     let Ok(now) = feed::read(http, feed_url).await else {
         return feed_url.to_string();
     };
@@ -2049,6 +2063,14 @@ pub fn download_telling(
             anibeam_contract::i18n::tr("core-downloads-nothing-selected", &[]),
         ));
     }
+    // A magnet's scheme in any case reaches the client as `magnet:?`
+    let items: Vec<Release> = items
+        .into_iter()
+        .map(|mut r| {
+            r.link = anibeam_foundation::magnet::normalize(&r.link);
+            r
+        })
+        .collect();
     let owner = downloads.clone();
     // What rolls is held back before anything else is asked of it, so a
     // held episode gets no followup that would wait days for its torrent
@@ -2204,10 +2226,20 @@ pub(crate) fn move_home(
     });
 }
 
-pub fn movie(downloads: &Arc<Downloads>, link: String) -> Result<u64, CoreError> {
-    let link = link.trim().to_string();
-    if !(link.starts_with("magnet:") || link.starts_with("http://") || link.starts_with("https://"))
-    {
+/// A link into the films' folder. With `needs_video` it is checked for a
+/// video once the client knows its files, as a download with
+/// `DownloadOptions::needs_video` is (`replace`).
+pub fn movie(
+    downloads: &Arc<Downloads>,
+    link: String,
+    needs_video: bool,
+) -> Result<u64, CoreError> {
+    let link = anibeam_foundation::magnet::normalize(&link);
+    let scheme = |s: &str| {
+        link.get(..s.len())
+            .is_some_and(|h| h.eq_ignore_ascii_case(s))
+    };
+    if !(scheme("magnet:") || scheme("http://") || scheme("https://")) {
         return Err(CoreError::invalid(
             "link",
             anibeam_contract::i18n::tr("core-downloads-movie-link", &[]),
@@ -2221,6 +2253,22 @@ pub fn movie(downloads: &Arc<Downloads>, link: String) -> Result<u64, CoreError>
         .start(JobKind::Download, move |_| async move {
             let backend = DownloadsBackend::open(&owner).await?;
             let result = backend.movie(&link).await?;
+            if needs_video {
+                match (
+                    replace::video_followup(&link, &result),
+                    qbt_client(&owner).await,
+                ) {
+                    (Some(f), Ok(qbt)) => {
+                        let options = DownloadOptions {
+                            needs_video: true,
+                            ..Default::default()
+                        };
+                        replace::after_add(&owner, &qbt, &[], &options, vec![f]).await
+                    }
+                    (None, _) => tracing::debug!("film not checked for a video: no hash"),
+                    (_, Err(e)) => tracing::warn!("film not checked for a video: {e}"),
+                }
+            }
             Ok(Finished {
                 plain: Some(anibeam_contract::words!("core-downloads-added-movie")),
                 level: Level::Info,
@@ -2228,6 +2276,31 @@ pub fn movie(downloads: &Arc<Downloads>, link: String) -> Result<u64, CoreError>
                 body: EventBody::TorrentsAdded { result },
             })
         }))
+}
+
+/// What a magnet link names, for the shell to match it to a show before it is
+/// downloaded (#1391): its hash, its `dn`, the show that name is a release of
+/// and the episode it names. A link that is not a magnet with a hash comes
+/// back with an empty hash, never an error, so the shell can say so in place.
+pub fn read_magnet(link: &str) -> MagnetLink {
+    let link = link.trim();
+    let Some(hash) = anibeam_foundation::magnet::hash(link) else {
+        return MagnetLink::default();
+    };
+    let name = anibeam_foundation::magnet::name(link).unwrap_or_default();
+    let f = facts::read_name(&name);
+    let mut show = anibeam_releases::titles::folder_name(&name);
+    // A scene name spells its words with dots: Example.Show.S01E03
+    if !show.contains(' ') && show.contains(['.', '_']) {
+        show = show.replace(['.', '_'], " ");
+    }
+    MagnetLink {
+        hash,
+        show: show.split_whitespace().collect::<Vec<_>>().join(" "),
+        episode: if f.batch { None } else { f.episode },
+        batch: f.batch,
+        name,
+    }
 }
 
 /// Refuses `folder` for a removal with files when it is a library show's own folder: a
@@ -2515,11 +2588,18 @@ pub fn remove_show(
 /// one that cannot fetch new episodes (#536). The rules come from qBittorrent on either
 /// engine, so the core's own sources judge them both: every installed one, switched off
 /// for search or not, since its subscriptions are still read.
-fn follow_rules(services: &Services, rules: &mut [SubscriptionRule]) {
-    let sources: Vec<anibeam_releases::Endpoint> = anibeam_releases::repos::fillers(services)
-        .into_iter()
-        .map(|r| r.endpoint)
-        .collect();
+async fn follow_rules(services: &Arc<Services>, rules: &mut [SubscriptionRule]) {
+    let owner = services.clone();
+    let Ok(sources) = tokio::task::spawn_blocking(move || {
+        anibeam_releases::repos::fillers(&owner)
+            .into_iter()
+            .map(|r| r.endpoint)
+            .collect::<Vec<anibeam_releases::Endpoint>>()
+    })
+    .await
+    else {
+        return;
+    };
     for rule in rules.iter_mut() {
         rule.followable = anibeam_releases::endpoints::follows(&sources, &rule.feed_url, None);
     }
@@ -2543,7 +2623,7 @@ pub fn list_rules(downloads: &Arc<Downloads>) -> Result<Reply, CoreError> {
                 if link_rules(&owner.services, &mut rules) {
                     watch::remember(&owner, &rules).await;
                 }
-                follow_rules(&owner.services, &mut rules);
+                follow_rules(&owner.services, &mut rules).await;
                 owner.services.bus.debug(
                     Stage::Downloads,
                     format!(
@@ -3140,8 +3220,12 @@ pub fn inspect_release(services: &Arc<Services>, link: String) -> Result<Reply, 
     let link = link.trim().to_string();
     let owner = services.clone();
     services.handle.spawn(async move {
-        let http = anibeam_releases::repos::endpoint_http(&owner);
-        let (episodes, files) = match contents::inspect(&http, &link).await {
+        let inspected = async {
+            let http = endpoint_http(&owner).await?;
+            contents::inspect(&http, &link).await
+        }
+        .await;
+        let (episodes, files) = match inspected {
             Ok(found) => found,
             Err(e) => {
                 tracing::debug!("release not inspected: {}", plain(&e));
@@ -3178,7 +3262,12 @@ pub fn read_feed(services: &Arc<Services>, url: String, tag: String) -> Result<R
     }
     let owner = services.clone();
     services.handle.spawn(async move {
-        match feed::read(&anibeam_releases::repos::endpoint_http(&owner), &url).await {
+        let outcome = async {
+            let http = endpoint_http(&owner).await?;
+            feed::read(&http, &url).await
+        }
+        .await;
+        match outcome {
             Ok(entries) => owner.bus.debug(
                 Stage::Downloads,
                 format!(
@@ -3236,7 +3325,7 @@ pub fn repair_subscription(downloads: &Arc<Downloads>, name: String) -> Result<u
                     anibeam_contract::i18n::tr("core-downloads-feed-no-search", &[]),
                 )
             })?;
-            let http = anibeam_releases::repos::endpoint_http(&owner.services);
+            let http = endpoint_http(&owner.services).await?;
             let now = feed::read(&http, &url).await?;
             if !now.is_empty() {
                 return Ok(Finished {
@@ -3679,6 +3768,69 @@ pub async fn host_read(
 
 #[cfg(test)]
 mod tests {
+    /// A film link's scheme reads in any case: an uppercase magnet starts the job, and
+    /// anything that is no link is refused (#1391).
+    #[test]
+    fn a_film_link_takes_its_scheme_in_any_case() {
+        let dir = tempfile::tempdir().unwrap();
+        let http = anibeam_net::FakeHttp::new();
+        let teams = Teams::open(dir.path(), http.clone());
+        let hex = "0123456789abcdef0123456789abcdef01234567";
+        assert!(super::movie(&teams.downloads, format!("MAGNET:?xt=urn:btih:{hex}"), true).is_ok());
+        assert!(
+            super::movie(
+                &teams.downloads,
+                "HTTPS://example.com/a.torrent".into(),
+                false
+            )
+            .is_ok()
+        );
+        assert!(super::movie(&teams.downloads, "example.com/a.torrent".into(), false).is_err());
+        teams.shutdown();
+    }
+
+    /// A magnet's name reads as a release title does: the show, the episode, a batch; a link
+    /// with no hash in it comes back empty (#1391).
+    #[test]
+    fn a_magnet_reads_as_its_show_and_episode() {
+        let hex = "0123456789abcdef0123456789abcdef01234567";
+        let m = super::read_magnet(&format!(
+            " magnet:?xt=urn:btih:{}&dn=%5BExample%5D%20Example%20Show%20-%2003%20%5B1080p%5D.mkv&tr=udp%3A%2F%2Ftracker.example%3A1337 ",
+            hex.to_uppercase()
+        ));
+        assert_eq!(m.hash, hex);
+        assert_eq!(m.name, "[Example] Example Show - 03 [1080p].mkv");
+        assert_eq!(m.show, "Example Show");
+        assert_eq!(m.episode, Some(3.0));
+        assert!(!m.batch);
+        let scene = super::read_magnet(&format!(
+            "magnet:?xt=urn:btih:{hex}&dn=Example.Show.S02E05.1080p.WEB.x264-GROUP"
+        ));
+        assert_eq!(scene.show, "Example Show");
+        assert_eq!(scene.episode, Some(5.0));
+        let batch = super::read_magnet(&format!(
+            "magnet:?xt=urn:btih:{hex}&dn=%5BExample%5D%20Example%20Show%20(01-12)%20%5B1080p%5D"
+        ));
+        assert_eq!(batch.show, "Example Show");
+        assert_eq!((batch.episode, batch.batch), (None, true));
+        let film = super::read_magnet(&format!("magnet:?xt=urn:btih:{hex}&dn=Example+Film+(2001)"));
+        assert_eq!(film.name, "Example Film (2001)");
+        assert_eq!(film.episode, None);
+        let bare = super::read_magnet(&format!("magnet:?xt=urn:btih:{hex}"));
+        assert_eq!(
+            (bare.hash.as_str(), bare.name.as_str(), bare.show.as_str()),
+            (hex, "", "")
+        );
+        assert_eq!(
+            super::read_magnet("magnet:?dn=Example%20Show"),
+            MagnetLink::default()
+        );
+        assert_eq!(
+            super::read_magnet("https://example.com/a.torrent"),
+            MagnetLink::default()
+        );
+    }
+
     /// What `/health` lists is what the endpoint note reads, through the state: kept with
     /// the version on a read, and gone with it when anirss fails (#476).
     #[test]
