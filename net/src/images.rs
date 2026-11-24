@@ -85,6 +85,28 @@ const REFERENCED_SQL: &str =
            WHERE e.still_url IS NOT NULL
              AND NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = e.anilist_id AND ze2.number IS NOT NULL)";
 
+/// Which of three groups a clear logo's language falls in: 0 English, 1
+/// Japanese, 2 any other or none, read off its base (`en-US` is `en`). The
+/// cache fetches the first logo of each, so whichever the logo language
+/// setting picks is on disk (#1475 review). `$t` is the table's alias.
+macro_rules! logo_language_group {
+    ($t:literal) => {
+        concat!(
+            "(CASE WHEN length(",
+            $t,
+            ".lang) > 2 AND substr(",
+            $t,
+            ".lang, 3, 1) NOT IN ('-', '_') THEN 2",
+            " ELSE CASE substr(lower(",
+            $t,
+            ".lang), 1, 2) WHEN 'en' THEN 0 WHEN 'ja' THEN 1 ELSE 2 END END)"
+        )
+    };
+}
+
+/// `logo_language_group!` over the alias `i`, for the queries outside this file.
+pub const LOGO_LANGUAGE_GROUP_I: &str = logo_language_group!("i");
+
 /// The AniList ids of the series a backdrop is drawn for before anyone
 /// opens their page (#1475): the ones Home's Continue may hold, played here
 /// or being watched on a tracker with episodes seen. Their first background
@@ -113,8 +135,8 @@ const PINNED_SQL: &str = concat!("SELECT m.cover_url AS url FROM anilist_media m
      UNION SELECT t.background_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.background_url IS NOT NULL
      UNION SELECT url FROM (SELECT url FROM (
                 SELECT a.url, row_number() OVER (
-                    PARTITION BY a.anilist_id
-                    ORDER BY CASE WHEN lower(a.lang) LIKE 'en%' THEN 0 WHEN a.lang IS NULL THEN 1 ELSE 2 END, a.rank
+                    PARTITION BY a.anilist_id, ", logo_language_group!("a"), "
+                    ORDER BY a.rank
                 ) AS pick
                 FROM anizip_images a
                 WHERE a.kind = 'Clearlogo'
@@ -140,10 +162,10 @@ const PINNED_SQL: &str = concat!("SELECT m.cover_url AS url FROM anilist_media m
 /// covers of every entry in an owned series' franchise, walked the way the
 /// graph closes it (CHARACTER and OTHER edges are never crossed), so the
 /// series page's Related stones have their art offline too. From ani.zip
-/// (#1036), an owned series' one clear logo, English first, the first
-/// background of a series Continue may show (#1475), and the stills of the
-/// episodes it has a file of; the rest of its artwork waits until something
-/// asks.
+/// (#1036), an owned series' first clear logo in English, in Japanese and in
+/// anything else, the first background of a series Continue may show
+/// (#1475), and the stills of the episodes it has a file of; the rest of its
+/// artwork waits until something asks.
 const MISSING_SQL: &str = concat!("WITH RECURSIVE franchise(id) AS (
         SELECT anilist_id FROM series WHERE anilist_id IS NOT NULL
         UNION SELECT r.to_id FROM relations r JOIN franchise f ON r.from_id = f.id
@@ -167,8 +189,8 @@ const MISSING_SQL: &str = concat!("WITH RECURSIVE franchise(id) AS (
         UNION SELECT ts.background_url FROM tvmaze_shows ts JOIN series s ON s.tvmaze_id = ts.id
         UNION SELECT url FROM (SELECT url FROM (
                 SELECT a.url, row_number() OVER (
-                    PARTITION BY a.anilist_id
-                    ORDER BY CASE WHEN lower(a.lang) LIKE 'en%' THEN 0 WHEN a.lang IS NULL THEN 1 ELSE 2 END, a.rank
+                    PARTITION BY a.anilist_id, ", logo_language_group!("a"), "
+                    ORDER BY a.rank
                 ) AS pick
                 FROM anizip_images a
                 WHERE a.kind = 'Clearlogo'
@@ -288,12 +310,14 @@ pub struct ImageCache {
     /// When a fill last actually started. A coalesced call does not touch
     /// it, so the five minute gate measures real fills.
     fill_started_at: Mutex<Option<Instant>>,
-    /// Urls a page asked for that no fill goes and gets by itself (#1475):
-    /// the background of a series opened outside Continue. The next fill
-    /// takes them, and a running one takes them before it finishes.
-    wanted: Mutex<HashSet<String>>,
-    /// Wanted urls that failed once, so a page that keeps opening does not
-    /// start a fill for them every time. Forgotten with the process.
+    /// Urls a page asked for that no fill goes and gets by itself (#1475),
+    /// the background of a series opened outside Continue, while their
+    /// fetch is in flight, so a page opened twice fetches once.
+    asked: Mutex<HashSet<String>>,
+    /// Asked urls the host turned away for good (`lasting_refusal`), so a
+    /// page that keeps opening does not ask for them again. A timeout or a
+    /// network that is down is no lasting word and is asked again on the
+    /// next open. Forgotten with the process.
     refused: Mutex<HashSet<String>>,
 }
 
@@ -305,25 +329,18 @@ impl ImageCache {
             http,
             permits: Arc::new(Semaphore::new(CONCURRENCY)),
             fill_started_at: Mutex::new(None),
-            wanted: Mutex::new(HashSet::new()),
+            asked: Mutex::new(HashSet::new()),
             refused: Mutex::new(HashSet::new()),
         })
     }
 
-    /// Asks the next fill for `url`, which nothing fetches up front. True
-    /// when it was not asked for already and has not failed before, which
-    /// is when the caller should start a fill.
-    pub fn want(&self, url: &str) -> bool {
+    /// Takes `url` on as asked for. False when it is in flight already or
+    /// was turned away for good, which is when nothing should start.
+    fn take_ask(&self, url: &str) -> bool {
         if recover(&self.refused).contains(url) {
             return false;
         }
-        recover(&self.wanted).insert(url.to_string())
-    }
-
-    fn take_wanted(&self) -> Vec<String> {
-        let mut wanted: Vec<String> = recover(&self.wanted).drain().collect();
-        wanted.sort_unstable();
-        wanted
+        recover(&self.asked).insert(url.to_string())
     }
 
     pub fn dir(&self) -> &Path {
@@ -919,14 +936,12 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
             // The logos cached before they were judged are judged first, so
             // the urls a logo that is none gives way to are among the missing.
             let judged = owner.images.check_logos().await;
-            let mut urls = owner
+            let urls = owner
                 .services
                 .store
                 .write_async(|c| missing_urls(c))
                 .await?;
-            // A fill of only what pages asked for is chatter, not news.
-            let asked_only = urls.is_empty();
-            urls.extend(owner.images.take_wanted());
+            let total = urls.len() as u64;
             let (mut fetched, mut failed) = (0u64, 0u64);
             let mut touched: HashSet<u64> = HashSet::new();
             if !judged.is_empty() {
@@ -939,42 +954,35 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
                 );
             }
 
-            // What a page asks for while this runs is taken on before it
-            // ends, so no ask waits for the next fill.
-            while !urls.is_empty() {
-                let total = urls.len() as u64;
-                for (round, batch) in urls.chunks(BATCH).enumerate() {
-                    ctx.checkpoint()?;
-                    ctx.progress(
-                        (round * BATCH) as u64,
-                        Some(total),
-                        &anibeam_contract::i18n::tr("core-images-progress-fetching", &[]),
-                    );
-                    let mut arrived: Vec<String> = Vec::new();
-                    for (url, outcome) in owner.images.ensure(batch).await {
-                        match outcome {
-                            Ok(_) => {
-                                fetched += 1;
-                                arrived.push(url);
-                            }
-                            Err(e) => {
-                                failed += 1;
-                                tracing::warn!("image {url} was not fetched: {e}");
-                                recover(&owner.images.refused).insert(url);
-                            }
+            for (round, batch) in urls.chunks(BATCH).enumerate() {
+                ctx.checkpoint()?;
+                ctx.progress(
+                    (round * BATCH) as u64,
+                    Some(total),
+                    &anibeam_contract::i18n::tr("core-images-progress-fetching", &[]),
+                );
+                let mut arrived: Vec<String> = Vec::new();
+                for (url, outcome) in owner.images.ensure(batch).await {
+                    match outcome {
+                        Ok(_) => {
+                            fetched += 1;
+                            arrived.push(url);
+                        }
+                        Err(e) => {
+                            failed += 1;
+                            tracing::warn!("image {url} was not fetched: {e}");
                         }
                     }
-                    if !arrived.is_empty() {
-                        touched.extend(
-                            owner
-                                .services
-                                .store
-                                .write_async(move |c| series_for_urls(c, &arrived))
-                                .await?,
-                        );
-                    }
                 }
-                urls = owner.images.take_wanted();
+                if !arrived.is_empty() {
+                    touched.extend(
+                        owner
+                            .services
+                            .store
+                            .write_async(move |c| series_for_urls(c, &arrived))
+                            .await?,
+                    );
+                }
             }
 
             if !touched.is_empty() {
@@ -998,7 +1006,7 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
                 // Every launch runs this, and on most of them there is
                 // nothing to fill: a line saying so belongs in the trace
                 // rather than in a log of state changes.
-                level: if asked_only || (fetched == 0 && failed == 0) {
+                level: if fetched == 0 && failed == 0 {
                     Level::Debug
                 } else {
                     Level::Info
@@ -1011,6 +1019,68 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
         net.images.mark_fill_started();
     }
     id
+}
+
+/// Whether a failed fetch was the host saying the image is not there and
+/// will not be (a 404, a 410 or another lasting 4xx), as against a timeout,
+/// a network that is down, a rate limit or a server error.
+fn refused_for_good(e: &CoreError) -> bool {
+    matches!(e, CoreError::Provider { status: Some(status), .. }
+        if u16::try_from(*status).is_ok_and(crate::tvdb::lasting_refusal))
+}
+
+/// Fetches `url`, which a page asked for and no fill fetches up front
+/// (#1475): the background of a series opened outside Continue. Its own
+/// small task rather than a fill, so it judges no logos, walks no missing
+/// list and leaves the fill gate alone, and an ask can never land on a
+/// fill that is already ending. Once the file is here, the series it
+/// belongs to are told, so the open page draws it. A url in flight, or one
+/// the host turned away for good, starts nothing.
+pub fn fetch_asked(net: &Arc<Net>, url: String) {
+    if !net.images.take_ask(&url) {
+        return;
+    }
+    let owner = net.clone();
+    net.services.handle.spawn(async move {
+        let outcome = owner.images.ensure(std::slice::from_ref(&url)).await;
+        let result = outcome.into_iter().next().map(|(_, r)| r);
+        recover(&owner.images.asked).remove(&url);
+        match result {
+            Some(Ok(_)) => {
+                let dir = owner.services.paths.images_dir();
+                let cards_for = owner.cards_for;
+                let arrived = vec![url];
+                let cards = owner
+                    .services
+                    .store
+                    .write_async(move |c| {
+                        let ids = series_for_urls(c, &arrived)?;
+                        cards_for(c, &dir, &ids)
+                    })
+                    .await;
+                match cards {
+                    Ok(cards) if !cards.is_empty() => {
+                        owner.services.bus.emit(
+                            Level::Debug,
+                            JobKind::FillImages.stage(),
+                            "fetched an image a page asked for",
+                            None,
+                            EventBody::SeriesChanged { series: cards },
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!("reading the cards behind an asked image failed: {e}"),
+                }
+            }
+            Some(Err(e)) => {
+                tracing::warn!("image {url} was not fetched: {e}");
+                if refused_for_good(&e) {
+                    recover(&owner.images.refused).insert(url);
+                }
+            }
+            None => {}
+        }
+    });
 }
 
 /// `GetStorage`: two counts off one table, answered off the reader
@@ -1384,6 +1454,34 @@ mod tests {
             .unwrap();
         assert!(kept.is_some_and(|p| p.ends_with(".jpg")));
         assert_eq!(lost, None, "a row whose file is gone is the same as no row");
+    }
+
+    #[test]
+    fn an_asked_url_is_taken_once_in_flight_and_never_after_a_lasting_refusal() {
+        let b = bench();
+        assert!(b.cache.take_ask("https://img/fanart.jpg"));
+        // In flight: a second open starts nothing.
+        assert!(!b.cache.take_ask("https://img/fanart.jpg"));
+        // Done, however it went: asked again on the next open.
+        recover(&b.cache.asked).remove("https://img/fanart.jpg");
+        assert!(b.cache.take_ask("https://img/fanart.jpg"));
+        recover(&b.cache.refused).insert("https://img/gone.jpg".to_string());
+        assert!(!b.cache.take_ask("https://img/gone.jpg"));
+
+        let status = |s: u32| CoreError::provider(Provider::Anilist, Some(s), "x");
+        assert!(refused_for_good(&status(404)));
+        assert!(refused_for_good(&status(410)));
+        // A rate limit, a bot check, a server error or no answer at all is
+        // no lasting word.
+        assert!(!refused_for_good(&status(429)));
+        assert!(!refused_for_good(&status(403)));
+        assert!(!refused_for_good(&status(503)));
+        assert!(!refused_for_good(&CoreError::provider(
+            Provider::Anilist,
+            None,
+            "timeout"
+        )));
+        assert!(!refused_for_good(&CoreError::internal("x")));
     }
 
     #[tokio::test]

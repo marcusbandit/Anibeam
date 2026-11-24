@@ -522,7 +522,8 @@ impl Snapshot {
                 r.get::<_, Option<bool>>(4)?.unwrap_or(false),
             ))
         })?;
-        let mut logos: Vec<(bool, u8, Option<String>)> = Vec::new();
+        // Each usable logo's language and file, in the reply's order.
+        let mut logos: Vec<(Option<String>, Option<String>)> = Vec::new();
         let mut seen_fanart = false;
         for row in rows {
             let (kind, url, lang, path, not_a_logo) = row?;
@@ -530,14 +531,7 @@ impl Snapshot {
             // A logo on a solid rectangle is no logo (#1470): the next one
             // is picked, then a franchise season's, then the title.
             if kind == "Clearlogo" && !not_a_logo {
-                // English first, then a logo that names no language, then
-                // any other, each in the reply's own order.
-                let pick = match lang.as_deref().map(str::to_ascii_lowercase) {
-                    Some(l) if l.starts_with("en") => 0,
-                    None => 1,
-                    Some(_) => 2,
-                };
-                logos.push((path.is_none(), pick, path.clone()));
+                logos.push((lang.clone(), path.clone()));
             } else if kind == "Fanart" && !seen_fanart {
                 // The first one only, on disk or not: the one the cache
                 // fetches and pins, so the pick and the pin agree.
@@ -551,9 +545,20 @@ impl Snapshot {
         // No logo of its own at all: the nearest franchise season's
         // (#1461). One of its own that is not on disk yet is waited for,
         // the same rule the image cache fetches and pins by.
+        // Among those on disk, the logo language setting picks by ani.zip's
+        // own languages (#1475 review), the way it picks TheTVDB's below:
+        // the wanted one, then the other of English and Japanese, then any.
+        // The image cache fetches the first of each of those three.
         let own_logo = !logos.is_empty();
-        logos.sort_by_key(|(missing, pick, _)| (*missing, *pick));
-        view.logo = logos.into_iter().next().and_then(|(_, _, path)| path);
+        let on_disk: Vec<&(Option<String>, Option<String>)> =
+            logos.iter().filter(|(_, path)| path.is_some()).collect();
+        let langs: Vec<Option<&str>> = on_disk
+            .iter()
+            .map(|(l, _)| l.as_deref().and_then(|l| l.split(['-', '_']).next()))
+            .collect();
+        let prefs = anibeam_foundation::prefs::load_preferences(conn).unwrap_or_default();
+        let want = crate::logo::wanted(prefs.logo_language, prefs.title_language);
+        view.logo = crate::logo::pick(&langs, want).and_then(|at| on_disk[at].1.clone());
         // TheTVDB's logos, where it named their languages (#1470), win over
         // ani.zip's order: the one in the language wanted, then the other of
         // English and Japanese, then any, of those on disk.

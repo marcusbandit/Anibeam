@@ -226,7 +226,6 @@ fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     assert_eq!(jikan_asked_with_mapping(&http), 1, "{:#?}", http.requests());
     assert_eq!(series_mal(&core, series), None);
 
-    let fills_before = fill_jobs(&c).len();
     let d = detail(&core, series);
     let titles: Vec<Option<&str>> = d.episodes.iter().map(|e| e.title.as_deref()).collect();
     assert_eq!(
@@ -246,18 +245,28 @@ fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     assert!(logo.ends_with(".png") && std::path::Path::new(logo).is_file());
     let kinds: Vec<&str> = d.artwork.iter().map(|a| a.kind.as_str()).collect();
     assert_eq!(kinds, ["Fanart", "Clearlogo", "Clearlogo", "Poster"]);
-    // Only the logo is fetched up front.
+    // Only the logos are fetched up front.
     assert_eq!(d.artwork[0].path, None);
     assert_eq!(d.backdrop, None);
     assert_eq!(d.artwork[2].url, LOGO_EN);
     assert_eq!(d.artwork[2].path.as_deref(), Some(logo));
     assert_eq!(d.artwork[3].path, None);
-    assert!(!http.requests().iter().any(|r| r.url == LOGO_JA));
+    // The Japanese logo is asked for too, so the logo language setting can
+    // pick it; it did not arrive here, so the English one on disk is drawn.
+    assert!(http.requests().iter().any(|r| r.url == LOGO_JA));
 
-    // Opening the page asked for the background: a fill brings it, and the
-    // next read draws it.
-    let fill = wait_new_fill(&c, fills_before);
-    common::wait_job(&c, fill);
+    // Opening the page asked for the background on its own, with no fill
+    // job: it arrives, the series is told, and the next read draws it.
+    common::wait_for(
+        &c,
+        |e| {
+            e.job.is_none()
+                && e.message == "fetched an image a page asked for"
+                && matches!(&e.body, EventBody::SeriesChanged { series: cards }
+                    if cards.iter().any(|card| card.id == series))
+        },
+        std::time::Duration::from_secs(10),
+    );
     let d = detail(&core, series);
     let fanart = d.artwork[0].path.as_deref().expect("the background");
     assert!(fanart.ends_with(".jpg") && std::path::Path::new(fanart).is_file());
@@ -297,45 +306,6 @@ fn a_series_in_continue_gets_its_background_with_the_match() {
     assert_eq!(d.backdrop.as_deref(), Some(fanart));
 
     core.shutdown();
-}
-
-/// The ids of the image fills started so far.
-fn fill_jobs(c: &anibeam_core::events::Collector) -> Vec<u64> {
-    c.events()
-        .into_iter()
-        .filter(|e| {
-            matches!(
-                e.body,
-                EventBody::JobStarted {
-                    kind: JobKind::FillImages
-                }
-            )
-        })
-        .filter_map(|e| e.job.map(|j| j.id))
-        .collect()
-}
-
-/// The first image fill started after `before` of them had.
-fn wait_new_fill(c: &anibeam_core::events::Collector, before: usize) -> u64 {
-    let arrived = c.wait_for(
-        |events| {
-            events
-                .iter()
-                .filter(|e| {
-                    matches!(
-                        e.body,
-                        EventBody::JobStarted {
-                            kind: JobKind::FillImages
-                        }
-                    )
-                })
-                .count()
-                > before
-        },
-        std::time::Duration::from_secs(5),
-    );
-    assert!(arrived, "no fill started; saw {:#?}", c.events());
-    fill_jobs(c)[before]
 }
 
 /// An ani.zip that is down costs nothing: the match lands, every row the

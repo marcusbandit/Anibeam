@@ -280,14 +280,14 @@ pub fn get_series(library: &Library, series: u64) -> Result<Reply, CoreError> {
                 library.frames.want(want);
             }
             // The first background (#1475): marked used when it is on
-            // disk, so the cap keeps the ones people open, and asked for
-            // when it is not, since only Continue's are fetched up front.
+            // disk, so the cap keeps the ones people open, and fetched on
+            // its own when it is not, since only Continue's come up front.
             let mut used: Vec<String> = poster.into_iter().collect();
             if let Some(fanart) = detail.artwork.iter().find(|a| a.kind == "Fanart") {
                 if fanart.path.is_some() {
                     used.push(fanart.url.clone());
-                } else if library.net.images.want(&fanart.url) {
-                    images::start_fill(&library.net);
+                } else {
+                    images::fetch_asked(&library.net, fanart.url.clone());
                 }
             }
             after_read(library, &gaps, used);

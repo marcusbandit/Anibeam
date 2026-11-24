@@ -37,12 +37,13 @@ pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!("sql/0027_episode_fallback.sql")).foreign_key_check(),
         M::up(include_str!("sql/0028_real_logos.sql")).foreign_key_check(),
         M::up(include_str!("sql/0029_logo_languages.sql")).foreign_key_check(),
+        M::up(include_str!("sql/0030_logo_wanted_languages.sql")).foreign_key_check(),
     ])
 });
 
 /// The count. Private to the crate so this `usize` never crosses the
 /// contract boundary (constraint 10 forbids `usize` in any exported type).
-pub(crate) const SCHEMA_VERSION: usize = 29;
+pub(crate) const SCHEMA_VERSION: usize = 30;
 
 /// The version that adds the watch log (#593), for the test that migrates the
 /// one before it.
