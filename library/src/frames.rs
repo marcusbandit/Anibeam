@@ -419,7 +419,9 @@ async fn duration(source: &Path) -> Result<f64, Failed> {
 }
 
 /// ffmpeg's arguments for one frame at `at` seconds: seeking before the input
-/// is fast and lands on the frame at that time.
+/// is fast and lands on the frame at that time. `0:V:0` is the first video
+/// stream that is not an attached picture, so a cover in an MKV or an MP4
+/// is never what gets scored.
 fn frame_args(source: &Path, at: f64) -> Vec<std::ffi::OsString> {
     let mut args: Vec<std::ffi::OsString> = ["-hide_banner", "-loglevel", "error", "-nostdin"]
         .iter()
@@ -430,7 +432,7 @@ fn frame_args(source: &Path, at: f64) -> Vec<std::ffi::OsString> {
     args.push("-i".into());
     args.push(source.into());
     args.extend(
-        ["-map", "0:v:0", "-an", "-sn", "-frames:v", "1"]
+        ["-map", "0:V:0", "-an", "-sn", "-frames:v", "1"]
             .iter()
             .map(Into::into),
     );
