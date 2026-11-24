@@ -52,11 +52,32 @@ pub mod qobject {
         /// The watch together room code this run was started with, from an
         /// `anibeam://room/<code>` link; empty when there was none (#846).
         #[qproperty(QString, room_link)]
+        /// The magnet link this run was started with, as given; empty when there was none
+        /// (#1391).
+        #[qproperty(QString, magnet_link)]
+        /// The source list an `anibeam://add-repo` link this run was started with names: its
+        /// address and host, or why it names none ("no-url", "not-a-url", "not-https"). All
+        /// three empty when there was no such link (#1406).
+        #[qproperty(QString, repo_link_url)]
+        #[qproperty(QString, repo_link_host)]
+        #[qproperty(QString, repo_link_refused)]
         type Shell = super::ShellRust;
 
         /// A second launch handed over an `anibeam://room/<code>` link: join that room.
         #[qsignal]
         fn room_link_opened(self: Pin<&mut Self>, code: QString);
+        /// A second launch handed over a magnet link: Downloads takes it (#1391).
+        #[qsignal]
+        fn magnet_link_opened(self: Pin<&mut Self>, link: QString);
+        /// A second launch handed over an `anibeam://add-repo` link: Settings, Downloads asks
+        /// before adding the list, or says why the link adds none (#1406).
+        #[qsignal]
+        fn repo_link_opened(self: Pin<&mut Self>, url: QString, host: QString, refused: QString);
+        /// Who opens magnet links: "anibeam" when this run's entry is the default, "other"
+        /// when another app or build is, "none" when nothing is, or empty where the desktop
+        /// has no such setting.
+        #[qsignal]
+        fn magnet_handler_read(self: Pin<&mut Self>, answer: QString);
 
         /// A second launch, or MPRIS Raise, asked for the window; the token is the launcher's.
         #[qsignal]
@@ -64,6 +85,16 @@ pub mod qobject {
         /// MPRIS Quit. The window closes itself; nothing here ends the process.
         #[qsignal]
         fn quit_requested(self: Pin<&mut Self>);
+        /// `anibeam ctl` sent request `id` over the control socket (#1205): a JSON object
+        /// whose steps Control.qml runs, answering through controlReply.
+        #[qsignal]
+        fn control_requested(self: Pin<&mut Self>, id: i32, request: QString);
+        /// The caller of control request `id` stopped waiting: stop it.
+        #[qsignal]
+        fn control_cancelled(self: Pin<&mut Self>, id: i32);
+        /// Control.qml's JSON answer to control request `id`.
+        #[qinvokable]
+        fn control_reply(self: &Self, id: i32, reply: &QString);
         /// A desktop build newer than this one is out on `track`: its version, its title
         /// (empty when it has none), its page and how this copy takes it. `how` is
         /// `install` (installUpdate does it), `command` (the package manager does it, with
@@ -157,6 +188,11 @@ pub mod qobject {
         /// answer: held while a service exists, back to the preference once none does.
         #[qinvokable]
         fn host_service(self: &Self) -> QString;
+        /// Asks off the GUI thread who opens magnet links on this desktop, first making this
+        /// app's entry the default when `make_default` is set (never in a sandbox run: --root,
+        /// a drive or a shot). The answer comes back as magnetHandlerRead (#1391).
+        #[qinvokable]
+        fn read_magnet_handler(self: &Self, make_default: bool);
         /// What's new for this build, from the two versions QML keeps in shell.conf: whether
         /// it opens by itself, what to keep now and once it closes, and what it shows.
         #[qinvokable]
@@ -221,6 +257,10 @@ pub struct ShellRust {
     drive_out: QString,
     settings_url: QString,
     room_link: QString,
+    magnet_link: QString,
+    repo_link_url: QString,
+    repo_link_host: QString,
+    repo_link_refused: QString,
 }
 
 impl Default for ShellRust {
@@ -241,6 +281,7 @@ impl Default for ShellRust {
         } else {
             String::new()
         };
+        let repo = repo_link_words(a.link.as_deref());
         ShellRust {
             version: QString::from(anibeam_core::VERSION),
             // The rail and About show the version number alone, never the commit.
@@ -270,7 +311,21 @@ impl Default for ShellRust {
                     .unwrap_or_default()
                     .as_str(),
             ),
+            magnet_link: QString::from(crate::args::magnet_of(a.link.as_deref()).unwrap_or("")),
+            repo_link_url: QString::from(repo.0),
+            repo_link_host: QString::from(repo.1),
+            repo_link_refused: QString::from(repo.2),
         }
+    }
+}
+
+/// An `anibeam://add-repo` link as the three strings QML takes: address, host, and why it
+/// adds nothing. All empty for any other link.
+pub fn repo_link_words(link: Option<&str>) -> (String, String, &'static str) {
+    match link.and_then(crate::args::repo_link) {
+        Some(Ok(r)) => (r.url, r.host, ""),
+        Some(Err(why)) => (String::new(), String::new(), why.word()),
+        None => (String::new(), String::new(), ""),
     }
 }
 
@@ -288,9 +343,6 @@ fn settings_url(config_dir: &std::path::Path) -> QString {
 /// The desktop's notes, built in. The core's tests hold the newest heading to the workspace
 /// version, which is this crate's.
 const NOTES: &str = include_str!("../../CHANGELOG.md");
-
-/// The notes in changes/ that have not shipped yet, which show under the newest heading.
-const CHANGES: &[&str] = include!(concat!(env!("OUT_DIR"), "/changes.rs"));
 
 /// `text` as an SVG QR code in a data URL, or empty when it does not fit in one.
 pub fn qr_data_url(text: &str) -> String {
@@ -368,7 +420,7 @@ impl qobject::Shell {
             seen.version = version;
         }
         let used = earlier.started;
-        let notes = changelog::parse_with(NOTES, CHANGES);
+        let notes = changelog::parse(NOTES);
         let state = serde_json::json!({
             // A version main has only just moved to has no lines yet; opening it would mark
             // it read before its notes are written.
@@ -593,14 +645,14 @@ impl qobject::Shell {
         let v = crate::json::from_qjson_object(episode);
         let title = v["title"].as_str().unwrap_or_default().to_string();
         let number = v["episode"].as_u64().unwrap_or(0) as u32;
-        if args.root.is_some() || args.shoot.is_some() || args.drive.is_some() {
+        let sandbox = args.root.is_some() || args.shoot.is_some() || args.drive.is_some();
+        if sandbox {
             eprintln!(
                 "anibeam: notifications: a sandbox run shows none: episode {number} of {title}"
             );
-            return;
         }
         #[cfg(not(any(target_os = "macos", windows)))]
-        {
+        if !sandbox {
             use crate::dbus::notify::{Notifier, Target};
             static NOTIFIER: std::sync::OnceLock<tokio::sync::Mutex<Notifier>> =
                 std::sync::OnceLock::new();
@@ -644,6 +696,9 @@ impl cxx_qt::Initialize for qobject::Shell {
         // names taken and says so; it draws its page either way. The Mac starts the bus
         // name alone: its Now Playing starts with the page's first publish, on this thread,
         // which is the one MediaPlayer wants and never the runtime's (macnp.rs).
+        // `anibeam ctl` reaches this window from here on (#1205)
+        #[cfg(unix)]
+        crate::control::start(&crate::runtime::paths().control_socket(), self.qt_thread());
         let shell = self.qt_thread();
         #[cfg(not(target_os = "macos"))]
         crate::runtime::runtime().spawn(async move {
@@ -724,11 +779,29 @@ impl qobject::Shell {
     pub fn drive_log(&self, line: &QString) {
         eprintln!("{line}");
     }
+    pub fn control_reply(&self, id: i32, reply: &QString) {
+        crate::control::reply(id, reply.to_string());
+    }
     pub fn set_cursor_hidden(&self, hidden: bool) {
         crate::bridge::helpers::ffi::set_cursor_hidden(hidden);
     }
     pub fn open_url(&self, url: &QString) -> bool {
         crate::bridge::helpers::ffi::open_url(url)
+    }
+
+    /// xdg-mime is a shell script that walks every mimeapps.list, so it never runs on the
+    /// GUI thread.
+    pub fn read_magnet_handler(&self, make_default: bool) {
+        let shell = self.qt_thread();
+        crate::runtime::runtime().spawn_blocking(move || {
+            let word = if make_default {
+                crate::scheme::make_magnet_default()
+            } else {
+                crate::scheme::magnet_handler()
+            };
+            let _ = shell
+                .queue(move |shell| shell.magnet_handler_read(QString::from(word.unwrap_or(""))));
+        });
     }
 
     pub fn host_service(&self) -> QString {
