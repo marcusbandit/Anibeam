@@ -6,6 +6,8 @@
 // anirss already has from its own config.toml keeps its place and the row says so.
 // The calls that fetch or store a secret run off the Qt thread (Door.callAsync), so a slow or
 // dead repo never freezes the window; the tab refreshes the repos each time it opens.
+// A source list link (#1406, frame.repoLink) shows first: the list's host and address with
+// Add and Cancel, and nothing is added until Add, which runs the same step as the field.
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -119,6 +121,48 @@ Panel {
     Component.onCompleted: {
         load()
         if (repos.length > 0) refresh()
+    }
+
+    // A source list link asks here, above everything, and only Add adds it
+    readonly property var link: frame.repoLink
+    function refusedText(why) {
+        return words.t(why === "not-https" ? "endpoint-repos-panel-link-not-https" : why === "not-a-url" ? "endpoint-repos-panel-link-not-a-url" : "endpoint-repos-panel-link-no-url")
+    }
+    Column {
+        objectName: "repo-link-ask"
+        readonly property bool hairline: true
+        visible: !!root.link && !root.link.refused
+        width: parent ? parent.width : theme.space(100)
+        topPadding: theme.space(2.5)
+        bottomPadding: theme.space(0.5)
+        Note { text: words.t("endpoint-repos-panel-link-ask"); color: theme.text }
+        SettingRow {
+            label: root.link ? root.link.host : ""
+            status: root.link ? root.link.url : ""
+            Row {
+                spacing: theme.space(1.5)
+                // Waits while the field's own Add runs, since attach() takes one at a time
+                Button { objectName: "repo-link-add"; msg: "endpoint-repos-panel-add"; icon: "plus"; primary: true
+                         enabled: !attach.busy
+                         onClicked: { if (attach.busy) return; var u = root.link.url; frame.repoLink = null; attach.attach(u) } }
+                Button { objectName: "repo-link-cancel"; msg: "action-cancel"; flat: true; onClicked: frame.repoLink = null }
+            }
+        }
+    }
+    Item {
+        objectName: "repo-link-refused"
+        readonly property bool hairline: true
+        visible: !!root.link && !!root.link.refused
+        width: parent ? parent.width : theme.space(100)
+        height: refusedRow.height + theme.space(5)
+        Row {
+            id: refusedRow
+            y: theme.space(2.5)
+            width: parent.width
+            spacing: theme.space(2)
+            Note { width: Math.min(implicitWidth, parent.width - refusedClose.width - theme.space(2)); text: root.link && root.link.refused ? root.refusedText(root.link.refused) : ""; color: theme.red; anchors.verticalCenter: parent.verticalCenter }
+            Button { id: refusedClose; objectName: "repo-link-close"; msg: "action-close"; flat: true; small: true; onClicked: frame.repoLink = null }
+        }
     }
 
     // Adding a list: the one step, first, so it is the first thing the panel offers

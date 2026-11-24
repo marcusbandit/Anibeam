@@ -893,7 +893,13 @@ fn movie_adds_into_the_movie_path() {
     let r = rig();
     r.http.push_for("torrents/add", 200, "Ok.");
     let link = format!("magnet:?xt=urn:btih:{:040x}", 7);
-    let job = started(&r.core, Call::DownloadMovie { link: link.clone() });
+    let job = started(
+        &r.core,
+        Call::DownloadMovie {
+            link: link.clone(),
+            needs_video: false,
+        },
+    );
     let done = common::wait_job(&r.c, job);
     let result = added(&done);
     // No films' folder set anywhere: the default save folder, no subfolder
@@ -1036,4 +1042,171 @@ fn a_duplicate_upload_is_skipped() {
         paths_of(&r.http)
     );
     no_anirss(&r.http);
+}
+
+/// Regression for #1404: on Linux, `zbus-secret-service-keyring-store` runs
+/// `zbus::utils::block_on`, which panics with "Cannot start a runtime from
+/// within a runtime" if called directly on a Tokio worker thread. Native
+/// download jobs and background feed/rule tasks must work without panicking
+/// both on a cold keyring probe and when reading stored endpoint credentials.
+#[test]
+fn native_download_jobs_do_not_panic_with_runtime_blocking_keyring() {
+    use anibeam_core::trackers::Secrets;
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as B64;
+    use ed25519_dalek::{Signer, SigningKey};
+
+    let dir = tempfile::tempdir().unwrap();
+    let paths = CorePaths::under(dir.path());
+    let http = FakeHttp::new();
+
+    // Seed settings and a rate-limited endpoint with a secret credential in
+    // one core, then drop it so the second core starts with a cold keyring
+    // probe and a stored credential to read.
+    {
+        let secrets = Secrets::runtime_blocking_for_test(paths.secrets_path());
+        let core = Core::open_with_http_and_secrets(paths.clone(), http.clone(), secrets).unwrap();
+        core.call(Call::SetDownloadSettings {
+            settings: settings(QBT),
+            anirss_token: Some("tok".to_string()),
+            torrent_password: Some("pw".to_string()),
+        })
+        .unwrap();
+
+        let k = SigningKey::from_bytes(&[9; 32]);
+        let key = format!("ed25519:{}", B64.encode(k.verifying_key().to_bytes()));
+        let index = json!({"name": "Signed here", "key": key, "serial": 1, "endpoints": [
+            {
+                "id": "authed",
+                "name": "authed",
+                "version": 1,
+                "kind": "rss",
+                "url": "https://feed.example/rss?q={query}&apikey={apikey}",
+                "rate": {"per_minute": 30},
+                "auth": [{"key": "apikey", "label": "API key", "secret": true}]
+            }
+        ]});
+        let payload = serde_json::to_vec(&index).unwrap();
+        let repo_path = dir.path().join("authed-repo.json");
+        let file = json!({
+            "format": "anibeam-endpoint-repo",
+            "version": 1,
+            "payload": B64.encode(&payload),
+            "signature": B64.encode(k.sign(&payload).to_bytes()),
+        });
+        std::fs::write(&repo_path, serde_json::to_vec(&file).unwrap()).unwrap();
+        let repo_url = repo_path.to_string_lossy().into_owned();
+        let Reply::EndpointRepoPreview { preview } = core
+            .call(Call::AddEndpointRepo {
+                url: repo_url.clone(),
+            })
+            .unwrap()
+        else {
+            panic!()
+        };
+        core.call(Call::TrustEndpointRepo {
+            url: repo_url.clone(),
+            key: preview.key,
+        })
+        .unwrap();
+        core.call(Call::InstallEndpoint {
+            repo: repo_url,
+            id: "authed".into(),
+            credentials: vec![EndpointCredential {
+                key: "apikey".into(),
+                value: "secret-key".into(),
+            }],
+        })
+        .unwrap();
+        core.shutdown();
+    }
+
+    // Reopen on the same root with an unwarmed runtime-blocking keyring.
+    let http = FakeHttp::new();
+    let secrets = Secrets::runtime_blocking_for_test(paths.secrets_path());
+    let core = Core::open_with_http_and_secrets(paths, http.clone(), secrets).unwrap();
+    let c = Arc::new(Collector::default());
+    let _sub = core.subscribe(c.clone());
+
+    // 1. DownloadMovie on a magnet link (cold probe + credential read inside Native::for_core).
+    http.push_for("app/defaultSavePath", 200, SAVE_BASE.to_string());
+    http.push_for("torrents/add", 200, "Ok.");
+    let link = format!("magnet:?xt=urn:btih:{:040x}&dn=Example.Film.2026.1080p", 7);
+    let job = started(
+        &core,
+        Call::DownloadMovie {
+            link: link.clone(),
+            needs_video: false,
+        },
+    );
+    let done = common::wait_job(&c, job);
+    assert_eq!(added(&done).hashes, vec![format!("{:040x}", 7)]);
+
+    // 2. ListSubscriptionRules (Native::for_core + follow_rules/fillers inside spawned task).
+    http.push_for("rss/rules", 200, "{}");
+    http.push_for("torrents/info", 200, "[]");
+    assert_eq!(core.call(Call::ListSubscriptionRules).unwrap(), Reply::Ok);
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::SubscriptionsRead { .. }),
+        Duration::from_secs(10),
+    );
+
+    // 3. ReadFeed (endpoint_http with credentialed rate-limited endpoint inside spawned task).
+    let rss = "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><title>f</title>\
+               <item><title>[Group] Show - 01 (1080p)</title>\
+               <link>magnet:?xt=urn:btih:0000000000000000000000000000000000000001</link></item>\
+               </channel></rss>";
+    http.push_for("feed.example/rss", 200, rss);
+    assert_eq!(
+        core.call(Call::ReadFeed {
+            url: "https://feed.example/rss?q=Show".into(),
+            tag: "show".into(),
+        })
+        .unwrap(),
+        Reply::Ok
+    );
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::FeedRead { .. }),
+        Duration::from_secs(10),
+    );
+
+    // 4. InspectRelease (endpoint_http inside spawned task).
+    http.push_for("dl.example/a.torrent", 200, TORRENT.to_vec());
+    assert_eq!(
+        core.call(Call::InspectRelease {
+            link: "https://dl.example/a.torrent".into(),
+        })
+        .unwrap(),
+        Reply::Ok
+    );
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ReleaseInspected { .. }),
+        Duration::from_secs(10),
+    );
+
+    // 5. RepairSubscription (endpoint_http inside JobKind::RepairSubscription).
+    http.push_for(
+        "rss/rules",
+        200,
+        json!({"Show": {"affectedFeeds": ["https://feed.example/rss?q=Show"], "mustContain": ""}})
+            .to_string(),
+    );
+    http.push_for("feed.example/rss", 200, rss);
+    let repair = started(
+        &core,
+        Call::RepairSubscription {
+            name: "Show".into(),
+        },
+    );
+    let repaired = common::wait_job(&c, repair);
+    assert!(
+        matches!(
+            repaired.body,
+            EventBody::SubscriptionRepaired { found: 1, .. }
+        ),
+        "{repaired:?}"
+    );
 }

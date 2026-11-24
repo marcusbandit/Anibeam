@@ -79,18 +79,114 @@ Item {
     readonly property bool searchingNow: !!current && current.state === "searching"
     // ---- Only the releases that name this show. A search matches a release group as well
     // as a title ("Naruto" finds Naruto-Kun.Hu's One Piece), so a release must carry at
-    // least half of the show's words outside its leading [group]
-    // One word list per name the show goes by; a release passes on any of them
-    readonly property var showWords: {
-        if (!show) return []
-        var names = show.queries && show.queries.length ? show.queries : [show.query || show.title || ""]
+    // least half of the show's words outside its leading [group]. Nor may it be another
+    // season of the show: "Season 04" is not the first season's. The core's
+    // releases::grid::of_show and releases::facts::season_said read both the same way, with
+    // the same patterns, and the two are kept alike.
+    // One word list per name; a release passes on any of them
+    function wordsOf(names) {
         var stop = { the: 1, and: 1, season: 1, part: 1, movie: 1 }
         return names.map(function(q) { return String(q).toLowerCase().split(/[^a-z0-9]+/).filter(function(w) { return w.length >= 3 && !stop[w] }) })
                     .filter(function(ws) { return ws.length > 0 })
     }
+    readonly property var showWords: show ? wordsOf(show.queries && show.queries.length ? show.queries : [show.query || show.title || ""]) : []
+    // The show's own names, without the synonyms a search hit searches by: what its season
+    // is read from, so it reads the same opened from the library or from a search
+    readonly property var ownNames: show ? (show.names && show.names.length ? show.names : (show.queries || []).concat([show.title || ""])) : []
+    readonly property var ownWords: wordsOf(ownNames)
+    // The season one of the show's own names states (2nd Season, Season 4, S2), else null
+    readonly property var statedSeason: {
+        for (var i = 0; i < ownNames.length; i++) { var s = seasonSaid(ownNames[i]); if (s.season !== null) return s.season }
+        return null
+    }
+    // What a title or a name says of its season outside an SxxEyy marker: { season, words,
+    // span }. The first season it states, unless that is the near end of a span (Season 1-4,
+    // S01 - S04, Season 1 ~ 3, S1+S2, Season 1 & 2). A spaced dash and a padded number after
+    // it is an episode (Season 2 - 03), one unpadded digit past a season written in words a
+    // span's far end (Season 1 - 4), past a code the episode (S2 - 7). No number after a
+    // season named in words is one (The Final Season 05), and a range after Complete Season
+    // is episodes (Complete Season 01-12).
+    function seasonSaid(title) {
+        var text = String(title || ""), m
+        var re = /\b(?:season\s*([0-9]{1,2})|([0-9]{1,2})(?:st|nd|rd|th)\s+season|s([0-9]{1,2}))\b/gi
+        while ((m = re.exec(text)) !== null) {
+            var before = text.slice(0, m.index)
+            if (m[1] !== undefined && /\b(?:final|last)\s+$/i.test(before)) continue
+            if (/(?:season\s*|\bs)[0-9]{1,2}\s*(?:[-~+&]|and\s)\s*$/i.test(before)) continue
+            var next = /^(\s*)(?:([-~+&])|and\s)(\s*)((?:season|s)\s*)?([0-9]{1,2})(?:[^0-9]|$)/i
+            var after = text.slice(m.index + m[0].length)
+            if (m[1] !== undefined && /\bcomplete\s+$/i.test(before) && next.test(after)) continue
+            var season = parseInt(m[1] !== undefined ? m[1] : (m[2] !== undefined ? m[2] : m[3]), 10)
+            var words = m[3] === undefined
+            var n = next.exec(after)
+            if (n) {
+                var spaced = n[1] !== "" || n[3] !== ""
+                if (n[4] !== undefined || n[2] !== "-" || !spaced || (words && n[5].length === 1 && parseInt(n[5], 10) > season))
+                    return { season: null, words: false, span: true }
+            }
+            return { season: season, words: words, span: false }
+        }
+        return { season: null, words: false, span: false }
+    }
+    // Whether a release title writes its season out (Season 04, 4th Season), as AniList's
+    // names number seasons, rather than as a code (S04E01, S2), which follows the TV listings
+    function seasonInWords(title) {
+        return !/\bS([0-9]{1,2})\s?E([0-9]{1,4}(?:\.[0-9])?)(?:v[0-9])?\b/i.test(String(title || "")) && seasonSaid(title).words
+    }
+    // Whether a name hints at a season statedSeason cannot read: a number that is not a year,
+    // a roman numeral (a lone I, V or X only ending the name: "That Time I Got Reincarnated"),
+    // a capital letter or a sequel's marks on its last word (Railgun S, Gintama', Gintama.,
+    // Usagi Desu ka??, Saibou!!), one ? or ! with more of the name after it (Kokurasetai?
+    // Tensai-tachi), a word such as Part or Final, or a non-Latin season mark. One ? or !
+    // ending a name is none: first seasons end in one (Is the Order a Rabbit?, Cells at Work!)
+    function seasonHint(name) {
+        var text = String(name || "")
+        return /[0-9]/.test(text.replace(/\b(?:19|20)[0-9]{2}\b/g, " "))
+            || /\b(?:II|III|IV|VI|VII|VIII|IX|XI|XII)\b/.test(text)
+            || /\s[A-Z][^A-Za-z0-9]*$/.test(text)
+            || /[A-Za-z0-9](?:[!?]{2,}|['’′″°]+)(?:[^A-Za-z0-9]|$)|[A-Za-z0-9][!?]\s+[A-Za-z0-9]|[A-Za-z0-9]\.\s*$/.test(text)
+            || /\b(?:season|part|cour|final|zoku|second|third|fourth|fifth|sequel)\b/i.test(text)
+            || /[第期季기]|ภาค|ซีซั่น|сезон/i.test(text)
+    }
+    // Whether one of the show's names carries a subtitle after its first ": " or " - " that
+    // may name a later season by its arc (Kimetsu no Yaiba: Yuukaku-hen, Kaguya-sama wa
+    // Kokurasetai: Ultra Romantic): one whose words no name without a subtitle carries. One
+    // that repeats another name (Demon Slayer: Kimetsu no Yaiba) names nothing; a colon in a
+    // word (Re:Zero) or a dash on one (-Starting Life in Another World-) leads none in
+    function namesAPart(names) {
+        var sub = /^.*?(?::\s+|\s-\s+)(\S.*)$/
+        var plain = wordsOf(names.filter(function(n) { return !sub.test(String(n || "")) }))
+        return names.some(function(n) {
+            var m = sub.exec(String(n || ""))
+            if (!m) return false
+            var ws = wordsOf([m[1]])
+            return ws.length > 0 && !plain.some(function(p) { return ws[0].every(function(w) { return p.indexOf(w) >= 0 }) })
+        })
+    }
+    // A release title's words: lower case, without its leading [group], spaced at either end
+    function titleWords(title) { return " " + String(title || "").toLowerCase().replace(/^\s*\[[^\]]*\]/, "").replace(/[^a-z0-9]+/g, " ") + " " }
+    // Whether the release `title`, `f` its facts, is another season of the show. Against a
+    // season the show's own names state, a release writing another out in words is; a code
+    // (S03E01) follows the TV listings, which number some seasons otherwise, and stays. A
+    // show whose names state none is taken for its first season only when nothing says
+    // otherwise: it is an AniList entry, 52 episodes at most (a longer run's releases cut
+    // seasons of their own), none of its names hints at a season or carries a subtitle that
+    // may name one (namesAPart), and the release carries every word of one of them. A later
+    // season known by its arc's name (Yuukaku-hen, Ultra Romantic) keeps its releases. The
+    // season is the facts' (a code), else the one the title writes out
+    function anotherSeason(title, f) {
+        if (!show) return false
+        var season = f && f.season !== null && f.season !== undefined ? f.season : seasonSaid(title).season
+        if (season === null) return false
+        if (statedSeason !== null) return season !== statedSeason && seasonInWords(title)
+        if (season === 1 || !(show.anilistId > 0) || !(show.total > 0 && show.total <= 52)) return false
+        if (ownNames.some(function(n) { return seasonHint(n) }) || namesAPart(ownNames)) return false
+        var t = titleWords(title)
+        return ownWords.some(function(ws) { return ws.every(function(w) { return t.indexOf(" " + w) >= 0 }) })
+    }
     function namesShow(title) {
         if (!showWords.length) return true
-        var t = " " + String(title || "").toLowerCase().replace(/^\s*\[[^\]]*\]/, "").replace(/[^a-z0-9]+/g, " ") + " "
+        var t = titleWords(title)
         return showWords.some(function(ws) {
             var hit = ws.filter(function(w) { return t.indexOf(" " + w) >= 0 }).length
             return hit >= Math.ceil(ws.length / 2)
@@ -99,7 +195,7 @@ Item {
     function ofShow(r) {
         if (!r || !r.items) return r
         var items = [], facts = []
-        for (var i = 0; i < r.items.length; i++) if (namesShow(r.items[i].title)) { items.push(r.items[i]); facts.push(r.facts[i]) }
+        for (var i = 0; i < r.items.length; i++) if (namesShow(r.items[i].title) && !anotherSeason(r.items[i].title, r.facts[i])) { items.push(r.items[i]); facts.push(r.facts[i]) }
         if (items.length === r.items.length) return r
         var out = {}
         for (var k in r) out[k] = r[k]
@@ -184,15 +280,18 @@ Item {
     // ---- What a batch with no range in its title holds, counted from its torrent's file
     // list by the core: link -> { state: "asking" | "done", episodes }
     property var contents: ({})
-    function contentsOf(item) { var c = item && root.contents[item.link]; return c && c.state === "done" ? c.episodes : null }
+    // Keyed by the link as the core answers it, trimmed
+    function linkOf(item) { return item && item.link ? String(item.link).trim() : "" }
+    function contentsOf(item) { var c = item && root.contents[linkOf(item)]; return c && c.state === "done" ? c.episodes : null }
     function inspectBatches() {
         if (!current || !current.items) return
         var asked = false, next = JSON.parse(JSON.stringify(root.contents))
         for (var i = 0; i < current.items.length; i++) {
-            var f = current.facts[i] || {}, link = current.items[i].link
+            var f = current.facts[i] || {}, link = linkOf(current.items[i])
             if (!f.batch || f.first_episode || !link || next[link]) continue
-            next[link] = { state: "asking", episodes: [] }
-            Door.call("InspectRelease", { link: link })
+            var r = Door.call("InspectRelease", { link: link })
+            // A refused call never answers: the batch stays the whole show by its title
+            next[link] = r && r.error ? { state: "done", episodes: [] } : { state: "asking", episodes: [] }
             asked = true
         }
         if (asked) root.contents = next
@@ -235,7 +334,7 @@ Item {
                     if (inside && inside.length) list = inside.filter(function(x) { return x >= 1 && x <= total })
                     else for (var w = 1; w <= total; w++) list.push(w)
                 }
-                var state = f.first_episode ? "title" : contentsOf(it) && contentsOf(it).length ? "counted" : root.contents[it.link] && root.contents[it.link].state === "asking" ? "counting" : "unknown"
+                var state = f.first_episode ? "title" : contentsOf(it) && contentsOf(it).length ? "counted" : root.contents[linkOf(it)] && root.contents[linkOf(it)].state === "asking" ? "counting" : "unknown"
                 var b = { key: "batch|" + i, group: gname, resolution: f.resolution || "", batch: true, list: list, state: state,
                           first: list.length ? list[0] : 0, last: list.length ? list[list.length - 1] : 0, label: runs(list),
                           eps: {}, count: 0, seeds: Math.max(0, seedsOf(it)), size: f.size_bytes || 0 }
@@ -276,6 +375,13 @@ Item {
     // ---- The picks: episode number -> item index, and the row the plan follows
     property var picks: ({})
     property string chosen: ""
+    // Whether the picks are the automatic pick, which picks again whenever the rows change
+    property bool autoPick: false
+    // The batches picked whole: row key -> the episodes it held then. When its count adds
+    // episodes it did not hold, those gaps are picked too. An episode it held then is never
+    // picked again, so one the user dropped, here or through another row, stays dropped. A
+    // batch picked for one replacement, or whose gaps were dropped, is not in here.
+    property var wholeBatches: ({})
     property bool follow: !!show && !!show.airing
     // Swap the episodes the library has for the picked releases; off until asked for
     property bool replaceOn: false
@@ -292,7 +398,7 @@ Item {
     Component.onCompleted: { var r = Door.getDownloads(); if (!r.error && r.reply.status.settings.rolling) rollSettings = r.reply.status.settings.rolling }
     // Get was clicked with a download of this show to cancel: waiting for a yes
     property bool confirming: false
-    function clearPicks() { picks = ({}); chosen = ""; replaceOn = false; confirming = false; rollChoice = null }
+    function clearPicks() { picks = ({}); chosen = ""; autoPick = false; wholeBatches = ({}); replaceOn = false; confirming = false; rollChoice = null }
     onActiveChanged: clearPicks()
     onShowChanged: { clearPicks(); sequential = false; planned = false; follow = !!show && !!show.airing }
     // When the action went through, the picks are spent
@@ -301,8 +407,52 @@ Item {
     onReplaceOnChanged: confirming = false
     // The download it would cancel finished or went: nothing left to ask about
     onHadOnTheWayChanged: if (!hadOnTheWay.length) confirming = false
-    // When a provider's releases arrive, pick the group that covers the most gaps
-    onRowsChanged: if (chosen === "" && rows.length) pickRow(bestRow(), false)
+    // When a provider's releases arrive, pick the group that covers the most gaps. The
+    // automatic pick follows the rows: a batch counted after it was picked can lose to
+    // another group (#1374).
+    onRowsChanged: {
+        if (autoPick || chosen === "") {
+            if (rows.length) pickRow(bestRow(), false)
+            else if (chosen !== "") { picks = ({}); chosen = ""; autoPick = false; wholeBatches = ({}) }
+            return
+        }
+        settlePicks()
+        if (chosen === "" && rows.length) pickRow(bestRow(), false)
+    }
+    // The rows changed under the user's picks: a batch was counted after it was picked, or the
+    // releases changed. Only picks a row still holds stay, a batch picked whole takes the gaps
+    // its new count adds, and when the chosen row went the row holding most of what is left
+    // becomes the choice. When the rows took every pick away, the automatic pick runs
+    // again; picks the user cleared by hand stay cleared (#1374).
+    function settlePicks() {
+        var p = {}, changed = false, held = {}, whole = {}
+        for (var r = 0; r < rows.length; r++) for (var e in rows[r].eps) held[e + "|" + rows[r].eps[e]] = true
+        for (var n in picks) { if (held[n + "|" + picks[n]]) p[n] = picks[n]; else changed = true }
+        for (var k = 0; k < rows.length; k++) {
+            var row = rows[k]
+            var was = wholeBatches[row.key]
+            if (!row.batch || was === undefined) continue
+            whole[row.key] = was.concat(row.list.filter(function(x) { return was.indexOf(x) < 0 }))
+            wanted(row).forEach(function(x) { if (p[x] === undefined && was.indexOf(x) < 0) { p[x] = row.eps[x]; changed = true } })
+        }
+        wholeBatches = whole
+        if (changed) picks = p
+        // The rows took every pick away: the automatic pick looks for a group that has them
+        if (changed && !Object.keys(p).length) { chosen = ""; wholeBatches = ({}); return }
+        if (rows.some(function(row) { return row.key === chosen })) return
+        var most = 0, best = ""
+        for (var j = 0; j < rows.length; j++) {
+            var c = 0
+            for (var m in p) if (rows[j].eps[m] === p[m]) c++
+            if (c > most) { most = c; best = rows[j].key }
+        }
+        chosen = best
+    }
+    function samePicks(a, b) {
+        var ka = Object.keys(a), kb = Object.keys(b)
+        if (ka.length !== kb.length) return false
+        return ka.every(function(n) { return b[n] === a[n] })
+    }
     function wanted(row) {
         var out = []
         for (var n = 1; n <= total; n++) if (!have(n) && row.eps[n] !== undefined) out.push(n)
@@ -325,7 +475,12 @@ Item {
         var p = {}, w = wanted(row)
         if (!w.length && explicit) w = covered(row)
         for (var i = 0; i < w.length; i++) p[w[i]] = row.eps[w[i]]
-        picks = p
+        var whole = {}
+        if (row.batch && w.length) whole[row.key] = row.list.slice()
+        wholeBatches = whole
+        autoPick = !explicit
+        // The automatic pick runs on every change of the rows: only a different pick is news
+        if (explicit || !samePicks(p, picks)) picks = p
         chosen = row.key
     }
     // Ctrl-click on a row's name or any of its cubes: every episode the library lacks that this
@@ -336,8 +491,11 @@ Item {
         if (!row) return
         var p = JSON.parse(JSON.stringify(picks)), w = wanted(row)
         var mine = w.filter(function(n) { return p[n] === row.eps[n] })
-        if (w.length && mine.length === w.length) w.forEach(function(n) { delete p[n] })
-        else w.forEach(function(n) { p[n] = row.eps[n] })
+        var whole = JSON.parse(JSON.stringify(wholeBatches))
+        if (w.length && mine.length === w.length) { w.forEach(function(n) { delete p[n] }); delete whole[row.key] }
+        else { w.forEach(function(n) { p[n] = row.eps[n] }); if (row.batch && w.length) whole[row.key] = row.list.slice() }
+        wholeBatches = whole
+        autoPick = false
         picks = p
         chosen = row.key
     }
@@ -350,11 +508,16 @@ Item {
             // One torrent: a click on any of its episodes takes or drops all of them
             var on = p[n] === row.eps[n], w = wanted(row)
             for (var i = 0; i < w.length; i++) { if (on) { if (p[w[i]] === row.eps[w[i]]) delete p[w[i]] } else p[w[i]] = row.eps[w[i]] }
+            var whole = JSON.parse(JSON.stringify(wholeBatches))
+            if (on) delete whole[row.key]; else whole[row.key] = row.list.slice()
+            wholeBatches = whole
+            autoPick = false
             picks = p
             chosen = row.key
             return
         }
         if (p[n] === row.eps[n]) delete p[n]; else p[n] = row.eps[n]
+        autoPick = false
         picks = p
         chosen = row.key
     }
@@ -366,6 +529,7 @@ Item {
         for (var n = a; n <= z; n++) if (row.eps[n] !== undefined) { any = true; if (p[n] !== row.eps[n]) all = false }
         if (!any) return
         for (var k = a; k <= z; k++) if (row.eps[k] !== undefined) { if (all) delete p[k]; else p[k] = row.eps[k] }
+        autoPick = false
         picks = p
         chosen = row.key
     }
@@ -955,7 +1119,7 @@ Item {
                             accessibleName: words.t("get-show-replace")
                             objectName: "get-replace"
                             checked: root.replaceOn
-                            onToggled: function(on) { root.replaceOn = on }
+                            onToggled: function(on) { root.autoPick = false; root.replaceOn = on }
                         }
                         Column {
                             id: replaceText
@@ -971,7 +1135,7 @@ Item {
                         objectName: "get-sequential"
                         title: words.t("get-show-sequential")
                         checked: root.sequential
-                        onToggled: function(on) { root.sequential = on }
+                        onToggled: function(on) { root.autoPick = false; root.sequential = on }
                         tip: root.sequential ? words.t("get-show-sequential-on") : words.t("get-show-sequential-off")
                     }
                     OptionRow {
@@ -979,7 +1143,7 @@ Item {
                         visible: !root.replacing
                         title: words.t("get-show-rolling")
                         checked: root.rolling
-                        onToggled: function(on) { root.rollChoice = on }
+                        onToggled: function(on) { root.autoPick = false; root.rollChoice = on }
                         tip: root.rolling ? words.t(root.rollDefaults.delete_watched !== false ? "get-show-rolling-on-delete" : "get-show-rolling-on", { count: root.rollDefaults.ahead })
                             : words.t("get-show-rolling-off")
                     }
@@ -987,7 +1151,7 @@ Item {
                         objectName: "get-follow"
                         title: words.t("get-show-subscribe")
                         checked: root.follow
-                        onToggled: function(on) { root.follow = on }
+                        onToggled: function(on) { root.autoPick = false; root.follow = on }
                         tip: !root.follow ? words.t("get-show-follow-off")
                             : !root.activeFollowable ? words.t("get-show-follow-no-feed", { source: root.active })
                             : !root.chosenRow ? words.t("get-show-follow-pick-group")
