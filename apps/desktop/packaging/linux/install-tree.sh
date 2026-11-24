@@ -9,7 +9,7 @@ set -euo pipefail
 src="${1:?usage: install-tree.sh <checkout> <destdir> <binary>}"
 dest="${2:?usage: install-tree.sh <checkout> <destdir> <binary>}"
 bin="${3:?usage: install-tree.sh <checkout> <destdir> <binary>}"
-shell="$src/apps/linux"
+shell="$src/apps/desktop"
 
 install -Dm755 "$bin" "$dest/usr/bin/anibeam"
 install -Dm644 "$shell/com.marcusrosado.Anibeam.desktop" \

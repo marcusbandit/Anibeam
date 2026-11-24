@@ -1217,7 +1217,7 @@ mod tests {
     #[test]
     fn the_bundled_anirss_is_new_enough() {
         let packaging =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/linux/packaging");
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/desktop/packaging");
         let pins = [
             ("macos/anirss.sh", "ANIRSS_VERSION="),
             ("linux/appimage.sh", "ANIRSS_VERSION="),

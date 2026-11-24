@@ -6,7 +6,7 @@ drive that opens each page and Settings tab, grabs it and prints its words with 
 counts (the Driver's "texts" step). A piece of text that takes more lines than the same piece
 in English, or that is cut off where English is not, is a finding. Exits 1 when there is one.
 
-    apps/linux/scripts/layout-check.py --root /tmp/sandbox --bin target/release/anibeam \\
+    apps/desktop/scripts/layout-check.py --root /tmp/sandbox --bin target/release/anibeam \\
         --out /tmp/layout [--langs da,de] [--sizes 1600x1000,1000x760]
 
 The root needs a library for the pages to show anything; the captures land in

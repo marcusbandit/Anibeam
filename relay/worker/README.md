@@ -2,7 +2,7 @@
 
 The watch together relay (#846) as a Cloudflare Worker in Rust, built with
 [workers-rs](https://github.com/cloudflare/workers-rs). It serves the same routes
-as the native relay in `apps/relay` and drives the same `anibeam-room` state
+as the native relay in `relay/server` and drives the same `anibeam-room` state
 machine.
 
 | Route | Answer |

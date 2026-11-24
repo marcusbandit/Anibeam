@@ -20,7 +20,7 @@ Builds outside CI (local checkouts, AUR source builds) derive their display vers
 
 ## Website What's new pages
 
-[anibeam.app/whats-new](https://anibeam.app/whats-new/) is generated directly from `apps/linux/CHANGELOG.md` and `apps/phone/CHANGELOG.md` via `site/whats-new.py`. `site.yml`, `nightly.yml`, and `release.yml` deploy updates automatically; never edit generated pages by hand.
+[anibeam.app/whats-new](https://anibeam.app/whats-new/) is generated directly from `apps/desktop/CHANGELOG.md` and `apps/phone/CHANGELOG.md` via `site/whats-new.py`. `site.yml`, `nightly.yml`, and `release.yml` deploy updates automatically; never edit generated pages by hand.
 
 ## Nightlies
 
@@ -36,13 +36,13 @@ Add the `test build` label to a PR to publish installers on the `pr-builds` pre-
 
 ### Desktop
 
-1. Curate the user-facing notes under the newest heading in `apps/linux/CHANGELOG.md` (use `.github/changelog-draft.sh desktop` to review commits since the last stable tag).
+1. Curate the user-facing notes under the newest heading in `apps/desktop/CHANGELOG.md` (use `.github/changelog-draft.sh desktop` to review commits since the last stable tag).
 2. Run the **Release** workflow (`release.yml`) on `main` from the Actions tab. It promotes the newest nightly commit (so what ships has already been tested), waits for approval in the `release` environment, builds all desktop targets, publishes the release, and commits the next minor version + changelog heading to `main`.
    - If a workflow file changed on `main` since the last nightly, trigger a forced Nightly first so the commit can be tagged.
 3. Update the AUR packages and Homebrew cask:
    ```bash
-   apps/linux/packaging/aur/publish.sh <version>
-   apps/linux/packaging/brew/bump.sh <version>
+   apps/desktop/packaging/aur/publish.sh <version>
+   apps/desktop/packaging/brew/bump.sh <version>
    ```
 
 ### Phone
@@ -60,7 +60,7 @@ When a shipped desktop release needs a patch:
    ```bash
    git push origin v2.5.0^{commit}:refs/heads/release/2.5
    ```
-2. Land the fix on `main` first via a normal PR, then cherry-pick it (`git cherry-pick -x`) in a PR targeting `release/2.5`, bumping the version to `2.5.1` and adding a short entry to `apps/linux/CHANGELOG.md`.
+2. Land the fix on `main` first via a normal PR, then cherry-pick it (`git cherry-pick -x`) in a PR targeting `release/2.5`, bumping the version to `2.5.1` and adding a short entry to `apps/desktop/CHANGELOG.md`.
 3. Tag and push: `git tag v2.5.1 origin/release/2.5 && git push origin v2.5.1`. Never merge the release branch back into `main`.
 
 ## Automerge workflow

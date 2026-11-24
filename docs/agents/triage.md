@@ -61,7 +61,7 @@ triage label when someone deletes it.
       flock /tmp/anibeam-triage-build.lock \
         systemd-run --user --scope -q -p MemoryMax=8000M -p MemorySwapMax=0 cargo build -p anibeam-cli
 
-  `apps/linux/scripts/shoot.sh` and `drive.sh` build into the same `target/`.
+  `apps/desktop/scripts/shoot.sh` and `drive.sh` build into the same `target/`.
 - Core behaviour (scanning, matching, sync, franchise) goes through `anibeam-cli`. AddSource
   returns at once, so the scan after it is what waits:
 
@@ -79,8 +79,8 @@ triage label when someone deletes it.
 - Network: AniList, MAL, Jikan, AniSkip and TVmaze calls go through the limiter in
   `net/src/limiter.rs`. Feed sources such as a public tracker feed do not, and a source behind a bot shield blocks bursts
   (#135), so a reproduction makes a single request there or reads a saved response.
-- The desktop shell: `apps/linux/scripts/shoot.sh` and `drive.sh` with `ANIBEAM_ROOT` set to the
-  sandbox root; `apps/linux/README.md` has the steps. Look at the capture before you trust it.
+- The desktop shell: `apps/desktop/scripts/shoot.sh` and `drive.sh` with `ANIBEAM_ROOT` set to the
+  sandbox root; `apps/desktop/README.md` has the steps. Look at the capture before you trust it.
 - Android: the `apps/phone/scripts/` loop (`emulator.sh`, `run.sh`, `shot.sh`), headless, as
   `~/.claude/rules/android-emulator.md` says.
 - macOS only: this box cannot show it. Comment the exact steps and what passing looks like, tag

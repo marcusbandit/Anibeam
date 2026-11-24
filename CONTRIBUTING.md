@@ -29,7 +29,7 @@ One naming scheme runs from issue to branch, commits, PR title, and the squash c
 
 ## Scopes
 
-Name the crate or area the change belongs to: `core`, `library`, `metadata`, `trackers`, `downloads`, `playback`, `releases`, `host`, `net`, `foundation`, `contract`, `shell` (for `apps/linux`), `cli` (for `apps/cli`), or `relay`. Desktop UI changes scoped to one screen may name it directly: `home`, `library`, `series`, `feed`, `watching`, `downloads`, `metadata`, `tokens`, `settings`, `player`.
+Name the crate or area the change belongs to: `core`, `library`, `metadata`, `trackers`, `downloads`, `playback`, `releases`, `host`, `net`, `foundation`, `contract`, `shell` (for `apps/desktop`), `cli` (for `apps/cli`), or `relay`. Desktop UI changes scoped to one screen may name it directly: `home`, `library`, `series`, `feed`, `watching`, `downloads`, `metadata`, `tokens`, `settings`, `player`.
 
 For `apps/phone` (Android and iOS):
 - `android` — Android-only files (`android/`, `src/platform/android.rs`)
@@ -52,11 +52,11 @@ Always run development builds against a sandbox `--root` directory so they stay 
 
 ```bash
 cargo build --release -p anibeam
-ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
+ANIBEAM_THEMES_DIR=apps/desktop/themes ANIBEAM_MPV_CONF=apps/desktop/mpv.conf \
   target/release/anibeam --root /tmp/anibeam-dev
 ```
 
-`--root` isolates the database, config, cache, secrets, single-instance bus names, and managed `anirss`/qBittorrent state inside one folder. For headless captures and scripted UI checks, see `apps/linux/README.md` (`scripts/shoot.sh`, `scripts/drive.sh`, and `anibeam ctl`).
+`--root` isolates the database, config, cache, secrets, single-instance bus names, and managed `anirss`/qBittorrent state inside one folder. For headless captures and scripted UI checks, see `apps/desktop/README.md` (`scripts/shoot.sh`, `scripts/drive.sh`, and `anibeam ctl`).
 
 ## Commit and PR titles
 
@@ -82,7 +82,7 @@ Every PR closes an open issue (`Closes`, `Fixes`, or `Resolves`), enforced by th
 
 ## Patch notes
 
-Each app maintains its own curated `CHANGELOG.md` (`apps/linux/CHANGELOG.md` for desktop, `apps/phone/CHANGELOG.md` for phone). Both apps embed it for "What's new", and `anibeam.app/whats-new/` builds from the same files.
+Each app maintains its own curated `CHANGELOG.md` (`apps/desktop/CHANGELOG.md` for desktop, `apps/phone/CHANGELOG.md` for phone). Both apps embed it for "What's new", and `anibeam.app/whats-new/` builds from the same files.
 
 - **Regular PRs do not touch `CHANGELOG.md`.** Per-PR edits cause merge conflicts and noisy dumps; GitHub Releases already lists every PR via `--generate-notes`.
 - **Maintainers curate entries before shipping** using `.github/changelog-draft.sh desktop|phone`: a short, warm 1–2 sentence intro, 3–8 user-focused highlight bullets (`- **Feature.** Description.`), an optional `### Heads up`, and a concise `### Fixes & polish` summary. Use plain English, no issue numbers, and no em/en dashes.
@@ -97,7 +97,7 @@ Every user-visible string lives in the Fluent catalog under `i18n/`: `i18n/<lang
 - Use stable, descriptive message IDs (`player-skip-intro`, `downloads-empty`), prefixed by the file/feature name, with Fluent plurals and arguments rather than concatenating strings in code.
 - Look up messages via `anibeam_core::i18n::tr(...)` in Rust, `words.t(...)` or component `msg:` props in QML (never name a QML element `id: words`), and `Tr` in Slint.
 - Add new English IDs in the same PR; translations may land in the same PR or follow later.
-- Check layout overflow across languages after copy/layout changes with `apps/linux/scripts/layout-check.py --root <sandbox>`.
+- Check layout overflow across languages after copy/layout changes with `apps/desktop/scripts/layout-check.py --root <sandbox>`.
 
 CI runs `.github/strings-check.py` to reject raw user-facing UI strings and missing English IDs. Add `// i18n: none` to non-text literals (format strings, etc.). If your PR removes legacy strings listed in `.github/strings-baseline.txt`, update the baseline with `.github/strings-check.py --update`.
 

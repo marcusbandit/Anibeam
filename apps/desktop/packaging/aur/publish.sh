@@ -31,7 +31,8 @@ git -C "$repo" rev-parse -q --verify "refs/tags/$tag^{commit}" > /dev/null \
 prepare() {
   local name="$1" dir="$work/$1"
   mkdir -p "$dir"
-  git -C "$repo" show "$tag:apps/linux/packaging/aur/$name/PKGBUILD" > "$dir/PKGBUILD" 2> /dev/null \
+  git -C "$repo" show "$tag:apps/desktop/packaging/aur/$name/PKGBUILD" > "$dir/PKGBUILD" 2> /dev/null \
+    || git -C "$repo" show "$tag:apps/linux/packaging/aur/$name/PKGBUILD" > "$dir/PKGBUILD" 2> /dev/null \
     || return 1
   if ! { sed -i -e "s/^pkgver=.*/pkgver=$version/" -e "s/^pkgrel=.*/pkgrel=1/" "$dir/PKGBUILD" \
     && (cd "$dir" && updpkgsums && makepkg --printsrcinfo > .SRCINFO) \

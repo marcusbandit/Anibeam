@@ -73,7 +73,7 @@ jobs:
       - name: Dependency cache key
         id: depkey
         run: |
-          key="$( { cat apps/linux/packaging/macos/deps.sh apps/linux/packaging/macos/patches/*
+          key="$( { cat apps/desktop/packaging/macos/deps.sh apps/desktop/packaging/macos/patches/*
                     brew list --versions ffmpeg libass libplacebo little-cms2 uchardet zimg qtbase qtdeclarative \
                       qtsvg qttools boost openssl@3
                   } | shasum -a 256 | cut -c1-16)"
@@ -88,7 +88,7 @@ jobs:
 
       - name: Build libmpv and MpvQt
         if: steps.deps.outputs.cache-hit != 'true'
-        run: apps/linux/packaging/macos/deps.sh "$DEPS_PREFIX"
+        run: apps/desktop/packaging/macos/deps.sh "$DEPS_PREFIX"
 
       # Saved here rather than at the end, so a run that fails later keeps them.
       - name: Save libmpv and MpvQt
@@ -133,17 +133,17 @@ jobs:
         run: cargo test --locked -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-releases -p anibeam-metadata -p anibeam-trackers -p anibeam-downloads -p anibeam-playback -p anibeam-host -p anibeam-core -p anibeam
 
       - name: Bundle
-        run: apps/linux/packaging/macos/bundle.sh dist
+        run: apps/desktop/packaging/macos/bundle.sh dist
 
       - name: Smoke test with Homebrew out of reach
         run: |
-          smoke=apps/linux/packaging/macos/smoke.sh
+          smoke=apps/desktop/packaging/macos/smoke.sh
           SMOKE_SEED_ONLY=1 "$smoke" dist/Anibeam.app target/release/anibeam-cli smoke
           otool -L target/release/anibeam-cli
           sudo mv /opt/homebrew /opt/homebrew-hidden
           mv "$DEPS_PREFIX" "$DEPS_PREFIX-hidden"
           status=0
-          /usr/bin/python3 apps/linux/packaging/macos/fix-dylibs.py dist/Anibeam.app --check || status=1
+          /usr/bin/python3 apps/desktop/packaging/macos/fix-dylibs.py dist/Anibeam.app --check || status=1
           "$smoke" dist/Anibeam.app target/release/anibeam-cli smoke || status=1
           mv "$DEPS_PREFIX-hidden" "$DEPS_PREFIX"
           sudo mv /opt/homebrew-hidden /opt/homebrew

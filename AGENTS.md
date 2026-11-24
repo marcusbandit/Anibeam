@@ -40,9 +40,9 @@ A tester build with `dev-qml` loads QML from disk when `ANIBEAM_QML_DIR` is set,
 
 ```bash
 cargo build --profile tester -p anibeam --features dev-qml
-ANIBEAM_QML_DIR=apps/linux/qml \
-ANIBEAM_THEMES_DIR=apps/linux/themes \
-ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
+ANIBEAM_QML_DIR=apps/desktop/qml \
+ANIBEAM_THEMES_DIR=apps/desktop/themes \
+ANIBEAM_MPV_CONF=apps/desktop/mpv.conf \
   target/tester/anibeam --root /tmp/anibeam-dev
 ```
 
@@ -50,7 +50,7 @@ Always develop, test, and capture screenshots against an isolated `--root <dir>`
 
 ### Driving the UI programmatically
 
-- **Desktop:** Use `anibeam ctl` instead of simulating raw mouse clicks (`anibeam ctl help`). `anibeam ctl open --root <dir> --offscreen` launches a headless sandbox window, followed by `go <page>`, `tree`, `click <words|objectName|x,y>`, `type`, `key`, `shot <file.png>`, `where`, `eval <js>`, and `quit`. See `apps/linux/README.md` for `scripts/shoot.sh`, `scripts/drive.sh`, and `scripts/longshot.py`.
+- **Desktop:** Use `anibeam ctl` instead of simulating raw mouse clicks (`anibeam ctl help`). `anibeam ctl open --root <dir> --offscreen` launches a headless sandbox window, followed by `go <page>`, `tree`, `click <words|objectName|x,y>`, `type`, `key`, `shot <file.png>`, `where`, `eval <js>`, and `quit`. See `apps/desktop/README.md` for `scripts/shoot.sh`, `scripts/drive.sh`, and `scripts/longshot.py`.
 - **Phone:** Use `apps/phone/scripts/ctl.sh` (`ctl.sh help`, `tree`, `go`, `click`, `type`, `key`, `shot`, `wait`, `perf`) over `adb` (`$ANDROID_SERIAL`). See `apps/phone/README.md`.
 
 ## Workflow guides for repository automation

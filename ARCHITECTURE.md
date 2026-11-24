@@ -8,13 +8,14 @@ For domain vocabulary shared across code and docs, see [CONTEXT.md](CONTEXT.md).
 
 ```text
 anibeam/
-├── apps/                    # User-facing applications & servers
-│   ├── linux/               #   Desktop app: Qt 6 + QML (Linux, macOS, Windows)
+├── apps/                    # User-facing applications
+│   ├── desktop/             #   Desktop app: Qt 6 + QML (Linux, macOS, Windows)
 │   ├── phone/               #   Mobile app: Slint (Android & iOS) + companion crate
-│   ├── cli/                 #   Terminal CLI over anibeam-core
-│   └── relay/               #   Self-hosted Watch Together relay server
+│   └── cli/                 #   Terminal CLI over anibeam-core
 ├── crates/                  # 14 layered Rust core crates (listed below)
-├── relay/worker/            # Cloudflare Worker WASM Watch Together relay
+├── relay/                   # Watch Together relay servers
+│   ├── server/              #   Self-hosted native Rust relay (anibeam-relay)
+│   └── worker/              #   Cloudflare Worker WASM relay (rooms.anibeam.app)
 ├── i18n/                    # Fluent (.ftl) catalog for all 13 languages
 ├── assets/                  # Canonical brand logos & icon generators
 ├── site/                    # anibeam.app website, wiki, and installer scripts
@@ -29,7 +30,7 @@ anibeam/
 The Rust workspace is split into focused crates arranged in strict dependency layers so you can build and test one area (`cargo test -p anibeam-library`) without rebuilding the whole app:
 
 ```text
-  Apps & Services     apps/linux (anibeam) · apps/phone · apps/cli · apps/relay · relay/worker
+  Apps & Services     apps/desktop (anibeam) · apps/phone · apps/cli · relay/server · relay/worker
                              │                                           │
   Core Facade         core (anibeam-core: Core router, launch, update, changelog, stats, agent, tests/)
                              │
@@ -70,9 +71,9 @@ Two directories intentionally define their own `[workspace]` and `Cargo.lock` so
 
 | Task | Start here |
 | --- | --- |
-| A desktop screen, control, or theme | `apps/linux/qml/`, `apps/linux/themes/`, and `apps/linux/src/bridge/` |
-| Desktop video player or C++/Obj-C++ glue | `apps/linux/cpp/` (`videoitem.*`, `nowplaying.mm`) and `apps/linux/mpv.conf` |
-| Desktop installers / OS packaging | `apps/linux/packaging/{linux,macos,windows,aur,brew}/` and `Casks/anibeam.rb` |
+| A desktop screen, control, or theme | `apps/desktop/qml/`, `apps/desktop/themes/`, and `apps/desktop/src/bridge/` |
+| Desktop video player or C++/Obj-C++ glue | `apps/desktop/cpp/` (`videoitem.*`, `nowplaying.mm`) and `apps/desktop/mpv.conf` |
+| Desktop installers / OS packaging | `apps/desktop/packaging/{linux,macos,windows,aur,brew}/` and `Casks/anibeam.rb` |
 | A mobile screen, Android Java, or iOS setup | `apps/phone/ui/`, `apps/phone/src/`, `apps/phone/android/`, `apps/phone/ios/` |
 | Phone Tailscale companion client | `apps/phone/companion/src/` and `crates/host-api/src/` |
 | Any user-visible text or translation | `i18n/en/{core,desktop,android}.ftl` (then other `i18n/<lang>/` folders) |
@@ -86,8 +87,8 @@ Two directories intentionally define their own `[workspace]` and `Cargo.lock` so
 | Torrent client, rolling downloads, or phone torrents | `crates/downloads/src/` |
 | Playback rules, skip windows, Cast, Discord, or Rooms | `crates/playback/src/` |
 | Tailscale host server or backup export/import | `crates/host/src/` |
-| Watch Together relay servers | `apps/relay/` (self-hosted) and `relay/worker/` (Cloudflare Worker) |
-| Website, wiki, or What's new pages | `site/` (`apps/linux/CHANGELOG.md` and `apps/phone/CHANGELOG.md` feed What's new) |
+| Watch Together relay servers | `relay/server/` (self-hosted) and `relay/worker/` (Cloudflare Worker) |
+| Website, wiki, or What's new pages | `site/` (`apps/desktop/CHANGELOG.md` and `apps/phone/CHANGELOG.md` feed What's new) |
 | Security & trust surface audit | [docs/safety-audit.md](docs/safety-audit.md) |
 
 ## Cross-cutting invariants
@@ -104,4 +105,4 @@ Every contributor (human or AI) should preserve these rules:
 - **Native desktop scrolling:** Every `Flickable` uses `WheelStep.qml`'s wheel handling (100 px per notch glided to one target).
 - **No shipped download sources:** Nothing in this repo names or points at a download site—not in code, defaults, tests, fixtures, or docs. The core defines generic endpoint *kinds* (RSS, Torznab, JSON) only; users add signed endpoint repos themselves. Enforced by `.github/no-site-names.sh`.
 - **All UI copy lives in `i18n/`:** Shells never hardcode user-facing English strings; code looks up Fluent message IDs. Enforced by `.github/strings-check.py`.
-- **Curated patch notes:** Regular PRs do not edit `CHANGELOG.md`. Curate `apps/linux/CHANGELOG.md` and `apps/phone/CHANGELOG.md` before releases; `site/whats-new.py` builds `anibeam.app/whats-new/` directly from them.
+- **Curated patch notes:** Regular PRs do not edit `CHANGELOG.md`. Curate `apps/desktop/CHANGELOG.md` and `apps/phone/CHANGELOG.md` before releases; `site/whats-new.py` builds `anibeam.app/whats-new/` directly from them.

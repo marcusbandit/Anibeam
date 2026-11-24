@@ -1,6 +1,6 @@
 # Maintainer: Marcus Rosado <22052802+marcusbandit@users.noreply.github.com>
 # The AUR's anibeam: the native Qt shell built from a release tag. Publish it with
-# apps/linux/packaging/aur/publish.sh after the tag is on GitHub.
+# apps/desktop/packaging/aur/publish.sh after the tag is on GitHub.
 pkgname=anibeam
 pkgver=2.1.0
 pkgrel=1
@@ -58,5 +58,5 @@ package() {
   # The same tree the anibeam-bin tarball holds: install-tree.sh lays out both. It ships Join
   # from Discord's entry for the Discord id build() compiled in, the builder's own first.
   ANIBEAM_DISCORD_CLIENT_ID="${ANIBEAM_DISCORD_CLIENT_ID:-${_discord_client_id:-}}" \
-    apps/linux/packaging/linux/install-tree.sh . "$pkgdir" target/release/anibeam
+    apps/desktop/packaging/linux/install-tree.sh . "$pkgdir" target/release/anibeam
 }

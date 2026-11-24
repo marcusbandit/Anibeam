@@ -15,7 +15,7 @@ base="${1:-origin/main}"
 root="$(git rev-parse --show-toplevel)"
 mb="$(git -C "$root" merge-base "$base" HEAD 2>/dev/null || echo "$base")"
 status=0
-for file in apps/linux/CHANGELOG.md apps/phone/CHANGELOG.md; do
+for file in apps/desktop/CHANGELOG.md apps/phone/CHANGELOG.md; do
   git -C "$root" cat-file -e "HEAD:$file" 2>/dev/null || continue
   # Where the file was at the base, when this diff moved it there.
   old="$(git -C "$root" diff --name-status -M --diff-filter=R "$mb" HEAD |

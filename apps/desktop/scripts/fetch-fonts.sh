@@ -3,7 +3,7 @@
 # three files in assets/fonts/ (scripts/cut-fonts.py says why), so the packaged app never
 # touches the network for typography. The variable TTF comes from the google/fonts repo
 # (OFL, the cut artifacts are committed); needs fonttools; run once, from anywhere:
-#   apps/linux/scripts/fetch-fonts.sh
+#   apps/desktop/scripts/fetch-fonts.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 out="$here/assets/fonts"; mkdir -p "$out"

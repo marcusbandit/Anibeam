@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: shoot.sh <name> [anibeam args...]     writes apps/linux/captures/<name>.png
+# usage: shoot.sh <name> [anibeam args...]     writes apps/desktop/captures/<name>.png
 # Renders one page under the offscreen platform and grabs it; no window lands anywhere.
 # ANIBEAM_ROOT sandboxes the run (default: a copy-free empty root under captures/root).
 set -euo pipefail

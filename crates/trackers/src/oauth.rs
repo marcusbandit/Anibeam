@@ -779,7 +779,7 @@ fn font_faces() -> &'static str {
 
 /// The app's icon, inline. The header shows it whole; the art behind the
 /// words is its ア alone.
-/// A copy of `apps/linux/assets/icon.svg`, kept in the crate like the fonts.
+/// A copy of `apps/desktop/assets/icon.svg`, kept in the crate like the fonts.
 const ICON: &str = include_str!("../assets/icon.svg");
 
 /// The tabs the listener leaves behind, each for the tracker it belongs to.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cut the desktop's Archivo roles into static fonts for the phone.
 
-The desktop sets Archivo's width and weight axes per role (apps/linux/qml/Tokens.qml,
+The desktop sets Archivo's width and weight axes per role (apps/desktop/qml/Tokens.qml,
 `roles`). Slint cannot set a variable font's axes, so each role becomes its own static
 family here, named after the role, and the pages pick a role by family name.
 

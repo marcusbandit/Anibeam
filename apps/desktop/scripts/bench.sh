@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: bench.sh <name> <workspace> [keep] [anibeam args...]
 # Launches the shell on the main monitor's workspace, captures the window's own rectangle
-# with grim into apps/linux/captures/<name>.png, and closes it unless keep is given.
+# with grim into apps/desktop/captures/<name>.png, and closes it unless keep is given.
 set -uo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 name="$1"; ws="$2"; keep="${3:-}"; shift 3 2>/dev/null || shift $#

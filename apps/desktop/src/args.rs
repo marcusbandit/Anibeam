@@ -4,7 +4,7 @@
 //! `--shoot`'d page opens with, for pages that need more than a bare page name (a series
 //! id, a metadata query). `--drive <script.json>` is `--shoot`'s interactive sibling: it
 //! runs a JSON array of input steps against the offscreen window and writes each `shot` step
-//! into `--out` (default: `$ANIBEAM_CAPTURES`, else the checkout's `apps/linux/captures`).
+//! into `--out` (default: `$ANIBEAM_CAPTURES`, else the checkout's `apps/desktop/captures`).
 //! `serve` runs the core and its tailnet host with no window, for other devices (`serve.rs`).
 //! An `anibeam://room/<code>` link, as the desktop's scheme handler passes it, joins that
 //! watch together room (#846); a second launch hands it to the running window. A `magnet:`

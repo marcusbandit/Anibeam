@@ -17,7 +17,7 @@ if [ -z "${ANIBEAM_SKIP_BUILD:-}" ]; then
 fi
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
-"$src/apps/linux/packaging/linux/install-tree.sh" "$src" "$stage" "$target/release/anibeam"
+"$src/apps/desktop/packaging/linux/install-tree.sh" "$src" "$stage" "$target/release/anibeam"
 # makepkg strips the binary anyway, as it does for anibeam, so ship it stripped: the download
 # is a sixth of the size.
 strip --strip-unneeded "$stage/usr/bin/anibeam"

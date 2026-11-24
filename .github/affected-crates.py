@@ -33,7 +33,7 @@ How a changed file maps to crates:
      nothing else: no clippy, no other test, no crate above it. `tests=` lists them as
      crate:target. The core's patch note test is one (#1086):
          [package.metadata.ci]
-         test-reads = { changelog = ["../apps/linux/CHANGELOG.md"] }
+         test-reads = { changelog = ["../apps/desktop/CHANGELOG.md"] }
   4. Cargo.lock, when the lock it is compared with is at hand (--base): the workspace crates
      that use a package whose entry changed, directly or not. Without it, every crate.
   5. A file no crate owns or reads that sits under NO_CRATE below (docs, the site, the phone's
@@ -75,10 +75,11 @@ NO_CRATE = [
     "site/",
     "assets/",
     "Casks/",
-    "relay/",
+    "relay/worker/",
     "apps/phone/",
-    # Build output a pull leaves behind in a checkout from before the move (#1309).
+    # Build output a pull leaves behind in a checkout from before the app folder renames.
     "apps/android/",
+    "apps/linux/",
     ".github/",
     "LICENSE",
     ".gitignore",
@@ -102,9 +103,9 @@ class Workspace:
     """The workspace's crates: name, folder from the root, what they read, what they use."""
 
     def __init__(self, crates):
-        # crates: {name: {"dir": "core", "reads": ["apps/linux/packaging/"], "uses": {names},
+        # crates: {name: {"dir": "core", "reads": ["apps/desktop/packaging/"], "uses": {names},
         #                 "dev": {names only its tests use},
-        #                 "test_reads": {"changelog": ["apps/linux/CHANGELOG.md"]}}}
+        #                 "test_reads": {"changelog": ["apps/desktop/CHANGELOG.md"]}}}
         self.crates = crates
         self.users = {name: set() for name in crates}
         self.dev_users = {name: set() for name in crates}
@@ -547,11 +548,11 @@ def undeclared_reads(ws, root):
 # that touches only that crate (room/, recs/) skips the build though the binary differs. The
 # desktop apps are workspace members; the phone is its own workspace, read with its own
 # `cargo metadata`. ios.yml leaves the shared crates out on purpose and is not checked.
-DESKTOP_APPS = ["apps/linux", "apps/cli"]
+DESKTOP_APPS = ["apps/desktop", "apps/cli"]
 PHONE_APP = "apps/phone"
 # A crate's declared read that only its own tests make, which no app build compiles in.
 TEST_ONLY_READS = {
-    ("anibeam-downloads", "apps/linux/packaging/"): "downloads/src/anirss.rs checks the "
+    ("anibeam-downloads", "apps/desktop/packaging/"): "downloads/src/anirss.rs checks the "
                                                     "packaging scripts in a test",
 }
 # Root files each app's build reads besides the crates. The phone has its own Cargo.lock.
@@ -720,12 +721,12 @@ FAKE = {
     "library": {"dir": "library", "reads": [], "uses": {"foundation", "net"}},
     "metadata": {"dir": "metadata", "reads": [], "uses": {"library"}},
     "trackers": {"dir": "trackers", "reads": [], "uses": {"metadata"}},
-    "relay": {"dir": "apps/relay", "reads": [], "uses": {"room"}},
-    "core": {"dir": "core", "reads": ["apps/linux/packaging/"],
-             "test_reads": {"changelog": ["apps/linux/CHANGELOG.md", "apps/phone/CHANGELOG.md"]},
+    "relay": {"dir": "relay/server", "reads": [], "uses": {"room"}},
+    "core": {"dir": "core", "reads": ["apps/desktop/packaging/"],
+             "test_reads": {"changelog": ["apps/desktop/CHANGELOG.md", "apps/phone/CHANGELOG.md"]},
              "uses": {"trackers", "room"}, "dev": {"relay"}},
     "cli": {"dir": "apps/cli", "reads": [], "uses": {"core"}},
-    "shell": {"dir": "apps/linux", "reads": [], "uses": {"core"}},
+    "shell": {"dir": "apps/desktop", "reads": [], "uses": {"core"}},
 }
 ALL = set(FAKE)
 ABOVE_FOUNDATION = {"foundation", "net", "library", "metadata", "trackers", "core", "cli", "shell"}
@@ -738,7 +739,7 @@ CASES = [
     (["room/src/lib.rs"], {"room", "foundation", "net", "library", "metadata", "trackers",
                            "relay", "core", "cli", "shell"}),
     # A dev-dependency reaches its direct user and stops: cli never builds the relay.
-    (["apps/relay/src/main.rs"], {"relay", "core"}),
+    (["relay/server/src/main.rs"], {"relay", "core"}),
     # Two changes pick the union.
     (["net/src/a.rs", "apps/cli/src/main.rs"], {"net", "library", "metadata", "trackers", "core",
                                                 "cli", "shell"}),
@@ -746,9 +747,9 @@ CASES = [
     (["library/Cargo.toml"], {"library", "metadata", "trackers", "core", "cli", "shell"}),
     # Files outside a crate that it declares it reads.
     (["i18n/en/core.ftl"], ALL - {"host-api", "room", "relay"}),
-    (["apps/linux/packaging/linux/appimage.sh"], {"shell", "core", "cli"}),
+    (["apps/desktop/packaging/linux/appimage.sh"], {"shell", "core", "cli"}),
     # Patch notes: the shell builds its own in, the core only tests them (TEST_CASES).
-    (["apps/linux/CHANGELOG.md"], {"shell"}),
+    (["apps/desktop/CHANGELOG.md"], {"shell"}),
     (["apps/phone/CHANGELOG.md"], set()),
     # Touches no crate.
     (["docs/agents/triage.md"], set()),
@@ -769,8 +770,8 @@ CASES = [
 # Files a test target reads by itself: the crates to check in full, and the targets to run.
 TEST_CASES = [
     (["apps/phone/CHANGELOG.md"], set(), ["core:changelog"]),
-    (["apps/linux/CHANGELOG.md"], {"shell"}, ["core:changelog"]),
-    (["apps/linux/CHANGELOG.md", "apps/phone/CHANGELOG.md"], {"shell"}, ["core:changelog"]),
+    (["apps/desktop/CHANGELOG.md"], {"shell"}, ["core:changelog"]),
+    (["apps/desktop/CHANGELOG.md", "apps/phone/CHANGELOG.md"], {"shell"}, ["core:changelog"]),
     # The core checked in full runs the target anyway.
     (["apps/phone/CHANGELOG.md", "trackers/src/a.rs"], {"trackers", "core", "cli", "shell"},
      []),

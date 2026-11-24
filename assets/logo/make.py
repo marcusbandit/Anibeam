@@ -22,7 +22,7 @@ from pathlib import Path
 
 here = Path(__file__).resolve().parent
 root = here.parents[1]
-linux = root / "apps/linux"
+linux = root / "apps/desktop"
 phone = root / "apps/phone"
 res = phone / "android/res"
 
@@ -108,7 +108,7 @@ for kind in ("nightly", "dev"):
     svg = here / f"logo-{kind}.svg"
     subprocess.run([sys.executable, str(here / f"{kind}.py"), str(here / "logo.svg"), str(svg)], check=True)
     subprocess.run(["resvg", "-w", "512", "-h", "512", str(svg), str(here / f"logo-{kind}.png")], check=True)
-# The desktop shows the nightly's or dev's mark on those builds (apps/linux/build.rs).
+# The desktop shows the nightly's or dev's mark on those builds (apps/desktop/build.rs).
 for kind in ("nightly", "dev"):
     shutil.copyfile(here / f"logo-{kind}.png", linux / f"assets/icon-{kind}.png")
 # ---- Mac: every icon the Mac shows on the Mac grid. The window's Dock icon and the Dark

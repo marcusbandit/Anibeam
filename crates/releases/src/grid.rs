@@ -1,4 +1,4 @@
-//! The desktop's show view (`apps/linux/qml/GetShow.qml`) without its drawing: a provider's
+//! The desktop's show view (`apps/desktop/qml/GetShow.qml`) without its drawing: a provider's
 //! releases for one show as rows of episode cubes, one row per release group and quality
 //! and one per batch, under the library's own row; the picks, the group that fills the
 //! most gaps picked first; and the plan Get and Follow carry out. Moved into the core so

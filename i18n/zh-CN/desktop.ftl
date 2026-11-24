@@ -2737,7 +2737,7 @@ error-line-details = 详情
 error-line-details-tip = 逐字显示出错内容，并可复制
 error-line-copied = 已复制。
 
-## Readouts (apps/linux/src/format.rs): times, countdowns and lengths
+## Readouts (apps/desktop/src/format.rs): times, countdowns and lengths
 
 fmt-just-now = 刚刚
 fmt-now = 现在
@@ -2766,7 +2766,7 @@ fmt-size-gb = { $size } GB
 fmt-size-tb = { $size } TB
 fmt-episode-span = 第 { $first } 至 { $through } 集
 
-## apps/linux/src/problem.rs: every call error in a person's words, what happened and what to do
+## apps/desktop/src/problem.rs: every call error in a person's words, what happened and what to do
 
 problem-report = 请重试。如果一直出现，请从活动日志中反馈。
 problem-try-later = 请稍后再试。
@@ -2834,7 +2834,7 @@ problem-refused-unmatched = 这个文件没有对应到任何剧集。
 problem-refused-unmatched-next = 请在番剧页面的“修正”中处理。
 problem-refused-on-disk = 这个文件只在这台电脑上。
 
-## apps/linux/src/library_view.rs: the library page's section titles and the one fact under each
+## apps/desktop/src/library_view.rs: the library page's section titles and the one fact under each
 
 library-view-airing = 播出中
 library-view-no-date = 无日期
@@ -2856,22 +2856,22 @@ library-view-all-watched = 全部已看
 library-view-on-disk = 磁盘上有 { $count } 集
 library-view-dropped-on-disk = 磁盘上还有 { $count } 个文件
 
-## apps/linux/src/dbus/notify.rs: the desktop notification for a new episode
+## apps/desktop/src/dbus/notify.rs: the desktop notification for a new episode
 
 notify-episode-out = 《{ $title }》第 { $episode } 集已播出
 notify-click-open = 点击在 { -app-name } 中打开
 notify-click-get = 点击在 { -app-name } 中获取剧集
 notify-get-episodes = 获取剧集
 
-## apps/linux/src/nowplaying.rs: the second line a media widget shows while an episode plays
+## apps/desktop/src/nowplaying.rs: the second line a media widget shows while an episode plays
 
 now-playing-show-episode = { $show }，{ $episode }
 
-## apps/linux/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
+## apps/desktop/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
 
 inhibit-reason = 正在播放剧集
 
-## apps/linux/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
+## apps/desktop/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
 
 door-not-a-choice = { $value } 不是有效的选项
 door-tokens-op-empty = tokens 操作需要 tokens
@@ -2879,7 +2879,7 @@ door-not-a-refine-op = { $value } 不是有效的筛选操作
 door-limit-too-low = 必须至少为 1，收到的是 { $limit }
 door-not-a-torrent-action = { $value } 不是有效的种子操作
 
-## apps/linux/src/bridge/shell.rs: the first-run starter folder and the update notice
+## apps/desktop/src/bridge/shell.rs: the first-run starter folder and the update notice
 
 shell-starter-folder-failed = 无法创建 { $folder }：{ $error }
 shell-update-gone = { -app-name } { $version } 已不再提供

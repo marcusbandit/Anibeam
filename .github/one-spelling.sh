@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fails when the tree spells the name with a capital B (#929, #1047). The app, its id, its
 # files and its docs all say Anibeam. The migration that renames an old install's files
-# (apps/linux/src/old_name.rs) builds the old spelling from two halves, so it needs no
+# (apps/desktop/src/old_name.rs) builds the old spelling from two halves, so it needs no
 # exception here.
 set -euo pipefail
 cd "$(dirname "$0")/.."

@@ -1,6 +1,6 @@
 //! The player page: one episode playing in libmpv, the desktop's PlayerPage ported.
 //!
-//! The rules are the desktop's, read from `apps/linux/qml/PlayerPage.qml`: the core opens a
+//! The rules are the desktop's, read from `apps/desktop/qml/PlayerPage.qml`: the core opens a
 //! session and owns the history (ticks once a second while playing and on every pause and
 //! seek, a close with its reason), the track pick and the owned options come from the core,
 //! the skip windows arrive with the session and again when AniSkip answers, auto-skip fires

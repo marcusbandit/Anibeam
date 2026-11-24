@@ -12,7 +12,7 @@ since="${2:-}"
 case "$app" in
   desktop)
     pattern='v[0-9]*.[0-9]*.[0-9]*'
-    paths=(crates i18n apps/linux apps/cli)
+    paths=(crates i18n apps/desktop apps/cli)
     ;;
   phone)
     pattern='android-v[0-9]*.[0-9]*.[0-9]*'

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The name a release goes out under: "Anibeam 2.5.0", or "Anibeam 2.5.0 · Quality of life"
-# when that version's heading in apps/linux/CHANGELOG.md carries a title. A nightly or test
+# when that version's heading in apps/desktop/CHANGELOG.md carries a title. A nightly or test
 # build takes the title of the version it leads up to. The app reads the title back out of
 # the name for its update notice (core/src/update.rs). With phone, the phone's release:
 # "Anibeam for Android 2.4.3", titled from apps/phone/CHANGELOG.md.
@@ -12,7 +12,7 @@ version="$1"
 app="${2:-desktop}"
 base="${version%%-*}"
 case "$app" in
-  desktop) notes=apps/linux/CHANGELOG.md name="Anibeam" ;;
+  desktop) notes=apps/desktop/CHANGELOG.md name="Anibeam" ;;
   phone) notes=apps/phone/CHANGELOG.md name="Anibeam for Android" ;;
   *) echo "release-name.sh: the app is desktop or phone, not $app" >&2; exit 1 ;;
 esac

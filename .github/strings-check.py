@@ -25,24 +25,24 @@ BASELINE = ROOT / ".github" / "strings-baseline.txt"
 
 # The UI files checked for raw strings. One glob a line; a shell adds its own.
 UI = [
-    "apps/linux/qml/**/*.qml",
+    "apps/desktop/qml/**/*.qml",
     "apps/phone/ui/**/*.slint",
 ]
 
 # Developer tools nobody but a developer sees: the drive and recording harness, the
 # frame-time HUD and the token sheet. Their words stay English.
 DEV_ONLY = {
-    "apps/linux/qml/Driver.qml",
-    "apps/linux/qml/Control.qml",
-    "apps/linux/qml/DevHud.qml",
-    "apps/linux/qml/DevRecorder.qml",
-    "apps/linux/qml/TokensPage.qml",
+    "apps/desktop/qml/Driver.qml",
+    "apps/desktop/qml/Control.qml",
+    "apps/desktop/qml/DevHud.qml",
+    "apps/desktop/qml/DevRecorder.qml",
+    "apps/desktop/qml/TokensPage.qml",
 }
 
 # The files whose ID uses are checked against the English catalog.
 CODE = UI + [
     "crates/*/src/**/*.rs",
-    "apps/linux/src/**/*.rs",
+    "apps/desktop/src/**/*.rs",
     "apps/cli/src/**/*.rs",
     "apps/phone/src/**/*.rs",
 ]

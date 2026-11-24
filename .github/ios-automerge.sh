@@ -46,7 +46,7 @@ FULL_CI_LABEL="full ci"
 ONLY='^(apps/phone/ios/'
 ONLY+='|apps/phone/src/(.+/)?(ios|metal)(\.rs$|/)'
 ONLY+='|apps/phone/scripts/[^/]*ios[^/]*$'
-ONLY+='|apps/linux/packaging/macos/'
+ONLY+='|apps/(desktop|linux)/packaging/macos/'
 ONLY+=')'
 
 # The log goes to stderr: consider's stdout carries only the branches it merged.

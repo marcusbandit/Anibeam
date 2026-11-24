@@ -16,8 +16,8 @@ members = [
     "crates/host-api",
     "crates/room",
     "apps/cli",
-    "apps/linux",
-    "apps/relay",
+    "apps/desktop",
+    "relay/server",
 ]
 
 [workspace.package]

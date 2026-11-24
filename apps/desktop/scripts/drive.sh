@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: drive.sh <script.json> [anibeam args...]     shots land in apps/linux/captures/
+# usage: drive.sh <script.json> [anibeam args...]     shots land in apps/desktop/captures/
 # Runs a --drive script under the offscreen platform: synthetic clicks, keys and wheel
 # through the real event delivery, a PNG per {"shot": name} step. The step log streams to
 # stdout and is kept in captures/<script>.drive.log; exits non-zero on DRIVE FAIL.

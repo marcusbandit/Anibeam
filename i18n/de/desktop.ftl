@@ -3356,7 +3356,7 @@ error-line-details = Details
 error-line-details-tip = Zeigt wörtlich, was schiefging, zum Kopieren
 error-line-copied = Kopiert.
 
-## Readouts (apps/linux/src/format.rs): Zeiten, Countdowns und Längen
+## Readouts (apps/desktop/src/format.rs): Zeiten, Countdowns und Längen
 
 fmt-just-now = gerade eben
 fmt-now = jetzt
@@ -3385,7 +3385,7 @@ fmt-size-gb = { $size } GB
 fmt-size-tb = { $size } TB
 fmt-episode-span = Folgen { $first } bis { $through }
 
-## apps/linux/src/problem.rs: jeder Fehler in Worten, was passiert ist und was zu tun ist
+## apps/desktop/src/problem.rs: jeder Fehler in Worten, was passiert ist und was zu tun ist
 
 problem-report = Versuch es nochmal. Wenn es wieder passiert, melde es aus dem Aktivitätsprotokoll.
 problem-try-later = Versuch es später nochmal.
@@ -3453,7 +3453,7 @@ problem-refused-unmatched = Diese Datei ist keiner Folge zugeordnet.
 problem-refused-unmatched-next = Korrigiere es auf der Seite der Serie unter Korrektur.
 problem-refused-on-disk = Diese Datei liegt nur auf diesem Computer.
 
-## apps/linux/src/library_view.rs: die Abschnittstitel der Bibliothek und der Fakt darunter
+## apps/desktop/src/library_view.rs: die Abschnittstitel der Bibliothek und der Fakt darunter
 ## (Abgebrochen, Pausiert und Schaue ich nutzen status-* aus core.ftl)
 
 library-view-airing = Läuft
@@ -3484,7 +3484,7 @@ library-view-dropped-on-disk =
        *[other] { $count } Dateien
     } noch auf der Platte
 
-## apps/linux/src/dbus/notify.rs: die Desktop-Benachrichtigung für eine neue Folge
+## apps/desktop/src/dbus/notify.rs: die Desktop-Benachrichtigung für eine neue Folge
 ## (ihr Knopf Öffnen nutzt action-open aus core.ftl)
 
 notify-episode-out = Folge { $episode } von { $title } ist da
@@ -3492,15 +3492,15 @@ notify-click-open = Klicken, um sie in { -app-name } zu öffnen
 notify-click-get = Klicken, um die Folgen in { -app-name } zu laden
 notify-get-episodes = Folgen laden
 
-## apps/linux/src/nowplaying.rs: die zweite Zeile eines Medien-Widgets, während eine Folge läuft
+## apps/desktop/src/nowplaying.rs: die zweite Zeile eines Medien-Widgets, während eine Folge läuft
 
 now-playing-show-episode = { $show }, { $episode }
 
-## apps/linux/src/dbus/inhibit.rs: warum der Bildschirm an bleibt
+## apps/desktop/src/dbus/inhibit.rs: warum der Bildschirm an bleibt
 
 inhibit-reason = Spielt eine Folge ab
 
-## apps/linux/src/bridge/door.rs: warum ein Wert, den eine Seite sendet, nicht nutzbar ist
+## apps/desktop/src/bridge/door.rs: warum ein Wert, den eine Seite sendet, nicht nutzbar ist
 
 door-not-a-choice = { $value } ist keine gültige Wahl
 door-tokens-op-empty = eine tokens-Operation braucht Tokens
@@ -3508,7 +3508,7 @@ door-not-a-refine-op = { $value } ist keine Eingrenzungs-Operation
 door-limit-too-low = muss mindestens 1 sein, bekommen: { $limit }
 door-not-a-torrent-action = { $value } ist keine Torrent-Aktion
 
-## apps/linux/src/bridge/shell.rs: der Startordner beim ersten Start und der Update-Hinweis
+## apps/desktop/src/bridge/shell.rs: der Startordner beim ersten Start und der Update-Hinweis
 
 shell-starter-folder-failed = { $folder } konnte nicht angelegt werden: { $error }
 shell-update-gone = { -app-name } { $version } ist nicht mehr verfügbar

@@ -24,7 +24,7 @@ fn check(app: &str, version: &str) {
 #[test]
 fn the_desktop_notes_are_whole_and_name_its_version() {
     // The desktop shell takes the workspace version, as the core does.
-    check("apps/linux", env!("CARGO_PKG_VERSION"));
+    check("apps/desktop", env!("CARGO_PKG_VERSION"));
 }
 
 #[test]

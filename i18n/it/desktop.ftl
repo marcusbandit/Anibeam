@@ -3356,7 +3356,7 @@ error-line-details = Dettagli
 error-line-details-tip = Mostra cosa è andato storto, parola per parola, e copialo
 error-line-copied = Copiato.
 
-## Letture (apps/linux/src/format.rs): orari, conti alla rovescia e durate
+## Letture (apps/desktop/src/format.rs): orari, conti alla rovescia e durate
 
 fmt-just-now = proprio ora
 fmt-now = ora
@@ -3393,7 +3393,7 @@ fmt-size-gb = { $size } GB
 fmt-size-tb = { $size } TB
 fmt-episode-span = Episodi da { $first } a { $through }
 
-## apps/linux/src/problem.rs: ogni errore di chiamata detto a parole, cosa è successo e cosa fare
+## apps/desktop/src/problem.rs: ogni errore di chiamata detto a parole, cosa è successo e cosa fare
 
 problem-report = Riprova. Se continua a succedere, segnalalo dal registro attività.
 problem-try-later = Riprova più tardi.
@@ -3461,7 +3461,7 @@ problem-refused-unmatched = Quel file non è legato a un episodio.
 problem-refused-unmatched-next = Correggilo dalla pagina della serie, in Correzioni.
 problem-refused-on-disk = Quel file è solo su questo computer.
 
-## apps/linux/src/library_view.rs: titoli delle sezioni della libreria e il dato sotto ognuna
+## apps/desktop/src/library_view.rs: titoli delle sezioni della libreria e il dato sotto ognuna
 
 library-view-airing = In onda
 library-view-no-date = Nessuna data
@@ -3491,22 +3491,22 @@ library-view-dropped-on-disk =
        *[other] { $count } file
     } ancora su disco
 
-## apps/linux/src/dbus/notify.rs: la notifica desktop per un nuovo episodio
+## apps/desktop/src/dbus/notify.rs: la notifica desktop per un nuovo episodio
 
 notify-episode-out = È uscito l'episodio { $episode } di { $title }
 notify-click-open = Clicca per aprirlo in { -app-name }
 notify-click-get = Clicca per scaricare gli episodi in { -app-name }
 notify-get-episodes = Scarica episodi
 
-## apps/linux/src/nowplaying.rs: la seconda riga di un widget multimediale durante un episodio
+## apps/desktop/src/nowplaying.rs: la seconda riga di un widget multimediale durante un episodio
 
 now-playing-show-episode = { $show }, { $episode }
 
-## apps/linux/src/dbus/inhibit.rs: perché lo schermo resta acceso
+## apps/desktop/src/dbus/inhibit.rs: perché lo schermo resta acceso
 
 inhibit-reason = Riproduzione di un episodio
 
-## apps/linux/src/bridge/door.rs: perché un valore inviato da una pagina non si può usare
+## apps/desktop/src/bridge/door.rs: perché un valore inviato da una pagina non si può usare
 
 door-not-a-choice = { $value } non è una scelta valida
 door-tokens-op-empty = un'op tokens richiede dei token
@@ -3514,7 +3514,7 @@ door-not-a-refine-op = { $value } non è un'op di restringimento
 door-limit-too-low = deve essere almeno 1, ricevuto { $limit }
 door-not-a-torrent-action = { $value } non è un'azione torrent
 
-## apps/linux/src/bridge/shell.rs: la cartella iniziale del primo avvio e l'avviso di aggiornamento
+## apps/desktop/src/bridge/shell.rs: la cartella iniziale del primo avvio e l'avviso di aggiornamento
 
 shell-starter-folder-failed = Impossibile creare { $folder }: { $error }
 shell-update-gone = { -app-name } { $version } non è più disponibile

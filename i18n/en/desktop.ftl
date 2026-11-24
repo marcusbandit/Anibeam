@@ -1,4 +1,4 @@
-# What the desktop app (apps/linux) shows. English is the source.
+# What the desktop app (apps/desktop) shows. English is the source.
 # IDs start with the page or part of the window they belong to: player-, settings-,
 # library-. A word every shell says belongs in core.ftl instead.
 
@@ -3518,7 +3518,7 @@ error-line-details = Details
 error-line-details-tip = Show what went wrong, word for word, and copy it
 error-line-copied = Copied.
 
-## Readouts (apps/linux/src/format.rs): times, countdowns and lengths
+## Readouts (apps/desktop/src/format.rs): times, countdowns and lengths
 
 fmt-just-now = just now
 fmt-now = now
@@ -3549,7 +3549,7 @@ fmt-size-gb = { $size } GB
 fmt-size-tb = { $size } TB
 fmt-episode-span = Episodes { $first } to { $through }
 
-## apps/linux/src/problem.rs: every call error in a person's words, what happened and what to do
+## apps/desktop/src/problem.rs: every call error in a person's words, what happened and what to do
 
 problem-report = Try again. If it keeps happening, report it from the activity log.
 problem-try-later = Try again later.
@@ -3619,7 +3619,7 @@ problem-refused-unmatched = That file is not tied to an episode.
 problem-refused-unmatched-next = Fix it from the show's page, under Fixes.
 problem-refused-on-disk = That file is only on this computer.
 
-## apps/linux/src/library_view.rs: the library page's section titles and the one fact under each
+## apps/desktop/src/library_view.rs: the library page's section titles and the one fact under each
 ## (Dropped, On hold and Watching reuse status-* from core.ftl)
 
 library-view-airing = Airing
@@ -3652,7 +3652,7 @@ library-view-dropped-on-disk =
        *[other] { $count } files
     } still on disk
 
-## apps/linux/src/dbus/notify.rs: the desktop notification for a new episode
+## apps/desktop/src/dbus/notify.rs: the desktop notification for a new episode
 ## (its Open button reuses action-open from core.ftl)
 
 # $episode is the episode's number, $title the show's.
@@ -3661,16 +3661,16 @@ notify-click-open = Click to open it in { -app-name }
 notify-click-get = Click to get the episodes in { -app-name }
 notify-get-episodes = Get episodes
 
-## apps/linux/src/nowplaying.rs: the second line a media widget shows while an episode plays
+## apps/desktop/src/nowplaying.rs: the second line a media widget shows while an episode plays
 
 # $episode is episode-number from core.ftl ("Episode 12").
 now-playing-show-episode = { $show }, { $episode }
 
-## apps/linux/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
+## apps/desktop/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
 
 inhibit-reason = Playing an episode
 
-## apps/linux/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
+## apps/desktop/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
 
 door-not-a-choice = { $value } is not a valid choice
 door-tokens-op-empty = a tokens op needs tokens
@@ -3678,7 +3678,7 @@ door-not-a-refine-op = { $value } is not a refine op
 door-limit-too-low = must be at least 1, got { $limit }
 door-not-a-torrent-action = { $value } is not a torrent action
 
-## apps/linux/src/bridge/shell.rs: the first-run starter folder and the update notice
+## apps/desktop/src/bridge/shell.rs: the first-run starter folder and the update notice
 
 # $folder is a path, $error the system's own reason.
 shell-starter-folder-failed = Could not create { $folder }: { $error }

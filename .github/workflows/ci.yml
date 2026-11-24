@@ -3,7 +3,7 @@ name: CI
 # Fast checks on every pull request: formatting for the whole workspace, then clippy and
 # the tests for the crates the pull request changed and every crate that builds on them
 # (.github/affected-crates.py, #1075). A file only one test target reads, such as a patch
-# note, runs that target alone (#1086). The Qt shell (apps/linux, package
+# note, runs that target alone (#1086). The Qt shell (apps/desktop, package
 # anibeam) needs Qt 6.11, MpvQt, libmpv and lld, which an ubuntu runner lacks, so its
 # tests and clippy run in .github/local-ci.sh, and in linux.yml under the `full ci` label
 # (#986), which sets those up for the AppImage. Runs on main

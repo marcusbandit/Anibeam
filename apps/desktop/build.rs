@@ -177,7 +177,7 @@ fn main() {
     ])
     // qrc:/qt/qml/com/marcusrosado/Anibeam/assets/...; a name left out of this list is a
     // blank icon at runtime, not a build error, so it is generated:
-    // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'
+    // ls apps/desktop/assets/icons/*.svg | sed 's|apps/desktop/||;s|.*|        "&",|'
     .qrc_resources([
         "shaders/poster.vert.qsb",
         "shaders/poster.frag.qsb",

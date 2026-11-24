@@ -80,7 +80,7 @@ jobs:
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           version="${ANIBEAM_RELEASE_VERSION:-$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)}"
-          apps/linux/packaging/aur/bin-tarball.sh "$version" dist
+          apps/desktop/packaging/aur/bin-tarball.sh "$version" dist
           tar -tf "dist/Anibeam-$version-linux-x86_64.tar.zst" | head -n 5
           # It runs on the libraries it was linked against: nothing missing, and it starts.
           if ldd target/release/anibeam | grep 'not found'; then exit 1; fi

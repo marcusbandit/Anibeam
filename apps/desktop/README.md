@@ -40,7 +40,7 @@ A `--drive` or `--shoot` run plays its video with `ao=null`, set after every con
 points PULSE_SERVER and PIPEWIRE_REMOTE at nothing, so a capture never makes a sound on the
 machine's speakers (#564). ANIBEAM_SILENT=1 does the same for a windowed run; `bench.sh` sets it.
 
-`ANIBEAM_QML_DIR=qml` (run from `apps/linux/`, like every command here) loads the shell's QML from that directory instead of the copy compiled
+`ANIBEAM_QML_DIR=qml` (run from `apps/desktop/`, like every command here) loads the shell's QML from that directory instead of the copy compiled
 into the binary, so a QML-only edit shows up on the next run with no cargo build (a relink of the
 debug binary is minutes; the QML parse is a fraction of a second). It exists in debug builds and in
 builds with the `dev-qml` feature only. A
@@ -62,8 +62,8 @@ compiled copy. Build before the last run of a task all the same: the binary the 
 A build to try on another machine is a tester build: `cargo build --profile tester -p anibeam
 --features dev-qml` writes `target/tester/anibeam`, a release build without debug info, so the
 binary copies over quickly, and it reads `ANIBEAM_QML_DIR`. The other machine needs the same Qt,
-MpvQt and libmpv as the build box. Copy the binary, `apps/linux/qml/`, `apps/linux/themes/` and
-`apps/linux/mpv.conf` over, and start it with `ANIBEAM_QML_DIR`, `ANIBEAM_THEMES_DIR` and
+MpvQt and libmpv as the build box. Copy the binary, `apps/desktop/qml/`, `apps/desktop/themes/` and
+`apps/desktop/mpv.conf` over, and start it with `ANIBEAM_QML_DIR`, `ANIBEAM_THEMES_DIR` and
 `ANIBEAM_MPV_CONF` pointing at them. Quit any Anibeam already running there first: a second start
 hands off to the running one and exits. Without `--root <dir>` it opens that machine's real data,
 and a migration in the tester moves the database the installed build reads next. After a QML-only

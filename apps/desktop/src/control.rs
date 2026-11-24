@@ -60,7 +60,7 @@ A failure prints why on stderr and exits 1; no window running exits 3.
 Useful in eval: control.where(), frame.item.nav.current, frame.item.pageItem,
 control.find("objectName"), Door.listSeries("All", "", "Alpha", "Asc", false).
 
-A whole scrolling page in one image, for debugging: apps/linux/scripts/longshot.py.
+A whole scrolling page in one image, for debugging: apps/desktop/scripts/longshot.py.
 "#;
 
 /// Why a request got no answer.

@@ -1,5 +1,5 @@
 //! `anibeam-relay`: the native watch together relay, for self-hosting and local
-//! development. Completion for zsh and bash lives in `apps/relay/completions/`.
+//! development. Completion for zsh and bash lives in `relay/server/completions/`.
 
 use std::net::SocketAddr;
 use std::process::ExitCode;
