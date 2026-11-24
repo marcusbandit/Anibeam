@@ -5,10 +5,11 @@
 //! Two rules shape this file. The Secret Service is reached over D-Bus, so
 //! asking whether it exists costs a round trip and can put a prompt on the
 //! screen; the core must not pay that during `open`, and must never pay it
-//! twice. And every keyring call is synchronous zbus underneath, so it
-//! belongs on a plain thread: a call runs it on the shell's calling thread,
-//! a job runs it through `spawn_blocking`, and nothing here is ever awaited
-//! inside a tokio task.
+//! twice. And every keyring call is synchronous zbus underneath (which drives
+//! a nested Tokio `block_on` on Linux), so jobs still offload it through
+//! `spawn_blocking`, and every store probe or operation here also runs
+//! through [`crate::blocking::blocking`] so a call that lands on a Tokio
+//! runtime worker or listener cannot panic.
 //!
 //! Secrets never enter the database. What the database holds is the
 //! `StoreKind` a write landed in, so the read after it goes straight to the
@@ -64,6 +65,10 @@ pub struct Secrets {
     /// warm-up, whichever comes first. `OnceLock` makes the loser of that
     /// race wait rather than probe a second time.
     primary: OnceLock<Option<Arc<CredentialStore>>>,
+    /// How `primary` is opened on first use: the real system keyring in
+    /// production, or a file-backed stand-in that drives a nested Tokio
+    /// `block_on` in tests.
+    opener: Opener,
     /// Claimed by the caller that should say the keyring is missing, so
     /// the line is written once however many callers raced the probe.
     announced: AtomicBool,
@@ -90,6 +95,27 @@ impl Secrets {
         Arc::new(Secrets {
             file,
             primary: OnceLock::new(),
+            opener: Opener::System,
+            announced: AtomicBool::new(false),
+            known: Mutex::new(known),
+            probed: Mutex::new(HashSet::new()),
+        })
+    }
+
+    /// A facade whose primary store stands in for Linux's `zbus`-backed Secret
+    /// Service: probing it and every read, write or delete drives a nested
+    /// Tokio `block_on`, which panics if called from inside an active Tokio
+    /// runtime without leaving it first. Backed by a sibling file beside
+    /// `path`, so no test touches the machine's real keyring.
+    #[doc(hidden)]
+    pub fn runtime_blocking_for_test(path: PathBuf) -> Arc<Secrets> {
+        let keyring_path = path.with_file_name("keyring.test.json");
+        let file = FileStore::new(path);
+        let known = file.keys();
+        Arc::new(Secrets {
+            file,
+            primary: OnceLock::new(),
+            opener: Opener::RuntimeBlocking(keyring_path),
             announced: AtomicBool::new(false),
             known: Mutex::new(known),
             probed: Mutex::new(HashSet::new()),
@@ -235,15 +261,16 @@ impl Secrets {
     /// after the first finds the answer already there, and callers racing
     /// the first wait on it rather than opening a second session bus.
     fn primary(&self) -> Option<&Arc<CredentialStore>> {
-        self.primary.get_or_init(open_keyring).as_ref()
+        if let Some(store) = self.primary.get() {
+            return store.as_ref();
+        }
+        crate::blocking::blocking(|| self.primary.get_or_init(|| self.opener.open())).as_ref()
     }
 
     /// The store of a kind, or `None` when this machine has no keyring.
-    fn store(&self, kind: StoreKind) -> Option<&dyn CredentialStoreApi> {
+    fn store(&self, kind: StoreKind) -> Option<&CredentialStore> {
         match kind {
-            StoreKind::Keyring => self
-                .primary()
-                .map(|store| store.as_ref() as &dyn CredentialStoreApi),
+            StoreKind::Keyring => self.primary().map(Arc::as_ref),
             StoreKind::File => Some(self.file.as_ref()),
         }
     }
@@ -279,6 +306,100 @@ fn order(hint: Option<StoreKind>) -> [StoreKind; 2] {
     }
 }
 
+enum Opener {
+    System,
+    RuntimeBlocking(PathBuf),
+}
+
+impl Opener {
+    fn open(&self) -> Option<Arc<CredentialStore>> {
+        match self {
+            Opener::System => open_keyring(),
+            Opener::RuntimeBlocking(path) => {
+                nested_block_on();
+                let store: Arc<CredentialStore> = Arc::new(RuntimeBlockingStore {
+                    inner: FileStore::new(path.clone()),
+                });
+                Some(store)
+            }
+        }
+    }
+}
+
+/// Mirrors `zbus::utils::block_on` with the `tokio` feature on Linux: calling
+/// `Runtime::block_on` directly from an active Tokio runtime thread panics.
+fn nested_block_on() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .expect("stand-in keyring runtime");
+    rt.block_on(async {});
+}
+
+struct RuntimeBlockingStore {
+    inner: Arc<FileStore>,
+}
+
+impl CredentialStoreApi for RuntimeBlockingStore {
+    fn vendor(&self) -> String {
+        "runtime-blocking stand-in".to_string()
+    }
+
+    fn id(&self) -> String {
+        self.inner.id()
+    }
+
+    fn build(
+        &self,
+        service: &str,
+        user: &str,
+        modifiers: Option<&HashMap<&str, &str>>,
+    ) -> keyring_core::Result<Entry> {
+        nested_block_on();
+        Ok(Entry::new_with_credential(Arc::new(
+            RuntimeBlockingCredential {
+                inner: self.inner.build(service, user, modifiers)?,
+            },
+        )))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+struct RuntimeBlockingCredential {
+    inner: Entry,
+}
+
+impl CredentialApi for RuntimeBlockingCredential {
+    fn set_secret(&self, secret: &[u8]) -> keyring_core::Result<()> {
+        nested_block_on();
+        self.inner.set_secret(secret)
+    }
+
+    fn get_secret(&self) -> keyring_core::Result<Vec<u8>> {
+        nested_block_on();
+        self.inner.get_secret()
+    }
+
+    fn delete_credential(&self) -> keyring_core::Result<()> {
+        nested_block_on();
+        self.inner.delete_credential()
+    }
+
+    fn get_credential(&self) -> keyring_core::Result<Option<Arc<Credential>>> {
+        Ok(None)
+    }
+
+    fn get_specifiers(&self) -> Option<(String, String)> {
+        self.inner.get_specifiers()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 /// The machine's keyring: the Secret Service over D-Bus, on a Mac the
 /// login keychain, on Windows the Credential Manager. `None` when there is
 /// none to reach.
@@ -304,30 +425,32 @@ fn open_keyring() -> Option<Arc<CredentialStore>> {
     }
 }
 
-fn read_in(store: &dyn CredentialStoreApi, key: &str) -> keyring_core::Result<Option<String>> {
-    match store.build(SERVICE, key, None)?.get_password() {
+fn read_in(store: &CredentialStore, key: &str) -> keyring_core::Result<Option<String>> {
+    crate::blocking::blocking(|| match store.build(SERVICE, key, None)?.get_password() {
         Ok(value) => Ok(Some(value)),
         Err(KeyringError::NoEntry) => Ok(None),
         Err(e) => Err(e),
-    }
+    })
 }
 
-fn write_in(store: &dyn CredentialStoreApi, key: &str, value: &str) -> keyring_core::Result<()> {
-    store.build(SERVICE, key, None)?.set_password(value)
+fn write_in(store: &CredentialStore, key: &str, value: &str) -> keyring_core::Result<()> {
+    crate::blocking::blocking(|| store.build(SERVICE, key, None)?.set_password(value))
 }
 
 /// Nothing stored is what a delete wanted, so `NoEntry` is success.
-fn delete_in(store: &dyn CredentialStoreApi, key: &str) -> keyring_core::Result<()> {
-    match store.build(SERVICE, key, None)?.delete_credential() {
-        Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
-        Err(e) => Err(e),
-    }
+fn delete_in(store: &CredentialStore, key: &str) -> keyring_core::Result<()> {
+    crate::blocking::blocking(
+        || match store.build(SERVICE, key, None)?.delete_credential() {
+            Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
+            Err(e) => Err(e),
+        },
+    )
 }
 
 /// Takes a key out of the store that did not win the write. Nothing there
 /// is the ordinary case, and a store that cannot be reached is one nothing
 /// could have cleaned anyway, so neither outcome is the write's failure.
-fn clear_loser(store: &dyn CredentialStoreApi, key: &str) {
+fn clear_loser(store: &CredentialStore, key: &str) {
     if let Err(e) = delete_in(store, key) {
         tracing::debug!("could not clear the old {key} out of the store that lost the write: {e}");
     }
@@ -801,5 +924,55 @@ mod tests {
     #[test]
     fn store_kinds_round_trip_through_their_column() {
         StoreKind::assert_columns_round_trip();
+    }
+
+    fn exercise_secrets_round_trip(s: &Secrets) {
+        assert!(!s.warm());
+        assert_eq!(s.keyring_unavailable(), Some(false));
+        assert_eq!(s.set("endpoint.key", "secret").unwrap(), StoreKind::Keyring);
+        assert!(s.has("endpoint.key"));
+        assert!(!s.has("endpoint.missing"));
+        assert_eq!(
+            s.get("endpoint.key", None).unwrap(),
+            Some(("secret".to_string(), StoreKind::Keyring))
+        );
+        s.delete("endpoint.key").unwrap();
+        assert_eq!(s.get("endpoint.key", None).unwrap(), None);
+    }
+
+    #[test]
+    fn runtime_blocking_keyring_works_from_multi_thread_runtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .build()
+            .unwrap();
+
+        let worker_secrets = Secrets::runtime_blocking_for_test(dir.path().join("worker.json"));
+        rt.block_on(rt.spawn(async move {
+            exercise_secrets_round_trip(&worker_secrets);
+        }))
+        .unwrap();
+
+        let blocking_secrets = Secrets::runtime_blocking_for_test(dir.path().join("blocking.json"));
+        rt.block_on(rt.spawn_blocking(move || {
+            exercise_secrets_round_trip(&blocking_secrets);
+        }))
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn runtime_blocking_keyring_works_from_current_thread_runtime() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let task_secrets = Secrets::runtime_blocking_for_test(dir.path().join("task.json"));
+        exercise_secrets_round_trip(&task_secrets);
+
+        let blocking_secrets = Secrets::runtime_blocking_for_test(dir.path().join("blocking.json"));
+        tokio::task::spawn_blocking(move || {
+            exercise_secrets_round_trip(&blocking_secrets);
+        })
+        .await
+        .unwrap();
     }
 }
