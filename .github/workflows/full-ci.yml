@@ -24,6 +24,9 @@ permissions:
   contents: read
 
 jobs:
+  # The one job that always runs. .github/ios-automerge.sh counts a Full CI run as one that
+  # built its commit when any job besides this one ran, so keep its name and keep every
+  # other job behind it.
   gate:
     runs-on: ubuntu-latest
     outputs:

@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Ask a question
+    url: https://github.com/marcusbandit/Anibeam/discussions/categories/q-a
+    about: Help with setup or using Anibeam in GitHub Discussions. Report bugs as issues instead. Do not name download sites or source lists.
   - name: Report a security problem
     url: https://github.com/marcusbandit/Anibeam/security/advisories/new
     about: A way Anibeam could harm the people who use it. Reported privately, never in an issue. SECURITY.md says what happens next.
