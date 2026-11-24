@@ -318,11 +318,15 @@ impl Frames {
     /// log keeps.
     async fn announce(&self, series: u64) {
         let images_dir = self.services.paths.images_dir();
-        let cards = self
-            .services
-            .store
-            .write_async(move |c| cards::cards_for(c, &images_dir, &[series]))
-            .await;
+        let services = self.services.clone();
+        // Only a read, so off the writer thread: it never waits behind a scan
+        let cards = tokio::task::spawn_blocking(move || {
+            services
+                .store
+                .read(|c| cards::cards_for(c, &images_dir, &[series]))
+        })
+        .await
+        .unwrap_or_else(|e| Err(CoreError::internal(format!("card read failed: {e}"))));
         match cards {
             Ok(cards) => {
                 self.services.bus.debug(
