@@ -166,6 +166,7 @@ SettingsTab {
             visible: !!Door.preferences.calendar_feed && tab.calendarPath !== ""
             label: words.t("settings-library-calendar-file")
             status: tab.calendarPath
+            redactStatus: true
             Row { spacing: theme.space(2)
                 Button { objectName: "settings-calendar-copy"; msg: "settings-library-copy"; icon: "copy"; flat: true; small: true; onClicked: frame.copyText(tab.calendarPath, words.t("settings-library-path-copied")) }
                 Button { objectName: "settings-calendar-open"; msg: "settings-library-open-folder"; icon: "folder-open"; flat: true; small: true; onClicked: frame.openLink(Fmt.fileUrl(Door.about.data_dir)) } }

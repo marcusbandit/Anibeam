@@ -238,7 +238,12 @@ Item {
                 Row {
                     visible: !room.needsName
                     spacing: theme.space(2)
-                    Label { anchors.verticalCenter: parent.verticalCenter; text: words.t("room-panel-you-are", { name: room.name }); role: "ui"; color: theme.textDim; font.pointSize: theme.typeSmall }
+                    PrivacyBlur {
+                        id: youAreBlur
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: youAreLabel.implicitWidth; height: youAreLabel.implicitHeight
+                        Label { id: youAreLabel; text: words.t("room-panel-you-are", { name: youAreBlur.blurred ? youAreBlur.mask(room.name) : room.name }); role: "ui"; color: theme.textDim; font.pointSize: theme.typeSmall }
+                    }
                     Button { objectName: "room-panel-change-name"; anchors.verticalCenter: parent.verticalCenter; msg: "room-panel-change-name"; flat: true; small: true; takesFocus: !root.inPlayer
                         onClicked: { root.editingName = true; nameField.text = room.name; nameField.focusInput() } }
                 }
@@ -263,39 +268,52 @@ Item {
                     Column {
                         spacing: theme.space(0.5)
                         Label { msg: "room-panel-code-label"; role: "ui"; color: theme.textDim; font.pointSize: theme.typeSmall }
-                        Label {
-                            objectName: "room-panel-code-text"
-                            text: root.info ? root.info.code : ""
-                            role: "ledger"
-                            font.pointSize: theme.typeHeading
-                            font.weight: 600
-                            font.letterSpacing: theme.space(1)
+                        PrivacyBlur {
+                            id: roomCodeBlur
+                            width: roomCodeText.implicitWidth; height: roomCodeText.implicitHeight
+                            Label {
+                                id: roomCodeText
+                                objectName: "room-panel-code-text"
+                                text: root.info ? (roomCodeBlur.blurred ? roomCodeBlur.mask(root.info.code) : root.info.code) : ""
+                                role: "ledger"
+                                font.pointSize: theme.typeHeading
+                                font.weight: 600
+                                font.letterSpacing: theme.space(1)
+                            }
                         }
                     }
                     // The QR code on its own white card, so a phone camera reads it on any theme
-                    Rectangle {
-                        objectName: "room-panel-qr"
+                    PrivacyBlur {
                         width: share.width; height: width
-                        radius: theme.radiusMd
-                        color: "#ffffff"
-                        Image {
-                            anchors.fill: parent
-                            anchors.margins: theme.space(1)
-                            source: root.info ? Shell.qrCode(root.info.link) : ""
-                            sourceSize: Qt.size(Math.round(width * 2), Math.round(height * 2))
-                            fillMode: Image.PreserveAspectFit
-                            smooth: false
+                        Rectangle {
+                            objectName: "room-panel-qr"
+                            width: share.width; height: width
+                            radius: theme.radiusMd
+                            color: "#ffffff"
+                            Image {
+                                anchors.fill: parent
+                                anchors.margins: theme.space(1)
+                                source: root.info ? Shell.qrCode(root.info.link) : ""
+                                sourceSize: Qt.size(Math.round(width * 2), Math.round(height * 2))
+                                fillMode: Image.PreserveAspectFit
+                                smooth: false
+                            }
                         }
                     }
                     // The link in full, since it is what gets pasted to a friend
-                    Label {
-                        objectName: "room-panel-link"
-                        width: share.width
-                        text: root.info ? root.info.link : ""
-                        role: "ledger"; color: theme.textDim
-                        wrapMode: Text.WrapAnywhere
-                        maximumLineCount: 2
-                        elide: Text.ElideRight
+                    PrivacyBlur {
+                        id: roomLinkBlur
+                        width: share.width; height: roomLinkText.implicitHeight
+                        Label {
+                            id: roomLinkText
+                            objectName: "room-panel-link"
+                            width: share.width
+                            text: root.info ? (roomLinkBlur.blurred ? roomLinkBlur.mask(root.info.link) : root.info.link) : ""
+                            role: "ledger"; color: theme.textDim
+                            wrapMode: Text.WrapAnywhere
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
+                        }
                     }
                     Button {
                         objectName: "room-panel-copy"

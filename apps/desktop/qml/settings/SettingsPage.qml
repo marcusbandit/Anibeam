@@ -131,6 +131,7 @@ FocusScope {
         ["appearance", words.t("settings-appearance-out-now"), words.t("settings-find-out-now.words")],
         ["appearance", words.t("settings-appearance-out-now-grid"), words.t("settings-find-out-now-cards.words"), words.t("settings-appearance-out-now")],
         ["appearance", words.t("settings-appearance-reduce-motion"), words.t("settings-find-reduce-motion.words")],
+        ["appearance", words.t("settings-privacy-mode"), words.t("settings-find-privacy.words")],
         ["appearance", words.t("settings-appearance-app-icon"), words.t("settings-find-app-icon.words")],
         ["playback", words.t("settings-playback-skip-intros"), words.t("settings-find-skip-intros.words")],
         ["playback", words.t("settings-playback-skip-outros"), words.t("settings-find-skip-outros.words")],

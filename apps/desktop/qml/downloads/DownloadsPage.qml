@@ -2006,7 +2006,7 @@ Item {
                             var p = parent.mapToItem(frame, 0, parent.height); frame.openMenu(p.x, p.y, page.clientMenu())
                         }
                     }
-                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url.replace(/\/\/[^\/@]*@/, "//") : words.t("downloads-chip-client-not-connected", { client: page.activeClientName })) + "\n" + (page.remoteAnirss ? words.t("downloads-chip-client-remote") : words.t("downloads-chip-client-switch")) }
+                    Tooltip { text: (page.torrentOn ? (frame.prefs.privacyMode ? words.t("downloads-chip-client-private") : page.status.settings.torrent_url.replace(/\/\/[^\/@]*@/, "//")) : words.t("downloads-chip-client-not-connected", { client: page.activeClientName })) + "\n" + (page.remoteAnirss ? words.t("downloads-chip-client-remote") : words.t("downloads-chip-client-switch")) }
                 }
                 Button {
                     text: page.connecting ? words.t("downloads-connecting") : words.t("downloads-reconnect")

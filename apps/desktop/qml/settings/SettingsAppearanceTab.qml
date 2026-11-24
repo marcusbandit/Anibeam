@@ -174,4 +174,13 @@ SettingsTab {
         SettingRow { label: words.t("settings-appearance-reduce-motion")
             Switch { objectName: "reduce-motion"; checked: Theme.reducedMotion; onToggled: function(on) { Theme.pickReducedMotion(on) } } }
     }
+    Panel {
+        objectName: "settings-privacy"
+        title: words.t("settings-privacy-title")
+        SettingRow {
+            label: words.t("settings-privacy-mode")
+            line: words.t("settings-privacy-mode-line")
+            Switch { objectName: "privacy-mode"; checked: frame.prefs.privacyMode; onToggled: function(on) { frame.prefs.privacyMode = on } }
+        }
+    }
 }

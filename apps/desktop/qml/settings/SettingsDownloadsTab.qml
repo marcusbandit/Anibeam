@@ -196,27 +196,45 @@ SettingsTab {
                   } } }
         SettingRow { visible: tab.mine; label: words.t("settings-downloads-saved-clients")
             Row { spacing: theme.space(2)
-                Dropdown { objectName: "downloads-client"; options: tab.savedClients.map(function(c) { return c.name || c.url }); minWidth: theme.space(36)
-                           visible: tab.savedClients.length > 0; index: Math.max(0, tab.activeIndex)
-                           onPicked: function(i) { tab.pickClient(i) } }
+                PrivacyBlur {
+                    id: savedClientsBlur
+                    visible: tab.savedClients.length > 0
+                    width: savedClientsDropdown.width; height: savedClientsDropdown.height
+                    Dropdown { id: savedClientsDropdown; objectName: "downloads-client"; options: tab.savedClients.map(function(c) { var v = c.name || c.url; return savedClientsBlur.blurred ? savedClientsBlur.mask(v) : v }); minWidth: theme.space(36)
+                               index: Math.max(0, tab.activeIndex)
+                               onPicked: function(i) { tab.pickClient(i) } }
+                }
                 Button { objectName: "downloads-client-add"; msg: "settings-downloads-add-client"; icon: "plus"; flat: true; onClicked: tab.addClient() }
                 Button { objectName: "downloads-client-remove"; msg: "action-remove"; icon: "trash-2"; flat: true; visible: tab.savedClients.length > 1; onClicked: tab.removeClient() } } }
         SettingRow { visible: tab.mine; label: words.t("settings-downloads-name")
-            Field { objectName: "downloads-client-name"; text: tab.activeEntry ? tab.activeEntry.name : ""; width: theme.space(48); placeholder: words.t("settings-downloads-name-placeholder")
-                    onEdited: function(t) { tab.edit(function(d) { tab.setActive(d, "name", t) }) } } }
+            PrivacyBlur {
+                id: clientNameBlur
+                width: clientNameField.width; height: clientNameField.height
+                Field { id: clientNameField; objectName: "downloads-client-name"; text: clientNameBlur.blurred ? clientNameBlur.mask(tab.activeEntry ? tab.activeEntry.name : "") : (tab.activeEntry ? tab.activeEntry.name : ""); width: theme.space(48); placeholder: words.t("settings-downloads-name-placeholder")
+                        onEdited: function(t) { tab.edit(function(d) { tab.setActive(d, "name", t) }) } }
+            } }
         SettingRow { label: words.t("settings-downloads-address")
-            Field { objectName: "downloads-client-url"; text: tab.draft ? tab.draft.torrent_url : ""; mono: true; width: theme.space(48); placeholder: "http://localhost:8080"; onEdited: function(t) { tab.edit(function(d) { d.torrent_url = t; tab.setActive(d, "url", t) }) } } }
+            PrivacyBlur {
+                id: clientUrlBlur
+                width: clientUrlField.width; height: clientUrlField.height
+                Field { id: clientUrlField; objectName: "downloads-client-url"; text: clientUrlBlur.blurred ? clientUrlBlur.mask(tab.draft ? tab.draft.torrent_url : "") : (tab.draft ? tab.draft.torrent_url : ""); mono: true; width: theme.space(48); placeholder: "http://localhost:8080"; onEdited: function(t) { tab.edit(function(d) { d.torrent_url = t; tab.setActive(d, "url", t) }) } }
+            } }
         SettingRow { visible: !tab.managed; label: words.t("settings-downloads-username")
-            Field { text: tab.draft ? tab.draft.torrent_username : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.torrent_username = t; tab.setActive(d, "username", t) }) } } }
+            PrivacyBlur {
+                id: clientUserBlur
+                width: clientUserField.width; height: clientUserField.height
+                Field { id: clientUserField; text: clientUserBlur.blurred ? clientUserBlur.mask(tab.draft ? tab.draft.torrent_username : "") : (tab.draft ? tab.draft.torrent_username : ""); mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.torrent_username = t; tab.setActive(d, "username", t) }) } }
+            } }
         SettingRow { visible: !tab.managed; label: words.t("settings-downloads-password"); status: tab.passwordLine
             Field { objectName: "downloads-client-password"; text: tab.passwordText; secret: true; mono: true; width: theme.space(48); placeholder: tab.hasPassword ? words.t("settings-downloads-secret-saved") : words.t("settings-downloads-secret-unset")
                     onEdited: function(t) { tab.passwordText = t; tab.passwordTouched = true; tab.dirty = true } } }
         SettingRow { objectName: "downloads-save-to"; visible: tab.savedNative && tab.saveFolder.here; label: words.t("settings-downloads-save-to")
             status: tab.saveFolder.path || words.t("settings-downloads-save-to-client")
+            redactStatus: !!tab.saveFolder.path
             Row { spacing: theme.space(2)
                 Button { visible: tab.saveFolder.from === "Chosen"; msg: "settings-downloads-save-to-reset"; icon: "rotate-ccw"; flat: true; onClicked: tab.setSaveFolder(null) }
                 Button { objectName: "downloads-save-to-choose"; msg: "settings-downloads-save-to-choose"; icon: "folder-open"; flat: true; onClicked: saveFolderDialog.open() } } }
-        SettingRow { label: words.t("settings-downloads-connection"); line: tab.torrentLine; status: tab.mismatch
+        SettingRow { label: words.t("settings-downloads-connection"); line: tab.torrentLine; status: tab.mismatch; redactStatus: tab.mismatch !== ""
             Row { spacing: theme.space(2)
                 Button { visible: tab.mismatch !== "" && !!(tab.anirss && tab.anirss.config_path); msg: "settings-downloads-open-config"; icon: "external-link"; flat: true; onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) }
                 Button { visible: !!tab.torrent && !tab.torrent.connected && !tab.testing && !!tab.torrent.message; msg: "settings-downloads-details"; icon: "info"; flat: true; onClicked: tab.details(words.t("settings-downloads-details-torrent", { client: tab.clientName }), tab.torrent.message) }
@@ -233,11 +251,15 @@ SettingsTab {
         SettingRow { visible: !tab.nativeEngine && tab.sidecar; label: words.t("settings-downloads-command")
             Field { objectName: "downloads-anirss-command"; text: tab.draft ? tab.draft.anirss_command : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.anirss_command = t }) } } }
         SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: words.t("settings-downloads-address")
-            Field { text: tab.draft ? tab.draft.anirss_url : ""; mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.anirss_url = t }) } } }
+            PrivacyBlur {
+                id: anirssUrlBlur
+                width: anirssUrlField.width; height: anirssUrlField.height
+                Field { id: anirssUrlField; text: anirssUrlBlur.blurred ? anirssUrlBlur.mask(tab.draft ? tab.draft.anirss_url : "") : (tab.draft ? tab.draft.anirss_url : ""); mono: true; width: theme.space(48); onEdited: function(t) { tab.edit(function(d) { d.anirss_url = t }) } }
+            } }
         SettingRow { visible: !tab.nativeEngine && !tab.sidecar; label: words.t("settings-downloads-key")
             Field { text: tab.tokenText; secret: true; mono: true; width: theme.space(48); placeholder: tab.settings && tab.settings.has_anirss_token ? words.t("settings-downloads-secret-saved") : words.t("settings-downloads-secret-unset")
                     onEdited: function(t) { tab.tokenText = t; tab.tokenTouched = true; tab.dirty = true } } }
-        SettingRow { visible: !tab.nativeEngine; label: words.t("settings-downloads-connection"); line: tab.anirssLine
+        SettingRow { visible: !tab.nativeEngine; label: words.t("settings-downloads-connection"); line: tab.anirssLine; redactLine: !!tab.anirss && tab.anirss.state === "Ready"
             Row { spacing: theme.space(2)
                 Button { visible: !!tab.anirss && (tab.anirss.state === "Missing" || tab.anirss.state === "Failed") && !!tab.anirss.message; msg: "settings-downloads-details"; icon: "info"; flat: true; onClicked: tab.details(words.t("settings-downloads-details-anirss"), tab.anirss.message) }
                 Button { text: tab.anirss && tab.anirss.state === "Starting" ? words.t("settings-downloads-starting") : tab.anirss && tab.anirss.state === "Ready" ? words.t("settings-downloads-reconnect") : tab.anirss && tab.anirss.state === "Failed" ? words.t("action-try-again") : words.t("action-connect"); icon: "refresh-cw"; flat: true; enabled: !tab.dirty && !(tab.anirss && tab.anirss.state === "Starting"); onClicked: tab.connect()

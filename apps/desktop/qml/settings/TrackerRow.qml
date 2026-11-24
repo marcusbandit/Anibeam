@@ -77,13 +77,20 @@ Item {
             anchors.rightMargin: theme.space(6)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
-            Label {
-                width: parent.width
-                text: root.line
-                role: "ui"
-                font.pointSize: theme.typeSmall
-                color: !root.connected && !root.waiting && root.error !== "" ? theme.red : theme.textDim
-                wrapMode: Text.Wrap
+            PrivacyBlur {
+                id: trackerBlur
+                active: root.connected
+                width: Math.min(trackerLine.implicitWidth, parent.width)
+                height: trackerLine.implicitHeight
+                Label {
+                    id: trackerLine
+                    width: lineColumn.width
+                    text: trackerBlur.blurred ? trackerBlur.mask(root.line) : root.line
+                    role: "ui"
+                    font.pointSize: theme.typeSmall
+                    color: !root.connected && !root.waiting && root.error !== "" ? theme.red : theme.textDim
+                    wrapMode: Text.Wrap
+                }
             }
         }
         // Loaders, not plain children behind `visible`: an inactive branch (the wide

@@ -83,6 +83,7 @@ pub fn preview_options() -> Vec<(&'static str, &'static str)> {
         ("audio-pitch-correction", "no"),
         ("use-text-osd", "no"),
         ("audio-display", "no"),
+        ("image-display-duration", "inf"),
         ("keep-open", "always"),
     ]
 }
@@ -125,24 +126,35 @@ pub const SILENT_ENV: [(&str, &str); 2] = [
     ("PIPEWIRE_REMOTE", "/nonexistent"),
 ];
 
-/// The subtitle preview's fallback source: a black lavfi picture with one sample line,
-/// through a generated SRT under the cache directory. The file is written once and reused
-/// after that, so a preview opened twice does not rewrite it.
+/// Bundled 16:9 template still for the Settings subtitle preview.
+const SUBTITLE_PREVIEW_IMAGE: &[u8] = include_bytes!("../assets/subtitle-preview.jpg");
+
+/// Two-line demo subtitle displayed over the predefined preview image.
+const SUBTITLE_PREVIEW_SRT: &str = "1\n00:00:00,000 --> 01:00:00,000\nEven after all this time, the evening sky still looks the same.\nLet's head back before the last train leaves.\n";
+
+/// The subtitle preview's predefined source: a bundled scenic 16:9 frame paired with a
+/// two-line demo SRT, materialised under the cache directory so libmpv can render it with
+/// the real subtitle pipeline. Each file is written once and reused when its size matches.
 pub fn sample_preview(paths: &ShellPaths) -> (String, PathBuf) {
     let dir = paths.cache_dir();
-    let srt = dir.join("sample.srt");
-    if !srt.exists() {
+    let image = dir.join("subtitle-preview.jpg");
+    let srt = dir.join("subtitle-preview.srt");
+    let needs_image = std::fs::metadata(&image)
+        .map(|m| m.len() != SUBTITLE_PREVIEW_IMAGE.len() as u64)
+        .unwrap_or(true);
+    let needs_srt = std::fs::metadata(&srt)
+        .map(|m| m.len() != SUBTITLE_PREVIEW_SRT.len() as u64)
+        .unwrap_or(true);
+    if needs_image || needs_srt {
         std::fs::create_dir_all(&dir).ok();
-        std::fs::write(
-            &srt,
-            "1\n00:00:00,000 --> 01:00:00,000\nSample subtitle line\n",
-        )
-        .ok();
     }
-    (
-        "av://lavfi:color=c=0x101216:s=1280x720:d=3600".to_string(),
-        srt,
-    )
+    if needs_image {
+        std::fs::write(&image, SUBTITLE_PREVIEW_IMAGE).ok();
+    }
+    if needs_srt {
+        std::fs::write(&srt, SUBTITLE_PREVIEW_SRT).ok();
+    }
+    (image.to_string_lossy().into_owned(), srt)
 }
 
 #[cfg(test)]
@@ -234,22 +246,21 @@ mod tests {
         );
     }
     #[test]
-    fn the_sample_preview_writes_its_srt_once_under_the_cache_dir() {
+    fn the_sample_preview_writes_its_assets_under_the_cache_dir() {
         let dir = tempfile::tempdir().unwrap();
         let paths = ShellPaths::resolve(Some(dir.path())).unwrap();
         let (source, srt) = sample_preview(&paths);
-        assert_eq!(source, "av://lavfi:color=c=0x101216:s=1280x720:d=3600");
-        assert_eq!(srt, paths.cache_dir().join("sample.srt"));
-        let contents = std::fs::read_to_string(&srt).unwrap();
+        let expected_image = paths.cache_dir().join("subtitle-preview.jpg");
+        assert_eq!(source, expected_image.to_string_lossy());
+        assert_eq!(srt, paths.cache_dir().join("subtitle-preview.srt"));
         assert_eq!(
-            contents,
-            "1\n00:00:00,000 --> 01:00:00,000\nSample subtitle line\n"
+            std::fs::read(&expected_image).unwrap(),
+            SUBTITLE_PREVIEW_IMAGE
         );
-        // A second call finds the file already there and leaves it alone rather than
-        // rewriting it on every preview open.
-        std::fs::write(&srt, "already here\n").unwrap();
-        let (_, srt_again) = sample_preview(&paths);
+        assert_eq!(std::fs::read_to_string(&srt).unwrap(), SUBTITLE_PREVIEW_SRT);
+        // A second call reuses the files already on disk.
+        let (source_again, srt_again) = sample_preview(&paths);
+        assert_eq!(source_again, source);
         assert_eq!(srt_again, srt);
-        assert_eq!(std::fs::read_to_string(&srt).unwrap(), "already here\n");
     }
 }
