@@ -1291,6 +1291,8 @@ series-open-anilist = Openen op AniList
 series-open-mal = Openen op MyAnimeList
 series-add-notes = Notitie maken
 series-unhide = Tonen
+series-show-title-text = Toon de titel als tekst
+series-show-logo = Toon het logo
 series-hide = Verbergen
 series-hidden-toast = { $title } is hier verborgen, en Anibeam synct hem niet meer met AniList en MyAnimeList
 series-unhidden-toast = { $title } is terug, en synct weer
@@ -2973,6 +2975,7 @@ settings-library-folder-added = Map toegevoegd, scannen
 
 settings-appearance-language = Taal
 settings-appearance-title-language = Titels tonen in
+settings-appearance-series-logos = Toon logo's in plaats van titels
 settings-appearance-title-language-english = Engels
 settings-appearance-language-system = Zoals het systeem ({ $language })
 settings-appearance-text-smaller = Kleiner

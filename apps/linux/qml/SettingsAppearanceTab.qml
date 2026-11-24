@@ -36,6 +36,14 @@ SettingsTab {
         var r = Door.setPreferences(p)
         if (r && r.error) frame.fail(r.error, function() { tab.setTitleLanguage(v) })
     }
+    // Logo or title (#1463): what a series page's head draws where the show has a logo; a
+    // show's own choice in its More menu wins over this
+    function setSeriesLogos(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.series_logos = on
+        var r = Door.setPreferences(p)
+        if (r && r.error) frame.fail(r.error, function() { tab.setSeriesLogos(on) })
+    }
 
     // The preview's sample cards carry relative labels (last-viewed, countdowns); this
     // tick keeps them fresh. It only runs while this section exists.
@@ -55,6 +63,8 @@ SettingsTab {
         SettingRow { label: words.t("settings-appearance-title-language")
             Seg { objectName: "title-language"; options: tab.titleLanguageNames; index: Math.max(0, tab.titleLanguages.indexOf(Door.preferences.title_language))
                   onPicked: function(i) { tab.setTitleLanguage(tab.titleLanguages[i]) } } }
+        SettingRow { label: words.t("settings-appearance-series-logos")
+            Switch { objectName: "series-logos"; checked: Door.preferences.series_logos !== false; onToggled: function(on) { tab.setSeriesLogos(on) } } }
     }
     Panel {
         title: words.t("settings-appearance-colours")
