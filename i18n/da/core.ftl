@@ -532,7 +532,6 @@ core-presence-room = Ser sammen
 core-presence-in-room = I et rum
 core-presence-no-room = Den Discord-invitation har intet rum endnu. Bed dem starte et.
 core-presence-button-site = Hent Anibeam
-core-presence-button-github = Se på GitHub
 
 ## trackers/src/accounts.rs
 

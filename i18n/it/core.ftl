@@ -530,7 +530,6 @@ core-presence-room = Guardiamo insieme
 core-presence-in-room = In una stanza
 core-presence-no-room = Quell'invito di Discord non ha ancora una stanza. Chiedi di aprirne una.
 core-presence-button-site = Ottieni Anibeam
-core-presence-button-github = Vedi su GitHub
 
 ## trackers/src/accounts.rs
 

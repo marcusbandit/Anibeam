@@ -1,8 +1,8 @@
 //! Joining through Discord (#966). An activity in a room carries a party with
 //! a join secret, so Discord offers Ask to Join, Join and invites on it:
 //!
-//! - Outside a room there is no party: the activity carries the buttons to the
-//!   website and the repo instead, since Discord refuses buttons beside a
+//! - Outside a room there is no party: the activity carries the Get Anibeam
+//!   button to the website instead, since Discord refuses buttons beside a
 //!   secret (#1450). An ask that still comes, from an activity shown before,
 //!   reaches the shell as below, and a yes starts a room and sends the invite.
 //! - In a room the secret is `room:<code>`. An invite room asks as above, and

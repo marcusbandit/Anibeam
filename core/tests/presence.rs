@@ -41,6 +41,8 @@ struct Fake {
     said: Arc<Mutex<Vec<Incoming>>>,
     /// The party on each activity set, which `Sent::Set` leaves off.
     parties: Arc<Mutex<Vec<Option<Party>>>>,
+    /// The payload of each activity set, as Discord gets it, party and all.
+    payloads: Arc<Mutex<Vec<serde_json::Value>>>,
     /// Answers to Ask to Join: the user and whether they were invited.
     answers: Answers,
 }
@@ -123,6 +125,7 @@ impl Transport for Fake {
         }
         if let Some(a) = activity {
             self.parties.lock().unwrap().push(a.party.clone());
+            self.payloads.lock().unwrap().push(a.to_json());
         }
         self.push(match activity {
             Some(a) => Sent::Set(Activity {
@@ -458,7 +461,7 @@ fn switching_on_mid_episode_shows_it_and_off_lets_go() {
     let sent = fake.sent();
     assert_eq!(sets(&sent).len(), 1, "{sent:#?}");
     assert!(fake.parties.lock().unwrap()[0].is_none());
-    assert!(sets(&sent)[0].to_json().get("buttons").is_some());
+    assert!(fake.payloads.lock().unwrap()[0].get("buttons").is_some());
 
     switch(&core, false);
     tick(&core, s, 2.0, false);
@@ -763,8 +766,9 @@ fn a_refusal_that_is_not_the_posters_keeps_posters_for_the_next_activity() {
             _ => None,
         })
         .collect();
-    // Each activity is tried with its poster, then without, then without its party too.
-    assert_eq!(posters, vec![true, false, false, true, false, false]);
+    // Each activity is tried with its poster, then without, then with its
+    // poster back and without the button, since the poster was not the reason.
+    assert_eq!(posters, vec![true, false, true, true, false, true]);
 }
 
 // ---------------------------------------------------------------------------
@@ -840,24 +844,29 @@ fn playing() -> (
 }
 
 #[test]
-fn what_plays_outside_a_room_links_the_site_and_the_repo() {
+fn what_plays_outside_a_room_links_the_site() {
     let (_dir, _core, _c, fake) = playing();
     // No party: Discord refuses buttons beside a join secret (#1450).
     assert_eq!(fake.last_party(), None);
-    let sent = fake.sent();
-    let v = sets(&sent).last().expect("a set").to_json();
+    let v = fake
+        .payloads
+        .lock()
+        .unwrap()
+        .last()
+        .cloned()
+        .expect("a set");
+    assert!(v.get("secrets").is_none());
     let urls: Vec<_> = v["buttons"]
         .as_array()
         .expect("buttons")
         .iter()
         .map(|b| b["url"].as_str().unwrap().to_string())
         .collect();
-    assert_eq!(urls, [presence::SITE_URL, presence::REPO_URL]);
-    assert_eq!(v["assets"]["small_text"], presence::BADGE_TEXT);
+    assert_eq!(urls, [presence::SITE_URL]);
 }
 
 #[test]
-fn refused_buttons_fall_back_to_the_activity_without_them() {
+fn a_refused_button_falls_back_to_the_activity_without_it() {
     let (_dir, core, _c) = common::open_core();
     let lib = library(&core);
     let fake = Fake {
@@ -873,11 +882,10 @@ fn refused_buttons_fall_back_to_the_activity_without_them() {
     core.presence_flush();
     let sent = fake.sent();
     let all = sets(&sent);
-    // Both reach Discord, and the second never tries the buttons again. The
-    // poster is tried without first, so only the second carries it.
+    // Both reach Discord with their poster, and the second never tries the
+    // button again.
     assert_eq!(all.len(), 2);
-    assert!(all.iter().all(|a| !a.links));
-    assert!(all[1].poster.is_some());
+    assert!(all.iter().all(|a| !a.links && a.poster.is_some()));
 }
 
 #[test]

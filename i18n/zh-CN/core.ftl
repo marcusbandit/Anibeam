@@ -518,7 +518,6 @@ core-presence-room = 一起观看
 core-presence-in-room = 在房间中
 core-presence-no-room = 这个 Discord 邀请还没有房间。请对方先开一个房间。
 core-presence-button-site = 获取 Anibeam
-core-presence-button-github = 在 GitHub 上查看
 
 ## trackers/src/accounts.rs
 

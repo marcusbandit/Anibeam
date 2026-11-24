@@ -532,7 +532,6 @@ core-presence-room = Regarder ensemble
 core-presence-in-room = Dans un salon
 core-presence-no-room = Cette invitation Discord n'a pas encore de salon. Demandez-lui d'en ouvrir un.
 core-presence-button-site = Obtenir Anibeam
-core-presence-button-github = Voir sur GitHub
 
 ## trackers/src/accounts.rs
 
