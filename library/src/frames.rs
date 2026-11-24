@@ -50,8 +50,9 @@ const MIN_LUMA_SPREAD: f64 = 12.0;
 
 /// Where the frames are kept: `<cache>/frames`, beside the image cache and
 /// outside it, so the image cache's sweep of stray files never takes them.
+/// Clear images removes it along with the image cache.
 pub fn dir(paths: &anibeam_foundation::paths::CorePaths) -> PathBuf {
-    Path::new(&paths.cache_dir).join("frames")
+    paths.frames_dir()
 }
 
 /// The frame's file for a video at `path` of this size and mtime: FNV-1a over
