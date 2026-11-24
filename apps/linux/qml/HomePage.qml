@@ -1586,12 +1586,11 @@ Item {
                                     primary: true
                                     tint: slide.inkAccent
                                     icon: "play"
-                                    // The series page's wording: Continue for an episode
-                                    // stopped partway, Play for the next one
+                                    // One wording for every show, whether the episode was
+                                    // stopped partway or not started yet
                                     readonly property var number: slide.ep ? words.episodeNumber(slide.ep.number) : null
-                                    readonly property bool partial: !!(slide.entry && slide.entry.partial)
-                                    text: !slide.ep ? "" : number === null ? words.t(partial ? "series-play-continue" : "action-play")
-                                          : words.t(partial ? "series-play-continue-episode" : "series-play-episode", { number: number })
+                                    text: !slide.ep ? "" : number === null ? words.t("series-play-continue")
+                                          : words.t("series-play-continue-episode", { number: number })
                                     onClicked: page.playEntry(slide.entry)
                                 }
                                 Button {
