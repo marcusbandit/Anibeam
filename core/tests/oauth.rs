@@ -133,7 +133,7 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
         port,
         "/callback?access_token=tok&expires_in=3600&token_type=Bearer",
     );
-    assert!(second.contains("AniList is connected to"), "{second}");
+    assert!(second.contains("AniList and Anibeam are linked up"), "{second}");
 
     let done = common::wait_job(&c, job);
     assert!(
@@ -260,7 +260,7 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
     let state = param(&open_url, "state");
     let verifier = param(&open_url, "code_challenge");
     let ok = http_get(port, &format!("/callback?code=abc&state={state}"));
-    assert!(ok.contains("MyAnimeList is connected to"), "{ok}");
+    assert!(ok.contains("MyAnimeList and Anibeam are linked up"), "{ok}");
     let done = common::wait_job(&c, job);
     assert!(
         matches!(
@@ -378,7 +378,7 @@ fn mal_without_a_secret_signs_in_as_a_public_client() {
     let state = param(&open_url, "state");
     let verifier = param(&open_url, "code_challenge");
     let ok = http_get(port, &format!("/callback?code=abc&state={state}"));
-    assert!(ok.contains("MyAnimeList is connected to"), "{ok}");
+    assert!(ok.contains("MyAnimeList and Anibeam are linked up"), "{ok}");
     let done = common::wait_job(&c, job);
     assert!(
         matches!(
@@ -496,7 +496,7 @@ fn an_anilist_token_that_fails_validation_gets_the_error_page() {
     let (_, port) = ready_url(&c, job);
     let page = http_get(port, "/callback?access_token=bogus&expires_in=60");
     assert!(page.starts_with("HTTP/1.1 400"), "{page}");
-    assert!(!page.contains("is connected to"), "{page}");
+    assert!(!page.contains("are linked up"), "{page}");
     assert!(page.contains("try again"), "{page}");
     let failed = common::wait_job(&c, job);
     assert!(
@@ -543,8 +543,8 @@ fn a_slow_sign_in_lets_the_tab_go_and_still_finishes() {
     let (_, port) = ready_url(&c, job);
     let page = http_get(port, "/callback?access_token=tok&expires_in=3600");
     assert!(page.starts_with("HTTP/1.1 200"), "{page}");
-    assert!(page.contains("Still finishing"), "{page}");
-    assert!(!page.contains("is connected to"), "{page}");
+    assert!(page.contains("Still wrapping things up"), "{page}");
+    assert!(!page.contains("are linked up"), "{page}");
     let done = common::wait_job(&c, job);
     assert!(
         matches!(done.body, EventBody::TrackerConnected { .. }),
