@@ -1294,6 +1294,8 @@ series-open-anilist = Åbn på AniList
 series-open-mal = Åbn på MyAnimeList
 series-add-notes = Tilføj noter
 series-unhide = Vis igen
+series-show-title-text = Vis titlen som tekst
+series-show-logo = Vis logoet
 series-hide = Skjul
 series-hidden-toast = { $title } er skjult her, og Anibeam stopper med at synkronisere den med AniList og MyAnimeList
 series-unhidden-toast = { $title } er tilbage og synkroniseres igen
@@ -2977,6 +2979,7 @@ settings-library-folder-added = Mappe tilføjet, scanner
 
 settings-appearance-language = Sprog
 settings-appearance-title-language = Vis titler på
+settings-appearance-series-logos = Vis logoer i stedet for titler
 settings-appearance-title-language-english = Engelsk
 settings-appearance-language-system = Samme som systemet ({ $language })
 settings-appearance-text-smaller = Mindre

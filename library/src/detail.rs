@@ -320,6 +320,15 @@ impl Snapshot {
             suggested_fix,
             logo: zip.logo,
             artwork: zip.artwork,
+            logo_choice: conn
+                .query_row(
+                    "SELECT logo_choice FROM series WHERE id = ?1",
+                    [id as i64],
+                    |r| r.get::<_, Option<i64>>(0),
+                )
+                .optional()?
+                .flatten()
+                .map(|v| v != 0),
             card,
         }))
     }

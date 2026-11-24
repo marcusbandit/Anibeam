@@ -1294,6 +1294,8 @@ series-open-anilist = Apri su AniList
 series-open-mal = Apri su MyAnimeList
 series-add-notes = Aggiungi note
 series-unhide = Mostra
+series-show-title-text = Mostra il titolo come testo
+series-show-logo = Mostra il logo
 series-hide = Nascondi
 series-hidden-toast = { $title } è nascosta qui, e Anibeam smette di sincronizzarla con AniList e MyAnimeList
 series-unhidden-toast = { $title } è tornata, e si sincronizza di nuovo
@@ -2977,6 +2979,7 @@ settings-library-folder-added = Cartella aggiunta, scansione in corso
 
 settings-appearance-language = Lingua
 settings-appearance-title-language = Mostra i titoli in
+settings-appearance-series-logos = Mostra i loghi al posto dei titoli
 settings-appearance-title-language-english = Inglese
 settings-appearance-language-system = Come il sistema ({ $language })
 settings-appearance-text-smaller = Più piccolo

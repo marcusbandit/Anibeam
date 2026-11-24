@@ -478,6 +478,11 @@ pub struct SeriesDetail {
     /// Every piece of artwork ani.zip knows for the show, in its own order.
     #[serde(default)]
     pub artwork: Vec<Artwork>,
+    /// The person's choice for this show between its logo (true) and its
+    /// title in text (false), which wins over `Preferences::series_logos`;
+    /// None follows the setting (#1463).
+    #[serde(default)]
+    pub logo_choice: Option<bool>,
 }
 
 /// One piece of a show's artwork (ani.zip, #1036). `kind` is `Clearlogo`,
@@ -1233,6 +1238,11 @@ pub struct Preferences {
     /// The relay rooms are made on, `ROOM_RELAY` by default. Per machine.
     #[serde(default = "default_room_relay")]
     pub room_relay: String,
+    /// Whether a series page draws the show's logo where it has one, or the
+    /// title in text (#1463). Default on; a show's own choice
+    /// (`SeriesDetail::logo_choice`) wins over it.
+    #[serde(default = "default_true")]
+    pub series_logos: bool,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -1404,6 +1414,7 @@ impl Default for Preferences {
             home_recommended: RecommendedScope::All,
             room_name: String::new(),
             room_relay: ROOM_RELAY.to_string(),
+            series_logos: true,
         }
     }
 }

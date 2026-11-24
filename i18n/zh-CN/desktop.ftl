@@ -981,6 +981,8 @@ series-open-anilist = 在 AniList 上打开
 series-open-mal = 在 MyAnimeList 上打开
 series-add-notes = 添加笔记
 series-unhide = 取消隐藏
+series-show-title-text = 以文本显示标题
+series-show-logo = 显示 Logo
 series-hide = 隐藏
 series-hidden-toast = 《{ $title }》已在这里隐藏，Anibeam 不再把它同步到 AniList 和 MyAnimeList
 series-unhidden-toast = 《{ $title }》已恢复显示，并重新同步
@@ -2414,6 +2416,7 @@ settings-library-folder-added = 已添加文件夹，正在扫描
 
 settings-appearance-language = 语言
 settings-appearance-title-language = 标题显示为
+settings-appearance-series-logos = 用 Logo 代替标题
 settings-appearance-title-language-english = 英语
 settings-appearance-language-system = 跟随系统（{ $language }）
 settings-appearance-text-smaller = 较小

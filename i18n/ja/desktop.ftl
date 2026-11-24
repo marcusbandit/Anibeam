@@ -1016,6 +1016,8 @@ series-open-mal = MyAnimeListで開く
 series-add-notes = メモを追加
 # $sites is AniList, MyAnimeList, or both
 series-unhide = 再表示
+series-show-title-text = タイトルをテキストで表示
+series-show-logo = ロゴを表示
 series-hide = 非表示
 series-hidden-toast = { $title }をここで非表示にしました。AniListとMyAnimeListへの同期も止めます
 series-unhidden-toast = { $title }を再表示しました。同期も再開します
@@ -2485,6 +2487,7 @@ settings-library-folder-added = フォルダを追加しました。スキャン
 
 settings-appearance-language = 言語
 settings-appearance-title-language = タイトルの表示
+settings-appearance-series-logos = タイトルの代わりにロゴを表示
 settings-appearance-title-language-english = 英語
 # $language is the system's language in its own name ("Dansk")
 settings-appearance-language-system = システムと同じ（{ $language }）
