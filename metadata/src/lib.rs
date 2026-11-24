@@ -14,6 +14,7 @@ pub mod anizip;
 pub mod apply;
 pub mod automatch;
 pub mod calendar;
+pub mod fallback;
 pub mod fetch;
 pub mod franchise;
 pub mod imdb;

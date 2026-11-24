@@ -302,6 +302,10 @@ pub struct Episode {
     /// (ani.zip, #1036); None without one.
     #[serde(default)]
     pub still: Option<String>,
+    /// What the episode is about, plain text: ani.zip's, else the franchise
+    /// fallback's (#1461); None without one.
+    #[serde(default)]
+    pub synopsis: Option<String>,
 }
 
 /// One file of an episode that is on disk more than once: two releases of it.
@@ -327,6 +331,9 @@ pub struct AbsentEpisode {
     /// As `Episode::still`.
     #[serde(default)]
     pub still: Option<String>,
+    /// As `Episode::synopsis`.
+    #[serde(default)]
+    pub synopsis: Option<String>,
 }
 
 /// An episode still to come: when the record schedules it, or when it is
@@ -342,6 +349,9 @@ pub struct UpcomingEpisode {
     /// As `Episode::still`.
     #[serde(default)]
     pub still: Option<String>,
+    /// As `Episode::synopsis`.
+    #[serde(default)]
+    pub synopsis: Option<String>,
 }
 
 /// What the user told a series' schedule that its provider does not say

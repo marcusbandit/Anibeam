@@ -258,9 +258,10 @@ pub fn due(conn: &Connection, anilist_id: u64, now: i64) -> Result<bool, CoreErr
 }
 
 /// The images a show wants fetched now: its one clear logo, English first,
-/// and the still of every episode a series matched to it has a file of. The
-/// rest of the artwork, and the stills of episodes not on disk, wait until
-/// something asks for them.
+/// else the logo the fallback borrowed from its franchise (#1461), and the
+/// still of every episode a series matched to it has a file of, ani.zip's or
+/// the fallback's. The rest of the artwork, and the stills of episodes not
+/// on disk, wait until something asks for them.
 pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, CoreError> {
     let mut stmt = conn.prepare(
         "SELECT url FROM (
@@ -274,7 +275,17 @@ pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, Cor
          SELECT z.still_url FROM anizip_episodes z
             JOIN series s ON s.anilist_id = z.anilist_id AND s.provider = 'anilist'
             JOIN files f ON f.series_id = s.id AND f.kind != 'extra' AND f.number = z.number
-         WHERE z.anilist_id = ?1 AND z.still_url IS NOT NULL",
+         WHERE z.anilist_id = ?1 AND z.still_url IS NOT NULL
+         UNION
+         SELECT b.logo_url FROM fallback_shows b
+         WHERE b.anilist_id = ?1 AND b.logo_url IS NOT NULL
+           AND EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = b.anilist_id AND s.provider = 'anilist')
+           AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')
+         UNION
+         SELECT e.still_url FROM fallback_episodes e
+            JOIN series s ON s.anilist_id = e.anilist_id AND s.provider = 'anilist'
+            JOIN files f ON f.series_id = s.id AND f.kind != 'extra' AND f.number = e.number
+         WHERE e.anilist_id = ?1 AND e.still_url IS NOT NULL",
     )?;
     let rows = stmt.query_map(params![as_i64(anilist_id)], |r| r.get::<_, String>(0))?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -389,7 +400,11 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> 
             })
             .await?;
         owed_any |= filled_mal;
-        if !answered {
+        // What ani.zip left out, the franchise around it may have (#1461).
+        let fell_back = crate::fallback::run(metadata, anilist_id, now)
+            .await
+            .unwrap_or(false);
+        if !answered && !fell_back {
             continue;
         }
         filled += 1;

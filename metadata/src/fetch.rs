@@ -139,6 +139,12 @@ pub async fn fetch_and_write(
         })
         .await?;
 
+    // A season ani.zip has not mapped yet takes its episode details and its
+    // logo from the franchise around it, in this same job (#1461).
+    if let Err(e) = crate::fallback::run(metadata, anilist_id, now).await {
+        tracing::debug!("the episode fallback for AniList {anilist_id} did not write: {e}");
+    }
+
     // Waited for rather than fired off: a card that reports a match and
     // then draws a blank poster for the next few seconds is worse than a
     // match that takes those seconds to report. The clear logo and the

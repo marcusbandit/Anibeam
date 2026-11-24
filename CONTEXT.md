@@ -127,7 +127,7 @@ The link from a series to one provider record: AniList (carrying the MAL id when
 _Avoid_: mapping, source mapping, metadata link
 
 **Episode details**:
-What ani.zip adds to an AniList match, asked by AniList id beside the match: each episode's title, synopsis, still, runtime and air date, the show's artwork, and the MAL id when AniList has none. Its title wins over AniList's streaming title, which wins over Jikan's; a placeholder such as "Episode 5" never wins. A still is the episode's picture, a clear logo the show's name drawn as a transparent image. An outage costs nothing: the last answer's rows stay.
+What ani.zip adds to an AniList match, asked by AniList id beside the match: each episode's title, synopsis, still, runtime and air date, the show's artwork, and the MAL id when AniList has none. Its title wins over AniList's streaming title, which wins over Jikan's; a placeholder such as "Episode 5" never wins. A still is the episode's picture, a clear logo the show's name drawn as a transparent image. A season ani.zip has not mapped yet takes them from TVmaze instead, found through the TheTVDB id ani.zip gives a nearby season of the franchise, and borrows the nearest season's logo; ani.zip still wins once it answers. An outage costs nothing: the last answer's rows stay.
 _Avoid_: episode metadata, thumbnails
 
 **Provider order**:

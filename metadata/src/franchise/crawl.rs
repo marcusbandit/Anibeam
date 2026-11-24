@@ -254,7 +254,7 @@ fn retry_after(e: &CoreError) -> i64 {
 /// from the reply (blanks filled, values kept, `fetched_at` untouched: a
 /// crawl is not a metadata fetch), its outgoing edges are replaced, and
 /// every neighbour gets the stub row the edge needs to point at.
-async fn write_node(
+pub(crate) async fn write_node(
     services: &Services,
     id: u64,
     enrichment: &Enrichment,
