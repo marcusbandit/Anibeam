@@ -2186,6 +2186,9 @@ endpoint-repos-panel-link-ask = Aggiungere questo elenco di fonti dal link?
 endpoint-repos-panel-link-no-url = Questo link non contiene l'indirizzo di un elenco di fonti.
 endpoint-repos-panel-link-not-a-url = Non è stato possibile leggere l'indirizzo dell'elenco di fonti in questo link.
 endpoint-repos-panel-link-not-https = L'indirizzo dell'elenco di fonti in questo link non usa https, quindi non è stato aggiunto nulla.
+endpoint-repos-panel-config-head = Fonti dal tuo file di impostazioni
+endpoint-repos-panel-config-why = Le hai configurate in { $path }, quindi puoi modificarle solo lì.
+endpoint-repos-panel-config-locked = Sola lettura
 
 ## SourceAttach.qml
 
@@ -2530,10 +2533,6 @@ settings-downloads-magnet-anibeam = Li apre Anibeam
 settings-downloads-magnet-other = Li apre un'altra app
 settings-downloads-magnet-none = Nessuna app li apre
 settings-downloads-magnet-use = Aprili in Anibeam
-settings-downloads-sources-title = Fonti di ricerca
-settings-downloads-sources-empty = Ancora nessuna fonte configurata
-settings-downloads-sources-connect = Collega l'helper di ricerca per elencarle
-settings-downloads-config-file = File di impostazioni dell'helper di ricerca
 settings-downloads-unsaved = Modifiche non salvate
 settings-downloads-discard = Scarta
 

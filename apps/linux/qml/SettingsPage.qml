@@ -166,7 +166,7 @@ FocusScope {
         ["downloads", words.t("settings-downloads-roll-title"), words.t("settings-find-next-few.words")],
         ["downloads", words.t("settings-downloads-prune"), words.t("settings-find-unsubscribe.words")],
         ["downloads", words.t("settings-downloads-last-search"), words.t("settings-find-last-search.words")],
-        ["downloads", words.t("settings-downloads-sources-title"), words.t("settings-find-search-sources.words")],
+        ["downloads", words.t("endpoint-repos-panel-title"), words.t("settings-find-search-sources.words")],
         ["downloads", words.t("endpoint-repos-panel-title"), words.t("settings-find-source-lists.words")],
         ["accounts", words.t("settings-phone-share"), words.t("settings-find-share-tailscale.words")],
         ["accounts", words.t("settings-phone-stream"), words.t("settings-find-stream.words")],

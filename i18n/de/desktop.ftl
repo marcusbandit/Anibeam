@@ -2186,6 +2186,9 @@ endpoint-repos-panel-link-ask = Diese Quellenliste aus dem Link hinzufügen?
 endpoint-repos-panel-link-no-url = Dieser Link enthält keine Adresse einer Quellenliste.
 endpoint-repos-panel-link-not-a-url = Die Adresse der Quellenliste in diesem Link konnte nicht gelesen werden.
 endpoint-repos-panel-link-not-https = Die Adresse der Quellenliste in diesem Link nutzt kein https, daher wurde nichts hinzugefügt.
+endpoint-repos-panel-config-head = Quellen aus deiner Einstellungsdatei
+endpoint-repos-panel-config-why = Du hast sie in { $path } eingerichtet, daher lassen sie sich nur dort ändern.
+endpoint-repos-panel-config-locked = Schreibgeschützt
 
 ## SourceAttach.qml
 
@@ -2530,10 +2533,6 @@ settings-downloads-magnet-anibeam = Anibeam öffnet sie
 settings-downloads-magnet-other = Eine andere App öffnet sie
 settings-downloads-magnet-none = Nichts öffnet sie
 settings-downloads-magnet-use = In Anibeam öffnen
-settings-downloads-sources-title = Suchquellen
-settings-downloads-sources-empty = Noch keine Quellen eingerichtet
-settings-downloads-sources-connect = Verbinde den Suchhelfer, um sie aufzulisten
-settings-downloads-config-file = Einstellungsdatei des Suchhelfers
 settings-downloads-unsaved = Ungespeicherte Änderungen
 settings-downloads-discard = Verwerfen
 

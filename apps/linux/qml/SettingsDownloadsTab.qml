@@ -180,7 +180,7 @@ SettingsTab {
     }
 
     // The source lists first: nothing searches without one (#1003)
-    EndpointReposPanel { grows: false }
+    EndpointReposPanel { grows: false; helper: tab.status }
     Panel {
         title: words.t("settings-downloads-torrent-title")
         SettingRow { label: words.t("settings-downloads-which-client")
@@ -275,24 +275,6 @@ SettingsTab {
             Switch { checked: frame.prefs.keepDownloadsQuery; onToggled: function(on) { frame.prefs.keepDownloadsQuery = on } } }
         SettingRow { label: words.t("settings-downloads-prune")
             Switch { objectName: "downloads-prune-finished"; checked: !!tab.draft && tab.draft.prune_finished_feeds !== false; onToggled: function(on) { tab.edit(function(d) { d.prune_finished_feeds = on }) } } }
-    }
-    Panel {
-        title: words.t("settings-downloads-sources-title")
-        SettingRow { visible: tab.endpoints.length === 0; label: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? words.t("settings-downloads-sources-empty") : words.t("settings-downloads-sources-connect")
-            Button { visible: !(tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready")); msg: "action-connect"; icon: "refresh-cw"; enabled: !tab.dirty; onClicked: tab.connect() } }
-        Repeater {
-            model: tab.endpoints
-            SettingRow {
-                required property var modelData
-                required property int index
-                label: modelData.name
-                line: modelData.url
-                Chip { text: String(modelData.kind); small: true; color: theme.raised }
-            }
-        }
-        SettingRow { label: words.t("settings-downloads-config-file")
-            status: tab.anirss && tab.anirss.config_path ? tab.anirss.config_path : "~/.config/anirss/config.toml"
-            Button { msg: "action-open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) } }
     }
     FolderDialog {
         id: saveFolderDialog
