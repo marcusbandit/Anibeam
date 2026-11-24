@@ -10,6 +10,7 @@
 // through graphChanged. An unmatched series draws the same head off its folder name, with
 // the match where the synopsis would be.
 import QtQuick
+import QtQuick.Window
 import com.marcusrosado.Anibeam
 
 Item {
@@ -718,8 +719,12 @@ Item {
                     visible: page.hasBackdrop && status === Image.Ready
                     anchors.fill: parent
                     source: page.hasBackdrop ? Fmt.fileUrl(page.detail.backdrop) : ""
+                    // Decoded at the width it is drawn, not the picture's own (a 4K
+                    // background would otherwise be a 33 MB texture)
+                    sourceSize.width: Math.ceil(hero.width * Screen.devicePixelRatio)
                     fillMode: Image.PreserveAspectCrop
-                    verticalAlignment: Image.AlignTop
+                    // A banner strip keeps its top; a 16:9 background crops about its middle
+                    verticalAlignment: page.detail && page.detail.backdrop === page.detail.banner ? Image.AlignTop : Image.AlignVCenter
                     asynchronous: true
                 }
                 // No backdrop: the poster, decoded tiny and drawn large, so it reads as its

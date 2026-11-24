@@ -1459,7 +1459,8 @@ Item {
                             // Decoded at the width it is drawn, not the picture's own
                             sourceSize.width: Math.ceil(back.width * Screen.devicePixelRatio)
                             fillMode: Image.PreserveAspectCrop
-                            verticalAlignment: Image.AlignTop
+                            // A banner strip keeps its top; a 16:9 background crops about its middle
+                            verticalAlignment: slide.d && slide.backdrop === slide.d.banner ? Image.AlignTop : Image.AlignVCenter
                             asynchronous: true
                         }
                         // No backdrop: the poster, decoded tiny and drawn large, so it reads as
