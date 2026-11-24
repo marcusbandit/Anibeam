@@ -1,5 +1,6 @@
 // A series, flat (DESIGN.md, the flat home pass). The head (#1452) fills the window's width
-// with the banner, washed into the poster's own tone under the words and faded into the page;
+// with the backdrop (#1475), or the poster blurred when there is none, washed into the poster's
+// own tone under the words and faded into the page;
 // on it the poster, the other titles on one quiet line (panned on hover, unfolded on a click
 // when they run past), the logo or the title, the facts and the genres as pills, the studio,
 // the progress, and one row of actions of one height. Under it two columns on a wide window:
@@ -11,6 +12,7 @@
 // where the synopsis would be.
 import QtQuick
 import QtCore
+import QtQuick.Window
 import com.marcusrosado.Anibeam
 
 Item {
@@ -524,7 +526,10 @@ Item {
     }
     readonly property real progressFraction: tracked && detail.progress.total ? Math.min(1, watchedCount / detail.progress.total) : 0
     readonly property bool airsAhead: !!card.next_airing && card.next_airing.at * 1000 > nowMs
-    readonly property bool hasBanner: !!(detail && detail.banner)
+    // The core's pick (#1475): the wider of the show's background and its banner
+    readonly property bool hasBackdrop: !!(detail && detail.backdrop)
+    // Without one the poster, blurred, fills the head the same way
+    readonly property bool hasHeadArt: hasBackdrop || !!card.poster
     // Fall 2026: AniList's season word and the year, or the year alone
     readonly property string seasonText: {
         if (!detail || !detail.year) return ""
@@ -735,11 +740,12 @@ Item {
             onClicked: frame.nav.back()
         }
 
-        // ---- The head (#1452): the banner fills the window's width behind the poster and the
-        // words, washed toward the band's dark tone under them and fading into the page at the
-        // bottom; without a banner the poster's tone fills the same space. Over it, one left
-        // edge for everything: the poster, then the other titles, the logo (or the title), the
-        // facts, the genres, the studio, the progress and one row of actions, all one height.
+        // ---- The head (#1452): the backdrop (#1475) fills the window's width behind the poster
+        // and the words, washed toward the band's dark tone under them and fading into the page
+        // at the bottom; without one the poster, decoded tiny and drawn large, fills the same
+        // space, and without a poster its tone. Over it, one left edge for everything: the
+        // poster, then the other titles, the logo (or the title), the facts, the genres, the
+        // studio, the progress and one row of actions, all one height.
         Item {
             id: band
             objectName: "series-head"
@@ -748,7 +754,7 @@ Item {
             width: parent.width
             readonly property real posterH: theme.space(72)
             // Room above the poster for the art to show, and below the actions for the fade
-            readonly property real topPad: page.hasBanner ? theme.space(52) : theme.space(10)
+            readonly property real topPad: page.hasHeadArt ? theme.space(52) : theme.space(10)
             readonly property real tail: theme.space(10)
             readonly property real contentH: Math.max(posterH, bandWords.implicitHeight)
             height: topPad + contentH + tail
@@ -762,24 +768,42 @@ Item {
                 height: band.height - y
                 clip: true
                 Rectangle { anchors.fill: parent; color: page.bandBase }
+                readonly property bool hasArt: art.visible || soft.visible
                 Image {
                     id: art
-                    visible: page.hasBanner && status === Image.Ready
+                    visible: page.hasBackdrop && status === Image.Ready
                     anchors.fill: parent
-                    source: page.hasBanner ? Fmt.fileUrl(page.detail.banner) : ""
+                    source: page.hasBackdrop ? Fmt.fileUrl(page.detail.backdrop) : ""
+                    // Decoded at the width it is drawn, not the picture's own (a 4K
+                    // background would otherwise be a 33 MB texture)
+                    sourceSize.width: Math.ceil(hero.width * Screen.devicePixelRatio)
                     fillMode: Image.PreserveAspectCrop
-                    verticalAlignment: Image.AlignTop
+                    // A banner strip keeps its top; a 16:9 background crops about its middle
+                    verticalAlignment: page.detail && page.detail.backdrop === page.detail.banner ? Image.AlignTop : Image.AlignVCenter
+                    asynchronous: true
+                }
+                // No backdrop: the poster, decoded tiny and drawn large, so it reads as its
+                // colours and nothing sharp (HomePage's hero)
+                Image {
+                    id: soft
+                    visible: !page.hasBackdrop && !!page.card.poster && status === Image.Ready
+                    anchors.fill: parent
+                    source: !page.hasBackdrop && page.card.poster ? Fmt.fileUrl(page.card.poster) : ""
+                    sourceSize: Qt.size(12, 18)
+                    fillMode: Image.PreserveAspectCrop
+                    smooth: true
+                    opacity: 0.8
                     asynchronous: true
                 }
                 // A quiet scrim over the whole art, so it reads as a backdrop
                 Rectangle {
-                    visible: art.visible
+                    visible: hero.hasArt
                     anchors.fill: parent
                     color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.35)
                 }
                 // Darker at the left, where the words sit
                 Rectangle {
-                    visible: art.visible
+                    visible: hero.hasArt
                     anchors.fill: parent
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
@@ -800,7 +824,7 @@ Item {
                         GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
                         GradientStop { position: fade.start; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
                         GradientStop { position: fade.start + (fade.solid - fade.start) * 0.5; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.6) }
-                        GradientStop { position: fade.solid; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, art.visible ? 0.97 : 1) }
+                        GradientStop { position: fade.solid; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, hero.hasArt ? 0.97 : 1) }
                         GradientStop { position: 1; color: theme.bg }
                     }
                 }

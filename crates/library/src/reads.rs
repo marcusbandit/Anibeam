@@ -279,7 +279,18 @@ pub fn get_series(library: &Library, series: u64) -> Result<Reply, CoreError> {
             if let Some(want) = frames::lay_on(&mut detail, &stamps, &stills_coming, &frames_dir) {
                 library.frames.want(want);
             }
-            after_read(library, &gaps, poster.into_iter().collect());
+            // The first background (#1475): marked used when it is on
+            // disk, so the cap keeps the ones people open, and fetched on
+            // its own when it is not, since only Continue's come up front.
+            let mut used: Vec<String> = poster.into_iter().collect();
+            if let Some(fanart) = detail.artwork.iter().find(|a| a.kind == "Fanart") {
+                if fanart.path.is_some() {
+                    used.push(fanart.url.clone());
+                } else {
+                    images::fetch_asked(&library.net, fanart.url.clone());
+                }
+            }
+            after_read(library, &gaps, used);
             Ok(Reply::SeriesDetail {
                 detail: Box::new(detail),
             })

@@ -271,19 +271,29 @@ pub fn due(conn: &Connection, anilist_id: u64, now: i64) -> Result<bool, CoreErr
     Ok(fetched_at.is_some_and(|at| now.saturating_sub(at) >= window))
 }
 
-/// The images a show wants fetched now: its one clear logo, English first,
-/// else the logo the fallback borrowed from its franchise (#1461), and the
-/// still of every episode a series matched to it has a file of, ani.zip's or
-/// the fallback's. The rest of the artwork, and the stills of episodes not
+/// The images a show wants fetched now: its first clear logo in English, in
+/// Japanese and in anything else, so whichever the logo language setting
+/// picks is on disk (#1475 review), else the logo the fallback borrowed from
+/// its franchise (#1461); the first background of a series Continue may
+/// show, which the hero draws (#1475; any other series' is fetched when its
+/// page opens); and the still of every episode a series matched to it has a
+/// file of, ani.zip's or the fallback's. The rest of the artwork, and the stills of episodes not
 /// on disk, wait until something asks for them.
 pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, CoreError> {
-    let mut stmt = conn.prepare(
+    let sql = format!(
         "SELECT url FROM (
-            SELECT i.url FROM anizip_images i
+            SELECT i.url, row_number() OVER (PARTITION BY {group} ORDER BY i.rank) AS pick
+            FROM anizip_images i
             WHERE i.anilist_id = ?1 AND i.kind = 'Clearlogo'
               AND EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = i.anilist_id AND s.provider = 'anilist')
               AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0)
-            ORDER BY CASE WHEN lower(i.lang) LIKE 'en%' THEN 0 WHEN i.lang IS NULL THEN 1 ELSE 2 END, i.rank
+         ) WHERE pick = 1
+         UNION
+         SELECT url FROM (
+            SELECT i.url FROM anizip_images i
+            WHERE i.anilist_id = ?1 AND i.kind = 'Fanart'
+              AND i.anilist_id IN ({drawn})
+            ORDER BY i.rank
             LIMIT 1
          )
          UNION
@@ -306,7 +316,10 @@ pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, Cor
             JOIN files f ON f.series_id = s.id AND f.kind != 'extra' AND f.number = e.number
          WHERE e.anilist_id = ?1 AND e.still_url IS NOT NULL
            AND NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = e.anilist_id AND ze2.number IS NOT NULL)",
-    )?;
+        drawn = anibeam_net::images::DRAWN_ANILIST_IDS_SQL,
+        group = anibeam_net::images::LOGO_LANGUAGE_GROUP_I,
+    );
+    let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![as_i64(anilist_id)], |r| r.get::<_, String>(0))?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }

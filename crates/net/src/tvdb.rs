@@ -225,6 +225,13 @@ pub fn language_code(name: &str) -> Option<String> {
     Some(code.to_string())
 }
 
+/// A status that says the page is not there and will not be: any 4xx but
+/// the ones a bot check, a login wall, a rate limit or a legal block answer
+/// with (401, 403, 429, 451), which say nothing lasting about the page.
+pub fn lasting_refusal(status: u16) -> bool {
+    (400..500).contains(&status) && !matches!(status, 401 | 403 | 429 | 451)
+}
+
 pub struct TvdbSiteClient {
     client: ProviderClient,
 }
@@ -234,12 +241,15 @@ impl TvdbSiteClient {
         TvdbSiteClient { client }
     }
 
-    async fn page(&self, url: String) -> Result<Option<String>, CoreError> {
+    /// A page, or None when the site says it is not there. `gone` is the
+    /// set of statuses that mean that: a 404 for the series page, and for
+    /// an artwork page any lasting refusal (`lasting_refusal`).
+    async fn page(&self, url: String, gone: fn(u16) -> bool) -> Result<Option<String>, CoreError> {
         let response = self
             .client
             .send(HttpRequest::get(url).header("Accept", "text/html"))
             .await?;
-        if response.status == 404 {
+        if gone(response.status) {
             return Ok(None);
         }
         if !response.is_success() {
@@ -260,18 +270,21 @@ impl TvdbSiteClient {
         // The dereferrer answers with a redirect to the series page, whose
         // address carries a name the id alone does not give.
         let Some(page) = self
-            .page(format!("{TVDB_SITE}/dereferrer/series/{tvdb_id}"))
+            .page(format!("{TVDB_SITE}/dereferrer/series/{tvdb_id}"), |s| {
+                s == 404
+            })
             .await?
         else {
             return Ok(Vec::new());
         };
         let mut out = Vec::new();
         for (url, artwork_id) in series_logos(&page).into_iter().take(MAX_LOGOS) {
-            // An artwork page that is gone costs that logo its language.
-            // Any other failure fails the whole answer, which writes
-            // nothing: a bot check or a timeout is no lasting word on it.
+            // An artwork page that is gone (404, 410 or another lasting
+            // refusal) costs that logo its language and nothing more. Any
+            // other failure fails the whole answer, which writes nothing: a
+            // bot check, a rate limit or a timeout is no lasting word on it.
             let page = self
-                .page(format!("{TVDB_SITE}/artwork/{artwork_id}"))
+                .page(format!("{TVDB_SITE}/artwork/{artwork_id}"), lasting_refusal)
                 .await?;
             let lang = page.as_deref().and_then(artwork_language);
             out.push(TvdbLogo {
@@ -391,7 +404,7 @@ mod tests {
         http.push(200, SERIES);
         http.push(200, artwork("ClearLogo", "Japanese"));
         // An artwork page that is gone costs that logo its language only.
-        http.push(404, "gone");
+        http.push(410, "gone");
         let logos = client(http.clone()).logos(9_000_001).await.unwrap();
         let urls: Vec<String> = http.requests().iter().map(|r| r.url.clone()).collect();
         assert_eq!(
@@ -425,6 +438,16 @@ mod tests {
         // So is an artwork page behind a bot check: no language for half a
         // year on the word of a challenge page.
         assert!(c.logos(1).await.is_err());
+    }
+
+    #[test]
+    fn only_a_lasting_4xx_is_a_page_that_is_gone() {
+        for gone in [400, 404, 410, 422] {
+            assert!(lasting_refusal(gone), "{gone}");
+        }
+        for not in [200, 301, 401, 403, 429, 451, 500, 503] {
+            assert!(!lasting_refusal(not), "{not}");
+        }
     }
 
     /// Asks TheTVDB itself: Frieren and Mushoku Tensei's second season (one
