@@ -10,7 +10,7 @@
 
 **A local anime library, player, and tracker for desktop and mobile.**
 
-**[anibeam.app](https://anibeam.app)** · **[Wiki](https://anibeam.app/wiki/)** · **[What's new](https://anibeam.app/whats-new/)** · **[Watch together](https://rooms.anibeam.app/)**
+**[anibeam.app](https://anibeam.app)** · **[Wiki](https://anibeam.app/wiki/)** · **[What's new](https://anibeam.app/whats-new/)** · **[Watch together](https://rooms.anibeam.app/)** · **[Discussions](https://github.com/marcusbandit/Anibeam/discussions)**
 
 <br>
 
@@ -319,6 +319,10 @@ You can view the exact paths and export or restore a full backup in **Settings >
 </details>
 
 Check the [Troubleshooting wiki](https://anibeam.app/wiki/troubleshooting/) for more fixes, or use **Settings > About > Report a problem** to [open an issue](https://github.com/marcusbandit/Anibeam/issues/new/choose) with your version pre-filled.
+
+## Community
+
+Ask questions in [Q&A](https://github.com/marcusbandit/Anibeam/discussions/categories/q-a) or join [GitHub Discussions](https://github.com/marcusbandit/Anibeam/discussions) for ideas, and report bugs in [issues](https://github.com/marcusbandit/Anibeam/issues/new/choose). Please don't name download sites or link source lists in Discussions or issues.
 
 ## Build from source
 
