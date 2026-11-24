@@ -37,6 +37,9 @@ struct AniZipView {
     episodes: HashMap<i64, AniZipEpisodeView>,
     logo: Option<String>,
     artwork: Vec<Artwork>,
+    /// The first background in ani.zip's order, the one the image cache
+    /// fetches and pins, once it is on disk (#1475).
+    fanart: Option<String>,
 }
 
 impl AniZipView {
@@ -45,6 +48,34 @@ impl AniZipView {
         (number.fract() == 0.0 && number >= 1.0)
             .then(|| self.episodes.get(&(number as i64)))
             .flatten()
+    }
+}
+
+/// The wide picture behind the hero and the series head (#1475): of
+/// ani.zip's first background and the banner, whichever are on disk, the
+/// one with more pixels across. A width the header does not give away loses
+/// to one it does, and a tie goes to the background. None only when neither
+/// is there, and the shells wash the poster in. No minimum: a narrow banner
+/// still beats the blurred poster.
+fn backdrop(
+    fanart: Option<String>,
+    banner: Option<&str>,
+    width_of: impl Fn(&Path) -> Option<u32>,
+) -> Option<String> {
+    let on_disk = |p: &str| Path::new(p).is_file();
+    let fanart = fanart.filter(|f| on_disk(f));
+    let banner = banner.filter(|b| on_disk(b));
+    match (fanart, banner) {
+        (Some(f), Some(b)) => {
+            // None sorts below any width, so an unread width loses.
+            if width_of(Path::new(b)) > width_of(Path::new(&f)) {
+                Some(b.to_string())
+            } else {
+                Some(f)
+            }
+        }
+        (Some(f), None) => Some(f),
+        (None, b) => b.map(str::to_string),
     }
 }
 
@@ -381,6 +412,11 @@ impl Snapshot {
             suggested_fix,
             logo: zip.logo,
             artwork: zip.artwork,
+            backdrop: backdrop(
+                zip.fanart,
+                row.banner_path.as_deref(),
+                anibeam_net::dimensions::width_of,
+            ),
             logo_choice: conn
                 .query_row(
                     "SELECT logo_choice FROM series WHERE id = ?1",
@@ -490,21 +526,21 @@ impl Snapshot {
                 r.get::<_, Option<bool>>(4)?.unwrap_or(false),
             ))
         })?;
-        let mut logos: Vec<(bool, u8, Option<String>)> = Vec::new();
+        // Each usable logo's language and file, in the reply's order.
+        let mut logos: Vec<(Option<String>, Option<String>)> = Vec::new();
+        let mut seen_fanart = false;
         for row in rows {
             let (kind, url, lang, path, not_a_logo) = row?;
             let path = local(path);
             // A logo on a solid rectangle is no logo (#1470): the next one
             // is picked, then a franchise season's, then the title.
             if kind == "Clearlogo" && !not_a_logo {
-                // English first, then a logo that names no language, then
-                // any other, each in the reply's own order.
-                let pick = match lang.as_deref().map(str::to_ascii_lowercase) {
-                    Some(l) if l.starts_with("en") => 0,
-                    None => 1,
-                    Some(_) => 2,
-                };
-                logos.push((path.is_none(), pick, path.clone()));
+                logos.push((lang.clone(), path.clone()));
+            } else if kind == "Fanart" && !seen_fanart {
+                // The first one only, on disk or not: the one the cache
+                // fetches and pins, so the pick and the pin agree.
+                seen_fanart = true;
+                view.fanart = path.clone();
             }
             view.artwork.push(Artwork { kind, url, path });
         }
@@ -513,9 +549,20 @@ impl Snapshot {
         // No logo of its own at all: the nearest franchise season's
         // (#1461). One of its own that is not on disk yet is waited for,
         // the same rule the image cache fetches and pins by.
+        // Among those on disk, the logo language setting picks by ani.zip's
+        // own languages (#1475 review), the way it picks TheTVDB's below:
+        // the wanted one, then the other of English and Japanese, then any.
+        // The image cache fetches the first of each of those three.
         let own_logo = !logos.is_empty();
-        logos.sort_by_key(|(missing, pick, _)| (*missing, *pick));
-        view.logo = logos.into_iter().next().and_then(|(_, _, path)| path);
+        let on_disk: Vec<&(Option<String>, Option<String>)> =
+            logos.iter().filter(|(_, path)| path.is_some()).collect();
+        let langs: Vec<Option<&str>> = on_disk
+            .iter()
+            .map(|(l, _)| l.as_deref().and_then(|l| l.split(['-', '_']).next()))
+            .collect();
+        let prefs = anibeam_foundation::prefs::load_preferences(conn).unwrap_or_default();
+        let want = crate::logo::wanted(prefs.logo_language, prefs.title_language);
+        view.logo = crate::logo::pick(&langs, want).and_then(|at| on_disk[at].1.clone());
         // TheTVDB's logos, where it named their languages (#1470), win over
         // ani.zip's order: the one in the language wanted, then the other of
         // English and Japanese, then any, of those on disk.
@@ -1191,6 +1238,66 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn the_wider_of_the_background_and_the_banner_is_the_backdrop() {
+        use anibeam_net::dimensions::{testing, width_of};
+        let dir = tempfile::tempdir().unwrap();
+        let write = |name: &str, bytes: Vec<u8>| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, bytes).unwrap();
+            path.to_string_lossy().into_owned()
+        };
+        let fanart = write("fanart.jpg", testing::jpeg(1920, 1080));
+        let old_fanart = write("old.jpg", testing::jpeg(1280, 720));
+        let wide = write("wide.jpg", testing::jpeg(1900, 400));
+        let wider = write("wider.jpg", testing::jpeg(2560, 600));
+        let small = write("small.png", testing::png(1200, 300));
+        let same = write("same.jpg", testing::jpeg(1920, 400));
+        let avif = write("odd.avif", b"....ftypavif".to_vec());
+        let gone = dir.path().join("gone.jpg").to_string_lossy().into_owned();
+
+        // The wider one wins, whichever it is.
+        assert_eq!(
+            backdrop(Some(fanart.clone()), Some(&wide), width_of),
+            Some(fanart.clone())
+        );
+        assert_eq!(
+            backdrop(Some(fanart.clone()), Some(&wider), width_of),
+            Some(wider.clone())
+        );
+        assert_eq!(
+            backdrop(Some(old_fanart.clone()), Some(&wide), width_of),
+            Some(wide.clone())
+        );
+        // A tie goes to the background.
+        assert_eq!(
+            backdrop(Some(fanart.clone()), Some(&same), width_of),
+            Some(fanart.clone())
+        );
+        // A width nobody could read loses to one that was read, both ways.
+        assert_eq!(
+            backdrop(Some(avif.clone()), Some(&small), width_of),
+            Some(small.clone())
+        );
+        assert_eq!(
+            backdrop(Some(old_fanart.clone()), Some(&avif), width_of),
+            Some(old_fanart.clone())
+        );
+        // No minimum: a narrow banner alone is still the backdrop.
+        assert_eq!(backdrop(None, Some(&small), width_of), Some(small.clone()));
+        assert_eq!(
+            backdrop(Some(old_fanart.clone()), None, width_of),
+            Some(old_fanart)
+        );
+        // Only what is on disk counts; nothing at all is no backdrop.
+        assert_eq!(
+            backdrop(Some(gone.clone()), Some(&small), width_of),
+            Some(small)
+        );
+        assert_eq!(backdrop(Some(gone.clone()), Some(&gone), width_of), None);
+        assert_eq!(backdrop(None, None, width_of), None);
     }
 
     #[test]

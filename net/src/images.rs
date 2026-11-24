@@ -85,21 +85,69 @@ const REFERENCED_SQL: &str =
            WHERE e.still_url IS NOT NULL
              AND NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = e.anilist_id AND ze2.number IS NOT NULL)";
 
+/// Which of three groups a clear logo's language falls in: 0 English, 1
+/// Japanese, 2 any other or none, read off its base (`en-US` is `en`). The
+/// cache fetches the first logo of each, so whichever the logo language
+/// setting picks is on disk (#1475 review). `$t` is the table's alias.
+macro_rules! logo_language_group {
+    ($t:literal) => {
+        concat!(
+            "(CASE WHEN length(",
+            $t,
+            ".lang) > 2 AND substr(",
+            $t,
+            ".lang, 3, 1) NOT IN ('-', '_') THEN 2",
+            " ELSE CASE substr(lower(",
+            $t,
+            ".lang), 1, 2) WHEN 'en' THEN 0 WHEN 'ja' THEN 1 ELSE 2 END END)"
+        )
+    };
+}
+
+/// `logo_language_group!` over the alias `i`, for the queries outside this file.
+pub const LOGO_LANGUAGE_GROUP_I: &str = logo_language_group!("i");
+
+/// The AniList ids of the series a backdrop is drawn for before anyone
+/// opens their page (#1475): the ones Home's Continue may hold, played here
+/// or being watched on a tracker with episodes seen. Their first background
+/// is fetched up front and pinned; any other series' waits until its page
+/// opens and then lives by the cap like any other image.
+macro_rules! drawn_anilist_ids {
+    () => {
+        "SELECT s.anilist_id FROM series s LEFT JOIN anilist_media m ON m.id = s.anilist_id
+         WHERE s.provider = 'anilist' AND s.anilist_id IS NOT NULL AND (
+            EXISTS (SELECT 1 FROM views v WHERE v.series_id = s.id)
+            OR EXISTS (SELECT 1 FROM tracker_entries t
+                       WHERE t.status IN ('watching', 'repeating') AND t.progress > 0
+                         AND ((t.tracker = 'anilist' AND t.media_id = s.anilist_id)
+                              OR (t.tracker = 'mal' AND t.media_id = m.mal_id))))"
+    };
+}
+
+/// `drawn_anilist_ids!` for the queries outside this file.
+pub const DRAWN_ANILIST_IDS_SQL: &str = drawn_anilist_ids!();
+
 /// The urls of a series the library actually owns. These are never evicted
 /// by the cap: losing them is the one loss a user would see at once.
-const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.cover_url IS NOT NULL
+const PINNED_SQL: &str = concat!("SELECT m.cover_url AS url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.cover_url IS NOT NULL
      UNION SELECT m.banner_url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.banner_url IS NOT NULL
      UNION SELECT t.poster_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.poster_url IS NOT NULL
      UNION SELECT t.background_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.background_url IS NOT NULL
      UNION SELECT url FROM (SELECT url FROM (
                 SELECT a.url, row_number() OVER (
-                    PARTITION BY a.anilist_id
-                    ORDER BY CASE WHEN lower(a.lang) LIKE 'en%' THEN 0 WHEN a.lang IS NULL THEN 1 ELSE 2 END, a.rank
+                    PARTITION BY a.anilist_id, ", logo_language_group!("a"), "
+                    ORDER BY a.rank
                 ) AS pick
                 FROM anizip_images a
                 WHERE a.kind = 'Clearlogo'
                   AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
                   AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = a.url AND v.verdict = 0)
+             ) WHERE pick = 1)
+     UNION SELECT url FROM (SELECT url FROM (
+                SELECT a.url, row_number() OVER (PARTITION BY a.anilist_id ORDER BY a.rank) AS pick
+                FROM anizip_images a
+                WHERE a.kind = 'Fanart'
+                  AND a.anilist_id IN (", drawn_anilist_ids!(), ")
              ) WHERE pick = 1)
      UNION SELECT b.logo_url FROM fallback_shows b
            WHERE b.logo_url IS NOT NULL
@@ -107,17 +155,18 @@ const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN se
              AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo'
                                AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0))
              AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = b.logo_url AND v.verdict = 0)
-     UNION SELECT url FROM tvdb_logo_wanted";
+     UNION SELECT url FROM tvdb_logo_wanted");
 
 /// What a fill goes and gets: everything an owned series draws, the covers
 /// of what it recommends, the covers behind the watching list, and the
 /// covers of every entry in an owned series' franchise, walked the way the
 /// graph closes it (CHARACTER and OTHER edges are never crossed), so the
 /// series page's Related stones have their art offline too. From ani.zip
-/// (#1036), an owned series' one clear logo, English first, and the stills
-/// of the episodes it has a file of; the rest of its artwork waits until
-/// something asks.
-const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
+/// (#1036), an owned series' first clear logo in English, in Japanese and in
+/// anything else, the first background of a series Continue may show
+/// (#1475), and the stills of the episodes it has a file of; the rest of its
+/// artwork waits until something asks.
+const MISSING_SQL: &str = concat!("WITH RECURSIVE franchise(id) AS (
         SELECT anilist_id FROM series WHERE anilist_id IS NOT NULL
         UNION SELECT r.to_id FROM relations r JOIN franchise f ON r.from_id = f.id
               WHERE r.relation NOT IN ('CHARACTER', 'OTHER')
@@ -140,13 +189,19 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
         UNION SELECT ts.background_url FROM tvmaze_shows ts JOIN series s ON s.tvmaze_id = ts.id
         UNION SELECT url FROM (SELECT url FROM (
                 SELECT a.url, row_number() OVER (
-                    PARTITION BY a.anilist_id
-                    ORDER BY CASE WHEN lower(a.lang) LIKE 'en%' THEN 0 WHEN a.lang IS NULL THEN 1 ELSE 2 END, a.rank
+                    PARTITION BY a.anilist_id, ", logo_language_group!("a"), "
+                    ORDER BY a.rank
                 ) AS pick
                 FROM anizip_images a
                 WHERE a.kind = 'Clearlogo'
                   AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
                   AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = a.url AND v.verdict = 0)
+             ) WHERE pick = 1)
+        UNION SELECT url FROM (SELECT url FROM (
+                SELECT a.url, row_number() OVER (PARTITION BY a.anilist_id ORDER BY a.rank) AS pick
+                FROM anizip_images a
+                WHERE a.kind = 'Fanart'
+                  AND a.anilist_id IN (", drawn_anilist_ids!(), ")
              ) WHERE pick = 1)
         UNION SELECT ze.still_url FROM anizip_episodes ze
                      JOIN series s ON s.anilist_id = ze.anilist_id AND s.provider = 'anilist'
@@ -164,7 +219,7 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
                      WHERE NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = fe.anilist_id AND ze2.number IS NOT NULL)
      )
      WHERE url IS NOT NULL AND url NOT IN (SELECT url FROM images)
-     ORDER BY url";
+     ORDER BY url");
 
 // ---------------------------------------------------------------------------
 // The pure rules
@@ -255,6 +310,15 @@ pub struct ImageCache {
     /// When a fill last actually started. A coalesced call does not touch
     /// it, so the five minute gate measures real fills.
     fill_started_at: Mutex<Option<Instant>>,
+    /// Urls a page asked for that no fill goes and gets by itself (#1475),
+    /// the background of a series opened outside Continue, while their
+    /// fetch is in flight, so a page opened twice fetches once.
+    asked: Mutex<HashSet<String>>,
+    /// Asked urls the host turned away for good (`lasting_refusal`), so a
+    /// page that keeps opening does not ask for them again. A timeout or a
+    /// network that is down is no lasting word and is asked again on the
+    /// next open. Forgotten with the process.
+    refused: Mutex<HashSet<String>>,
 }
 
 impl ImageCache {
@@ -265,7 +329,18 @@ impl ImageCache {
             http,
             permits: Arc::new(Semaphore::new(CONCURRENCY)),
             fill_started_at: Mutex::new(None),
+            asked: Mutex::new(HashSet::new()),
+            refused: Mutex::new(HashSet::new()),
         })
+    }
+
+    /// Takes `url` on as asked for. False when it is in flight already or
+    /// was turned away for good, which is when nothing should start.
+    fn take_ask(&self, url: &str) -> bool {
+        if recover(&self.refused).contains(url) {
+            return false;
+        }
+        recover(&self.asked).insert(url.to_string())
     }
 
     pub fn dir(&self) -> &Path {
@@ -946,6 +1021,68 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
     id
 }
 
+/// Whether a failed fetch was the host saying the image is not there and
+/// will not be (a 404, a 410 or another lasting 4xx), as against a timeout,
+/// a network that is down, a rate limit or a server error.
+fn refused_for_good(e: &CoreError) -> bool {
+    matches!(e, CoreError::Provider { status: Some(status), .. }
+        if u16::try_from(*status).is_ok_and(crate::tvdb::lasting_refusal))
+}
+
+/// Fetches `url`, which a page asked for and no fill fetches up front
+/// (#1475): the background of a series opened outside Continue. Its own
+/// small task rather than a fill, so it judges no logos, walks no missing
+/// list and leaves the fill gate alone, and an ask can never land on a
+/// fill that is already ending. Once the file is here, the series it
+/// belongs to are told, so the open page draws it. A url in flight, or one
+/// the host turned away for good, starts nothing.
+pub fn fetch_asked(net: &Arc<Net>, url: String) {
+    if !net.images.take_ask(&url) {
+        return;
+    }
+    let owner = net.clone();
+    net.services.handle.spawn(async move {
+        let outcome = owner.images.ensure(std::slice::from_ref(&url)).await;
+        let result = outcome.into_iter().next().map(|(_, r)| r);
+        recover(&owner.images.asked).remove(&url);
+        match result {
+            Some(Ok(_)) => {
+                let dir = owner.services.paths.images_dir();
+                let cards_for = owner.cards_for;
+                let arrived = vec![url];
+                let cards = owner
+                    .services
+                    .store
+                    .write_async(move |c| {
+                        let ids = series_for_urls(c, &arrived)?;
+                        cards_for(c, &dir, &ids)
+                    })
+                    .await;
+                match cards {
+                    Ok(cards) if !cards.is_empty() => {
+                        owner.services.bus.emit(
+                            Level::Debug,
+                            JobKind::FillImages.stage(),
+                            "fetched an image a page asked for",
+                            None,
+                            EventBody::SeriesChanged { series: cards },
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!("reading the cards behind an asked image failed: {e}"),
+                }
+            }
+            Some(Err(e)) => {
+                tracing::warn!("image {url} was not fetched: {e}");
+                if refused_for_good(&e) {
+                    recover(&owner.images.refused).insert(url);
+                }
+            }
+            None => {}
+        }
+    });
+}
+
 /// `GetStorage`: two counts off one table, answered off the reader
 /// connection rather than as a job.
 pub fn storage_call(net: &Net) -> Result<Reply, CoreError> {
@@ -1317,6 +1454,34 @@ mod tests {
             .unwrap();
         assert!(kept.is_some_and(|p| p.ends_with(".jpg")));
         assert_eq!(lost, None, "a row whose file is gone is the same as no row");
+    }
+
+    #[test]
+    fn an_asked_url_is_taken_once_in_flight_and_never_after_a_lasting_refusal() {
+        let b = bench();
+        assert!(b.cache.take_ask("https://img/fanart.jpg"));
+        // In flight: a second open starts nothing.
+        assert!(!b.cache.take_ask("https://img/fanart.jpg"));
+        // Done, however it went: asked again on the next open.
+        recover(&b.cache.asked).remove("https://img/fanart.jpg");
+        assert!(b.cache.take_ask("https://img/fanart.jpg"));
+        recover(&b.cache.refused).insert("https://img/gone.jpg".to_string());
+        assert!(!b.cache.take_ask("https://img/gone.jpg"));
+
+        let status = |s: u32| CoreError::provider(Provider::Anilist, Some(s), "x");
+        assert!(refused_for_good(&status(404)));
+        assert!(refused_for_good(&status(410)));
+        // A rate limit, a bot check, a server error or no answer at all is
+        // no lasting word.
+        assert!(!refused_for_good(&status(429)));
+        assert!(!refused_for_good(&status(403)));
+        assert!(!refused_for_good(&status(503)));
+        assert!(!refused_for_good(&CoreError::provider(
+            Provider::Anilist,
+            None,
+            "timeout"
+        )));
+        assert!(!refused_for_good(&CoreError::internal("x")));
     }
 
     #[tokio::test]

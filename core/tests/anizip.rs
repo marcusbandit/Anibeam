@@ -19,6 +19,7 @@ const LOGO_EN: &str = "https://images.example.com/series/1/clearlogo/logo-en.png
 const LOGO_JA: &str = "https://images.example.com/series/1/clearlogo/logo-ja.png";
 const STILL_1: &str = "https://images.example.com/still/1.jpg";
 const STILL_2: &str = "https://images.example.com/still/2.jpg";
+const FANART: &str = "https://images.example.com/fanart.jpg";
 
 /// AniList's `Media` reply, with no MAL id: the mapping has to supply it.
 fn media_json() -> serde_json::Value {
@@ -74,7 +75,7 @@ fn anizip_json() -> String {
             "S1": { "seasonNumber": 0, "episodeNumber": 1, "title": { "en": "Harbour Recap" } }
         },
         "images": [
-            { "coverType": "Fanart", "url": "https://images.example.com/fanart.jpg" },
+            { "coverType": "Fanart", "url": FANART },
             { "coverType": "Clearlogo", "url": LOGO_JA, "lang": "ja" },
             { "coverType": "Clearlogo", "url": LOGO_EN, "lang": "en" },
             { "coverType": "Poster", "url": "https://images.example.com/poster.jpg" }
@@ -190,6 +191,8 @@ fn series_mal(core: &Core, series: u64) -> Option<i64> {
 /// AniList's streaming title, an episode it has no title for falls to
 /// Jikan's, which the mapped MAL id let the match ask, and the stills of
 /// the episodes on disk and the English clear logo are on disk as files.
+/// The background of a series outside Continue waits until its page opens,
+/// which fetches it for the page's backdrop (#1475).
 #[test]
 fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     let http = FakeHttp::new();
@@ -202,6 +205,11 @@ fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     for url in [STILL_1, STILL_2, LOGO_EN] {
         http.push_for(url, 200, b"image".to_vec());
     }
+    http.push_for(
+        FANART,
+        200,
+        anibeam_core::net::dimensions::testing::jpeg(1920, 1080),
+    );
     apply(&core, &c, series);
 
     assert_eq!(
@@ -237,11 +245,65 @@ fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     assert!(logo.ends_with(".png") && std::path::Path::new(logo).is_file());
     let kinds: Vec<&str> = d.artwork.iter().map(|a| a.kind.as_str()).collect();
     assert_eq!(kinds, ["Fanart", "Clearlogo", "Clearlogo", "Poster"]);
-    // Only the logo is fetched up front.
+    // Only the logos are fetched up front.
     assert_eq!(d.artwork[0].path, None);
+    assert_eq!(d.backdrop, None);
     assert_eq!(d.artwork[2].url, LOGO_EN);
     assert_eq!(d.artwork[2].path.as_deref(), Some(logo));
-    assert!(!http.requests().iter().any(|r| r.url == LOGO_JA));
+    assert_eq!(d.artwork[3].path, None);
+    // The Japanese logo is asked for too, so the logo language setting can
+    // pick it; it did not arrive here, so the English one on disk is drawn.
+    assert!(http.requests().iter().any(|r| r.url == LOGO_JA));
+
+    // Opening the page asked for the background on its own, with no fill
+    // job: it arrives, the series is told, and the next read draws it.
+    common::wait_for(
+        &c,
+        |e| {
+            e.job.is_none()
+                && e.message == "fetched an image a page asked for"
+                && matches!(&e.body, EventBody::SeriesChanged { series: cards }
+                    if cards.iter().any(|card| card.id == series))
+        },
+        std::time::Duration::from_secs(10),
+    );
+    let d = detail(&core, series);
+    let fanart = d.artwork[0].path.as_deref().expect("the background");
+    assert!(fanart.ends_with(".jpg") && std::path::Path::new(fanart).is_file());
+    assert_eq!(d.backdrop.as_deref(), Some(fanart));
+    assert_eq!(
+        http.requests().iter().filter(|r| r.url == FANART).count(),
+        1
+    );
+
+    core.shutdown();
+}
+
+/// A series played here is one Continue may show, so its background comes
+/// with the match and is the backdrop on the first read (#1475).
+#[test]
+fn a_series_in_continue_gets_its_background_with_the_match() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = show(&core);
+    fixtures::insert_view(&core, series, "1", time::now_secs());
+
+    queue_anilist(&http);
+    http.push_for("api.ani.zip", 200, anizip_json());
+    http.push_for("jikan.moe", 200, jikan_page());
+    for url in [STILL_1, STILL_2, LOGO_EN] {
+        http.push_for(url, 200, b"image".to_vec());
+    }
+    http.push_for(
+        FANART,
+        200,
+        anibeam_core::net::dimensions::testing::jpeg(1920, 1080),
+    );
+    apply(&core, &c, series);
+
+    let d = detail(&core, series);
+    let fanart = d.artwork[0].path.as_deref().expect("the background");
+    assert_eq!(d.backdrop.as_deref(), Some(fanart));
 
     core.shutdown();
 }

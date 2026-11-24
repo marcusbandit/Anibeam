@@ -172,6 +172,40 @@ fn a_tvdb_that_does_not_answer_leaves_the_ani_zip_pick() {
     core.shutdown();
 }
 
+/// With no answer from TheTVDB at all, the setting still picks, by ani.zip's
+/// own languages (`en-US` is English), among the logos on disk (#1475 review).
+#[test]
+fn without_tvdb_the_setting_picks_by_ani_zips_languages() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http);
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Toudai", "Toudai");
+    fixtures::media(SHOW, "Toudai").insert(&core);
+    fixtures::match_series(&core, series, Some(SHOW), None);
+    let now = time::now_secs();
+    core.store()
+        .write(move |c| {
+            c.execute_batch(&format!(
+                "INSERT INTO anizip_shows (anilist_id, found, fetched_at) VALUES ({SHOW}, 1, {now});
+                 INSERT INTO anizip_images (anilist_id, kind, url, lang, rank) VALUES
+                    ({SHOW}, 'Clearlogo', '{LOGO_EN}', 'en-US', 0),
+                    ({SHOW}, 'Clearlogo', '{LOGO_JA}', 'ja', 1);
+                 INSERT INTO images (url, path, bytes, fetched_at, used_at) VALUES
+                    ('{LOGO_EN}', 'aa/en.png', 5, {now}, {now}),
+                    ('{LOGO_JA}', 'aa/ja.png', 5, {now}, {now});"
+            ))?;
+            Ok(())
+        })
+        .unwrap();
+
+    set_logo_language(&core, LogoLanguage::Japanese);
+    assert!(logo_is(&core, series, LOGO_JA));
+    set_logo_language(&core, LogoLanguage::English);
+    assert!(logo_is(&core, series, LOGO_EN));
+
+    core.shutdown();
+}
+
 /// A logo on a solid rectangle is no logo: the pick passes over it to the
 /// next, then to a franchise season's, then to the title.
 #[test]

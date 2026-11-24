@@ -130,6 +130,10 @@ _Avoid_: mapping, source mapping, metadata link
 What ani.zip adds to an AniList match, asked by AniList id beside the match: each episode's title, synopsis, still, runtime and air date, the show's artwork, and the MAL id when AniList has none. Its title wins over AniList's streaming title, which wins over Jikan's; a placeholder such as "Episode 5" never wins. A still is the episode's picture, a clear logo the show's name drawn as a transparent image. A season ani.zip has not mapped yet takes them from TVmaze instead, found through the TheTVDB id ani.zip gives a nearby season of the franchise, and borrows the nearest season's logo; ani.zip still wins once it answers. An outage costs nothing: the last answer's rows stay.
 _Avoid_: episode metadata, thumbnails
 
+**Backdrop**:
+The wide picture behind the Home hero and the series head: of the show's background from ani.zip (TheTVDB's fanart, usually 1920x1080) and its AniList banner, whichever are on disk, the one with more pixels across; a tie goes to the background. Only with neither do the shells draw the poster blurred in its place. The backgrounds of the series Continue may show are fetched up front and kept; any other series' is fetched when its page opens.
+_Avoid_: hero image, wallpaper
+
 **Provider order**:
 The order the auto-match tries the match providers in, and the one the match panel offers first. Every match provider appears in it exactly once; it reorders them and never switches one off.
 _Avoid_: provider priority, fallback list

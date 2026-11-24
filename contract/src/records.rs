@@ -488,6 +488,13 @@ pub struct SeriesDetail {
     /// Every piece of artwork ani.zip knows for the show, in its own order.
     #[serde(default)]
     pub artwork: Vec<Artwork>,
+    /// The wide picture behind the Home hero and the series head (#1475), a
+    /// local file: of ani.zip's background and `banner`, whichever the image
+    /// cache holds, the one with more pixels across (a tie goes to the
+    /// background). None when neither is there, and the shells wash the
+    /// poster in instead.
+    #[serde(default)]
+    pub backdrop: Option<String>,
     /// The person's choice for this show between its logo (true) and its
     /// title in text (false), which wins over `Preferences::series_logos`;
     /// None follows the setting (#1463).
@@ -497,7 +504,8 @@ pub struct SeriesDetail {
 
 /// One piece of a show's artwork (ani.zip, #1036). `kind` is `Clearlogo`,
 /// `Fanart`, `Banner` or `Poster`; `path` is the local file once the image
-/// cache holds it, which only the logo is fetched for up front.
+/// cache holds it, which only the logo and the first background are fetched
+/// for up front.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Artwork {
     pub kind: String,
