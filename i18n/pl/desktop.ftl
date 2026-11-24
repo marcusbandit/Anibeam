@@ -385,18 +385,7 @@ home-continue-fact = Seriale w trakcie: { $count }
 home-on-hold = Wstrzymane
 home-on-hold-fact = Seriale do powrotu: { $count }
 home-hero-open = Otwórz { $title }
-home-hero-downloading = Pobieranie: { $count ->
-    [one] { $count } odcinek
-    [few] { $count } odcinki
-    [many] { $count } odcinków
-   *[other] { $count } odcinka
-}
 home-hero-min-left = Zostało { $count } min
-home-hero-watched = Obejrzano { $watched } z { $total }
-home-hero-resume = Wznów odcinek { $number }
-home-hero-play = Odtwórz odcinek { $number }
-home-hero-resume-unnumbered = Wznów odcinek
-home-hero-play-unnumbered = Odtwórz odcinek
 home-hero-previous = Poprzedni serial
 home-hero-next = Następny serial
 home-card-episode = Odc. { $number }
