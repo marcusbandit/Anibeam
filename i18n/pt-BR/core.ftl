@@ -580,17 +580,26 @@ core-trackers-oauth-could-not-start = Não foi possível iniciar o login
 core-trackers-oauth-port-failed = não foi possível abrir a porta { $port } neste computador: { $error }
 core-trackers-oauth-port-busy = a porta { $port } neste computador está em uso por outro programa. Espere um pouco e tente de novo, ou feche o programa que a usa se ela continuar ocupada.
 core-trackers-oauth-provider-error = O { $site } retornou um erro: { $error }
-core-trackers-page-connected = { $site } está conectado ao { $app }
-core-trackers-page-close-tab = Você pode fechar esta aba.
+core-trackers-page-connected = { $site } e { $app } agora estão conectados
+core-trackers-page-signed-in = Logado como { $username }
+core-trackers-page-close-tab = Tudo certo. Esta aba fecha em instantes, ou você pode fechar agora.
 core-trackers-page-failed-title = { $app }, falha ao entrar
-core-trackers-page-failed = O login não terminou
+core-trackers-page-failed = O login travou no caminho
 core-trackers-page-go-back = Volte ao { $app } e tente de novo.
 core-trackers-page-finishing-title = { $app }, quase lá
-core-trackers-page-finishing = Quase lá
-core-trackers-page-finishing-body = O { $site } respondeu e o Anibeam está concluindo o login. Volte ao { $app } para continuar.
+core-trackers-page-finishing = Finalizando os últimos detalhes
+core-trackers-page-finishing-body = O { $site } respondeu e o login ainda está sendo concluído. Volte ao { $app } para ver o resultado.
 core-trackers-page-cancelled-title = { $app }, login cancelado
 core-trackers-page-cancelled = O login foi cancelado
-core-trackers-page-cancelled-body = Você pode fechar esta aba. Comece de novo pelo { $app } se ainda quiser entrar.
+core-trackers-page-cancelled-body = Você pode fechar esta aba. Quando quiser tentar de novo, comece pelo { $app }.
+core-trackers-page-status-connected = Conectado
+core-trackers-page-status-failed = Não conectado
+core-trackers-page-status-finishing = Quase lá
+core-trackers-page-status-cancelled = Cancelado
+core-trackers-page-status-connecting = Conectando
+core-trackers-page-connecting-title = { $app }, conectando
+core-trackers-page-connecting = Trazendo você do { $site }
+core-trackers-page-no-token = Este endereço não trouxe um token de login. Volte ao { $app } e tente de novo.
 
 ## trackers/src/on_hold.rs
 

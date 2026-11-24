@@ -580,17 +580,26 @@ core-trackers-oauth-could-not-start = Impossible de démarrer la connexion
 core-trackers-oauth-port-failed = le port { $port } de cet ordinateur n'a pas pu être ouvert : { $error }
 core-trackers-oauth-port-busy = le port { $port } de cet ordinateur est utilisé par un autre programme. Attendez un instant et réessayez, ou fermez le programme qui l'utilise s'il reste occupé.
 core-trackers-oauth-provider-error = { $site } a renvoyé une erreur : { $error }
-core-trackers-page-connected = { $site } est connecté à { $app }
-core-trackers-page-close-tab = Vous pouvez fermer cet onglet.
+core-trackers-page-connected = { $site } et { $app } sont reliés
+core-trackers-page-signed-in = Connecté en tant que { $username }
+core-trackers-page-close-tab = C'est tout bon. Cet onglet va se fermer dans un instant, ou vous pouvez le fermer maintenant.
 core-trackers-page-failed-title = { $app }, échec de la connexion
-core-trackers-page-failed = La connexion n'a pas abouti
-core-trackers-page-go-back = Revenez à { $app } et réessayez.
-core-trackers-page-finishing-title = { $app }, finalisation en cours
-core-trackers-page-finishing = Finalisation en cours
-core-trackers-page-finishing-body = { $site } a répondu et Anibeam finalise la connexion. Revenez à { $app } pour continuer.
+core-trackers-page-failed = La connexion n'est pas passée
+core-trackers-page-go-back = Revenez dans { $app } et réessayez.
+core-trackers-page-finishing-title = { $app }, presque fini
+core-trackers-page-finishing = Dernière ligne droite
+core-trackers-page-finishing-body = { $site } a répondu et la connexion est encore en train de se terminer. Revenez dans { $app } pour voir le résultat.
 core-trackers-page-cancelled-title = { $app }, connexion annulée
 core-trackers-page-cancelled = La connexion a été annulée
-core-trackers-page-cancelled-body = Vous pouvez fermer cet onglet. Recommencez depuis { $app } si vous voulez toujours vous connecter.
+core-trackers-page-cancelled-body = Vous pouvez fermer cet onglet. Recommencez depuis { $app } quand vous voudrez.
+core-trackers-page-status-connected = Connecté
+core-trackers-page-status-failed = Non connecté
+core-trackers-page-status-finishing = Presque fini
+core-trackers-page-status-cancelled = Annulé
+core-trackers-page-status-connecting = Connexion
+core-trackers-page-connecting-title = { $app }, connexion
+core-trackers-page-connecting = Passage de relais depuis { $site }
+core-trackers-page-no-token = Cette adresse ne contenait aucun jeton de connexion. Revenez dans { $app } et réessayez.
 
 ## trackers/src/on_hold.rs
 
