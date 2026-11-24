@@ -53,6 +53,20 @@ What an agent does, on top of what the workflow does:
 - **Starts work**: run `gh issue list` first and work under the matching issue, or file one. Push
   the branch, named for the issue, before or with the first commit, so `in progress` goes on, and
   move the card to In progress.
+- **Opens the PR**, in this order:
+  1. Run `.github/local-ci.sh` and go on only once it passes.
+  2. Open the PR ready for review with its category label (`bug`, `enhancement`,
+     `documentation` or `question`) and nothing else: `gh pr create --label enhancement ...`.
+  3. Run the code review pass on it, `code-review --comment`, so its findings land as review
+     comments on the PR. Fix each finding in a new commit and reply in its thread, or reply
+     with why it stays.
+  4. Add `full ci` and `automerge`: `gh pr edit <n> --add-label "full ci" --add-label automerge`.
+     Then hand back and stop: do not watch the checks or merge by hand. The PR merges itself
+     once every check and Full CI pass on its head (CONTRIBUTING.md, "Merging on its own").
+
+  A red check leaves it open; fixing it is a new commit on the branch, which Full CI builds
+  again. Leave `automerge` off a PR the owner should look at before it merges, such as one
+  that deletes data, migrates something or changes a public interface.
 - **Notices something it was not asked to fix**: file it with one category label (`bug`,
   `enhancement`, `documentation`, `question`), add it to the board, and leave the code alone.
 - **Finishes part of a tracker**: tick the boxes that are now on main, `[ ]` to `[x]` and nothing

@@ -1374,7 +1374,7 @@ pub trait AnirssEndpoints: Send + Sync {
 /// `have` is anirss's list as just read; true when anirss was changed and its list needs
 /// reading again.
 pub async fn sync_anirss(
-    services: &Services,
+    services: &Arc<Services>,
     client: &dyn AnirssEndpoints,
     writes: bool,
     have: &[SearchEndpoint],
@@ -1382,10 +1382,17 @@ pub async fn sync_anirss(
     if !writes {
         return false;
     }
-    let want: Vec<Runnable> = runnable(services)
-        .into_iter()
-        .filter(|r| ANIRSS_KINDS.contains(&r.endpoint.kind.as_str()))
-        .collect();
+    let owner = services.clone();
+    let Ok(want) = tokio::task::spawn_blocking(move || {
+        runnable(&owner)
+            .into_iter()
+            .filter(|r| ANIRSS_KINDS.contains(&r.endpoint.kind.as_str()))
+            .collect::<Vec<Runnable>>()
+    })
+    .await
+    else {
+        return false;
+    };
     let mut synced = read_synced(services);
     let before = synced.clone();
     let mut changed = false;
@@ -1797,8 +1804,9 @@ fn set_fronts(services: &Services) {
 
 /// The core's client for an endpoint fetch outside the search (a feed read again after
 /// anirss's search, a subscription's feed, a `.torrent`): paced like the search, to every
-/// installed definition's rate, switched off or not, since the rate is the site's. Reads no
-/// credentials.
+/// installed definition's rate, switched off or not, since the rate is the site's. May read
+/// credentials from the secret store to resolve placeholders like `{host}` in rate-limited
+/// definitions, so async tasks call it through `spawn_blocking`.
 pub fn endpoint_http(services: &Services) -> Paced {
     set_fronts(services);
     let secrets = services.secrets();
@@ -1896,7 +1904,7 @@ mod tests {
         let by_hand = view("0.6.0", true, &["feed"]);
         assert!(
             note_for(DownloadsEngine::Anirss, Some(&current), &def, &synced)
-                .is_some_and(|n| n.contains("cannot search the json-feed kind"))
+                .is_some_and(|n| n.contains("cannot search json-feed sources"))
         );
         assert!(note_for(DownloadsEngine::Anirss, Some(&old), &def, &synced).is_some());
         // The native engine searches the installed endpoint itself, so none of the three
@@ -1938,7 +1946,7 @@ mod tests {
         // A server the person runs: to its own config, whether or not it lists writes.
         for writes in [true, false] {
             let n = note(at(EndpointSync::Theirs, writes, &[])).unwrap();
-            assert!(n.contains("add mine to that anirss's own config"), "{n}");
+            assert!(n.contains("add mine to anirss's config"), "{n}");
             assert!(!n.contains("update"), "{n}");
         }
         // Once the person has added it there, it is searched and the note goes.
@@ -1946,9 +1954,9 @@ mod tests {
         // A sandbox run leaves the owner's anirss alone: searched only if it is there, and
         // one there by hand says so, as the owner's own run does.
         let n = note(at(EndpointSync::Sandbox, true, &[])).unwrap();
-        assert!(n.contains("never writes into anirss's config"), "{n}");
+        assert!(n.contains("does not write to anirss's config"), "{n}");
         let n = note(at(EndpointSync::Sandbox, true, &["mine"])).unwrap();
-        assert!(n.contains("written by hand"), "{n}");
+        assert!(n.contains("manually configured mine"), "{n}");
         let mut ours = Synced::new();
         ours.insert("mine".to_string(), String::new());
         let v = at(EndpointSync::Sandbox, true, &["mine"]);
@@ -1968,7 +1976,7 @@ mod tests {
             &synced,
         )
         .unwrap();
-        assert!(n.contains("cannot search the json-feed kind"), "{n}");
+        assert!(n.contains("cannot search json-feed sources"), "{n}");
     }
 
     /// Whether anirss takes endpoints is what it lists, not its version: a checkout that
@@ -2003,7 +2011,7 @@ mod tests {
         .unwrap();
         // It names the anirss running, and no threshold of its own.
         assert!(
-            note.starts_with("anirss 0.6.0 cannot take endpoints"),
+            note.starts_with("anirss 0.6.0 does not support sources"),
             "{note}"
         );
         assert!(!note.contains("or later"), "{note}");

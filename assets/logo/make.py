@@ -23,8 +23,8 @@ from pathlib import Path
 here = Path(__file__).resolve().parent
 root = here.parents[1]
 linux = root / "apps/linux"
-android = root / "apps/android"
-res = android / "android/res"
+phone = root / "apps/phone"
+res = phone / "android/res"
 
 YELLOW = "#FDC901"
 INK = "#0D0E11"
@@ -140,6 +140,12 @@ with tempfile.TemporaryDirectory() as tmp:
         png(default, p, size)
         parts.append(str(p))
     subprocess.run(["magick", *parts, str(linux / "packaging/windows/anibeam.ico")], check=True)
+# The website's favicon.ico, which Google and browsers ask for at the site's root: the
+# hicolor 48, 32 and 16 written above (site/build.sh copies it in).
+subprocess.run(
+    ["magick", *(str(linux / f"assets/hicolor/default/{s}.png") for s in (48, 32, 16)), str(here / "favicon.ico")],
+    check=True,
+)
 
 # ---- Android: adaptive icons from vector layers. The 1024 square maps onto the middle 62 of
 # the 108 dp canvas, which keeps the glyph inside the 66 dp circle every launcher mask shows.
@@ -209,7 +215,7 @@ write(anydpi / "ic_launcher_line.xml", adaptive(
 
 # The picker's previews: the two fixed icons as they are, and the outline in white for the
 # app to tint with the phone's own colours.
-icons = android / "ui/icons"
+icons = phone / "ui/icons"
 png(default, icons / "app.png", 256)
 png(dark, icons / "app-dark.png", 256)
 png(outline("#FFFFFF"), icons / "app-line.png", 256)
