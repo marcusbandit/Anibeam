@@ -874,6 +874,30 @@ pub struct GraphNode {
     pub root: bool,
     pub pending: bool,
     pub site_url: Option<String>,
+    /// The wide art, as a local path, when it is cached. Only a season of a
+    /// chain is fetched one (#1454).
+    #[serde(default)]
+    pub banner: Option<String>,
+    /// AniList's average out of 10, normalised from its 0 to 100 on read.
+    #[serde(default)]
+    pub score: Option<f64>,
+    /// The run of sequels this node is in, by the row the layout draws it
+    /// on, counted among the chains from nought. None for a node in no
+    /// chain.
+    #[serde(default)]
+    pub chain: Option<u32>,
+    /// Its place in that chain, in watch order from nought.
+    #[serde(default)]
+    pub chain_position: Option<u32>,
+    /// On the main line: the chain the series being read is in, or the
+    /// first chain when it is in none. These are its seasons (#784).
+    #[serde(default)]
+    pub main_line: bool,
+    /// For a node off the main line, the season it hangs off: the nearest
+    /// main-line node across the edges, the earlier season on a tie. None on
+    /// the main line and for a node nothing joins to it.
+    #[serde(default)]
+    pub anchor: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]

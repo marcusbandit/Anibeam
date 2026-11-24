@@ -134,6 +134,7 @@ pub struct StubWrite {
     pub status: Option<String>,
     pub year: Option<u32>,
     pub cover_url: Option<String>,
+    pub banner_url: Option<String>,
     pub site_url: Option<String>,
     pub episodes: Option<u32>,
     pub average_score: Option<u32>,
@@ -571,8 +572,8 @@ const MEDIA_UPSERT: &str = "INSERT INTO anilist_media (
 /// null a column the fetch had filled.
 const STUB_UPSERT: &str = "INSERT INTO anilist_media (
         id, mal_id, media_type, title_romaji, title_english, format, status, year, cover_url, site_url,
-        episodes, average_score, title_native
-     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+        episodes, average_score, title_native, banner_url
+     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
      ON CONFLICT(id) DO UPDATE SET
         mal_id = coalesce(anilist_media.mal_id, excluded.mal_id),
         media_type = coalesce(anilist_media.media_type, excluded.media_type),
@@ -583,6 +584,7 @@ const STUB_UPSERT: &str = "INSERT INTO anilist_media (
         status = coalesce(anilist_media.status, excluded.status),
         year = coalesce(anilist_media.year, excluded.year),
         cover_url = coalesce(anilist_media.cover_url, excluded.cover_url),
+        banner_url = coalesce(anilist_media.banner_url, excluded.banner_url),
         site_url = coalesce(anilist_media.site_url, excluded.site_url),
         episodes = coalesce(anilist_media.episodes, excluded.episodes),
         average_score = coalesce(anilist_media.average_score, excluded.average_score)";
@@ -683,14 +685,16 @@ pub fn write_stub(tx: &Transaction, s: &StubWrite) -> Result<(), CoreError> {
             s.episodes.map(i64::from),
             s.average_score.map(i64::from),
             s.title_native,
+            s.banner_url,
         ],
     )?;
     Ok(())
 }
 
 /// What a relation's other end or a recommendation's target knows about
-/// itself. `episodes` and `average_score` are not in that reply, so they
-/// stay blank for the watching refresh to fill.
+/// itself. `episodes` is not in that reply, so it stays blank for the
+/// watching refresh to fill; a relation's end carries its banner and its
+/// average score (#1454), a recommendation's neither.
 pub fn stub_from_node(node: &RelatedNode) -> StubWrite {
     StubWrite {
         id: node.id,
@@ -705,9 +709,10 @@ pub fn stub_from_node(node: &RelatedNode) -> StubWrite {
             .season_year
             .or_else(|| node.start_date.as_ref().and_then(|d| d.year)),
         cover_url: node.cover_image.as_ref().and_then(|c| c.large.clone()),
+        banner_url: node.banner_image.clone(),
         site_url: node.site_url.clone(),
         episodes: None,
-        average_score: None,
+        average_score: node.average_score,
     }
 }
 

@@ -307,9 +307,10 @@ fn own_stub(id: u64, e: &Enrichment) -> StubWrite {
             .season_year
             .or_else(|| e.start_date.as_ref().and_then(|d| d.year)),
         cover_url: e.cover_image.as_ref().and_then(|c| c.large.clone()),
+        banner_url: e.banner_image.clone(),
         site_url: e.site_url.clone(),
         episodes: None,
-        average_score: None,
+        average_score: e.average_score,
     }
 }
 
@@ -319,16 +320,28 @@ fn own_stub(id: u64, e: &Enrichment) -> StubWrite {
 /// and a boundary node owns none, so a stub the crawl wrote would draw
 /// blank for ever. A failure is that one url's own and is bookkeeping,
 /// not a state change.
+///
+/// Banners only for the seasons of a chain: the series page draws a run of
+/// sequels on their banners (#1454) and every other relation on its
+/// poster, and a banner is many times a poster's size.
 async fn fetch_covers(metadata: &Metadata, enrichment: &Enrichment) {
+    let edges = || enrichment.relations.iter().flat_map(|r| r.edges.iter());
+    let chained = |relation: &str| relation == "SEQUEL" || relation == "PREQUEL";
     let mut urls: Vec<String> = enrichment
         .cover_image
         .as_ref()
         .and_then(|c| c.large.clone())
         .into_iter()
         .collect();
-    for edge in enrichment.relations.iter().flat_map(|r| r.edges.iter()) {
+    if edges().any(|e| chained(&e.relation_type)) {
+        urls.extend(enrichment.banner_image.clone());
+    }
+    for edge in edges() {
         if let Some(url) = edge.node.cover_image.as_ref().and_then(|c| c.large.clone()) {
             urls.push(url);
+        }
+        if chained(&edge.relation_type) {
+            urls.extend(edge.node.banner_image.clone());
         }
     }
     urls.sort();

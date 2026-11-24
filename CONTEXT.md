@@ -182,6 +182,10 @@ _Avoid_: spoiler tag (in the interface), secret tag
 The page for one AniList show the library does not have: what the core holds for it, the user's list entry, and Get episodes. Once files for the show land in the library it becomes that series' page.
 _Avoid_: external series page, ghost page, AniList page
 
+**Main line**:
+A franchise's run of sequels the series being read is in, in watch order: its seasons. The series page draws them in one row on their banners, and every other entry of the franchise, a side story, a film, a spin-off, the manga it came from, as a relation that hangs off the nearest season.
+_Avoid_: timeline, spine, watch order list
+
 **Episode out**:
 The moment an episode of a show on the Watching list airs, said once by the core from the schedule it keeps, with no polling. The desktop shows it as a notification unless Settings turned that off.
 _Avoid_: new episode alert, release notification, reminder
