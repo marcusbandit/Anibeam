@@ -551,7 +551,8 @@ pub fn open_for(
                     .query_row(
                         "SELECT coalesce(
                             (SELECT title FROM anizip_episodes WHERE anilist_id = ?1 AND number = ?2 AND title IS NOT NULL),
-                            (SELECT title FROM fallback_episodes WHERE anilist_id = ?1 AND number = ?2 AND title IS NOT NULL),
+                            (SELECT title FROM fallback_episodes WHERE anilist_id = ?1 AND number = ?2 AND title IS NOT NULL
+                                AND NOT EXISTS (SELECT 1 FROM anizip_episodes WHERE anilist_id = ?1 AND number IS NOT NULL)),
                             (SELECT title FROM anilist_episodes WHERE anilist_id = ?1 AND number = ?2))",
                         params![id as i64, f.number],
                         |r| r.get(0),

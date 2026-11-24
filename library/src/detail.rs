@@ -372,12 +372,14 @@ impl Snapshot {
                 },
             );
         }
-        // The franchise fallback fills what ani.zip left empty, field by
-        // field, so an ani.zip title always beats the fallback's (#1461).
+        // The franchise fallback stands in while ani.zip has no regular
+        // episodes for the series, and only then (#1461): once ani.zip maps
+        // the season, another source's guesses never fill its gaps.
         let mut stmt = conn.prepare(
             "SELECT e.number, e.title, i.path, e.aired_at, e.synopsis
              FROM fallback_episodes e LEFT JOIN images i ON i.url = e.still_url
-             WHERE e.anilist_id = ?1",
+             WHERE e.anilist_id = ?1
+               AND NOT EXISTS (SELECT 1 FROM anizip_episodes z WHERE z.anilist_id = ?1 AND z.number IS NOT NULL)",
         )?;
         let rows = stmt.query_map([anilist_id as i64], |r| {
             Ok((
@@ -427,10 +429,13 @@ impl Snapshot {
         }
         // A logo on disk wins over a better one that is not, so a page
         // never goes without while a usable file is there.
+        // No logo of its own at all: the nearest franchise season's
+        // (#1461). One of its own that is not on disk yet is waited for,
+        // the same rule the image cache fetches and pins by.
+        let own_logo = !logos.is_empty();
         logos.sort_by_key(|(missing, pick, _)| (*missing, *pick));
         view.logo = logos.into_iter().next().and_then(|(_, _, path)| path);
-        // No logo of its own: the nearest franchise season's (#1461).
-        if view.logo.is_none() {
+        if !own_logo {
             let borrowed: Option<String> = conn
                 .query_row(
                     "SELECT i.path FROM fallback_shows b JOIN images i ON i.url = b.logo_url

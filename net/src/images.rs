@@ -80,7 +80,8 @@ const REFERENCED_SQL: &str =
      UNION SELECT b.logo_url FROM fallback_shows b JOIN series s ON s.anilist_id = b.anilist_id
            WHERE b.logo_url IS NOT NULL
      UNION SELECT e.still_url FROM fallback_episodes e JOIN series s ON s.anilist_id = e.anilist_id
-           WHERE e.still_url IS NOT NULL";
+           WHERE e.still_url IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = e.anilist_id AND ze2.number IS NOT NULL)";
 
 /// The urls of a series the library actually owns. These are never evicted
 /// by the cap: losing them is the one loss a user would see at once.
@@ -150,6 +151,7 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
         UNION SELECT fe.still_url FROM fallback_episodes fe
                      JOIN series s ON s.anilist_id = fe.anilist_id AND s.provider = 'anilist'
                      JOIN files f ON f.series_id = s.id AND f.kind != 'extra' AND f.number = fe.number
+                     WHERE NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = fe.anilist_id AND ze2.number IS NOT NULL)
      )
      WHERE url IS NOT NULL AND url NOT IN (SELECT url FROM images)
      ORDER BY url";
