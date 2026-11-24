@@ -356,11 +356,31 @@ fn remember_miss(frame: &Path) {
     }
 }
 
-/// A command for a helper at the lowest priority: under `nice` on Unix, with
-/// a below-normal priority class on Windows.
+/// Whether `nice` can be started here. Android, minimal containers and some
+/// Flatpak runtimes have none; there the helper runs at its normal priority
+/// rather than being taken for a missing ffmpeg. Asked once a launch.
+#[cfg(unix)]
+fn has_nice() -> bool {
+    static HAS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HAS.get_or_init(|| {
+        std::process::Command::new("nice")
+            .arg("true")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok()
+    })
+}
+
+/// A command for a helper at the lowest priority: under `nice` on Unix where
+/// there is one, with a below-normal priority class on Windows.
 fn low(program: &str) -> Command {
     #[cfg(unix)]
     {
+        if !has_nice() {
+            return command(program);
+        }
         let mut cmd = command("nice");
         cmd.args(["-n", "19", program]);
         cmd
