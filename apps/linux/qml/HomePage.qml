@@ -975,7 +975,8 @@ Item {
                 width: theme.space(12); height: width; radius: width / 2
                 color: Qt.rgba(0, 0, 0, 0.5)
                 border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
-                opacity: em.containsMouse || ecard.activeFocus ? 1 : 0
+                // Not on a card under the right edge's shadow, where the row's arrow comes up
+                opacity: (em.containsMouse && ecard.reachable) || ecard.activeFocus ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
                 Icon { anchors.centerIn: parent; anchors.horizontalCenterOffset: theme.space(0.25); glyph: "play"; size: theme.space(5); color: "#ffffff" }
             }
@@ -1154,6 +1155,8 @@ Item {
             duration: 380
             easing.type: Easing.InOutCubic
         }
+        // Steps the row and the hero together, as the hero's own arrows do
+        signal step(int by)
         visible: entries.length > 0
         spacing: theme.space(3)
         HoverHandler { id: rowHover }
@@ -1224,6 +1227,49 @@ Item {
                     }
                 }
             }
+            // The row's edges, while it loops: a pointer resting on the shadowed right end or
+            // at the very left brings up an arrow there, which steps the row and the hero
+            // together. Moving off the edge puts it away.
+            HoverHandler {
+                id: edgeHover
+                enabled: row.loops
+                onPointChanged: {
+                    var x = point.position.x
+                    var side = !hovered ? "" : x >= row.width - row.cardWidth ? "right" : x < theme.space(16) ? "left" : ""
+                    if (side !== edges.shown) edges.shown = ""
+                    edges.pending = side
+                    if (side !== "") edgeRest.restart(); else edgeRest.stop()
+                }
+                onHoveredChanged: if (!hovered) { edgeRest.stop(); edges.shown = "" }
+            }
+            QtObject {
+                id: edges
+                property string shown: ""
+                property string pending: ""
+            }
+            Timer { id: edgeRest; interval: 300; onTriggered: edges.shown = edges.pending }
+            Repeater {
+                model: ["left", "right"]
+                Button {
+                    id: edgeArrow
+                    required property string modelData
+                    readonly property bool on: row.loops && edges.shown === modelData
+                    objectName: "home-continue-" + modelData
+                    z: 3
+                    x: modelData === "left" ? theme.space(3) : row.width - width - theme.space(3)
+                    y: Math.round(row.cardWidth * 9 / 32 - height / 2)
+                    width: height
+                    ghost: true
+                    takesFocus: false
+                    icon: modelData === "left" ? "chevron-left" : "chevron-right"
+                    accessibleName: words.t(modelData === "left" ? "home-hero-previous" : "home-hero-next")
+                    opacity: on ? 1 : 0
+                    visible: opacity > 0
+                    enabled: on
+                    Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
+                    onClicked: row.step(modelData === "left" ? -1 : 1)
+                }
+            }
         }
     }
 
@@ -1262,10 +1308,10 @@ Item {
             property int prevId: -1
             property int index: 0
             property real fade: 1
-            // The poster's height; a short window gives the hero less, so Continue still
-            // shows under it. A show with no logo gets a larger one.
-            readonly property real frameH: Math.round(Math.min(theme.space(68), page.height * 0.26))
-            readonly property real bigFrameH: Math.round(frameH * 1.25)
+            // The poster's height, one size for every show; a short window gives the hero
+            // less, so Continue still shows under it. A show with a logo fits its words into
+            // the same height, the logo's top on the poster's top.
+            readonly property real frameH: Math.round(Math.min(theme.space(85), page.height * 0.325))
             // The poster drops out on a narrow window, the words keep the width
             readonly property bool framed: width >= theme.space(200)
             readonly property real topPad: Math.round(Math.max(theme.space(16), Math.min(theme.space(40), page.height * 0.13)))
@@ -1368,12 +1414,13 @@ Item {
                     readonly property var c: entry ? entry.card : ({})
                     readonly property var d: entry ? entry.detail : null
                     readonly property var ep: entry ? entry.episode : null
-                    // The layout follows the record alone: a logo that is slow or fails to load
-                    // shows the title in its box and never moves anything. No logo: the title
-                    // and a larger poster.
+                    // The layout follows the record alone, so a logo that is slow or fails to
+                    // load never moves anything
                     readonly property bool hasLogo: !!(d && d.logo)
-                    readonly property real posterH: hasLogo ? hero.frameH : hero.bigFrameH
-                    readonly property real blockH: Math.max(hero.framed ? posterH : 0, wordsCol.implicitHeight)
+                    readonly property real posterH: hero.frameH
+                    // With a logo the words take the poster's height whatever the window;
+                    // without one, the words' own height
+                    readonly property real blockH: Math.max(hero.framed || hasLogo ? posterH : 0, hasLogo ? 0 : lower.implicitHeight)
                     readonly property string banner: d && d.banner ? d.banner : ""
                     readonly property string poster: c.poster || ""
                     function focusResume() { resumeButton.forceActiveFocus() }
@@ -1489,58 +1536,43 @@ Item {
                             }
                         }
 
-                        // The words end on the poster's foot, so the actions line up with it
-                        Column {
-                            id: wordsCol
+                        // The words end on the poster's foot, so the actions line up with it.
+                        // With a logo they span the poster's height: the logo fills what the
+                        // lines under it leave, its top on the poster's top.
+                        Item {
+                            id: wordsBox
                             x: hero.framed ? posterBox.width + theme.space(8) : 0
-                            y: hero.topPad + hero.contentH - implicitHeight
+                            height: slide.hasLogo ? hero.contentH : lower.implicitHeight
+                            y: hero.topPad + hero.contentH - height
                             width: hero.width - x - (stepper.visible ? stepper.width + theme.space(6) : 0)
-                            spacing: theme.space(3)
 
-                            // The show's logo, drawn into one box of a fixed height from its
-                            // bottom left corner, so a wide logo and a tall one stand on the
-                            // same line and neither outgrows the other; the title in the
-                            // display cut where there is no logo. Either opens the series.
+                            // The logo, from its top left corner, as tall as the room allows and
+                            // no wider than a bound, so every logo starts on one line
                             Item {
-                                id: titleBlock
-                                width: parent.width
+                                id: logoArea
+                                visible: slide.hasLogo
+                                width: Math.min(parent.width, theme.space(140))
+                                height: Math.max(0, wordsBox.height - lower.implicitHeight - theme.space(3))
                                 readonly property bool logoShown: logo.status === Image.Ready
-                                height: slide.hasLogo ? theme.space(24) : titleLabel.height
                                 Image {
                                     id: logo
                                     objectName: slide.current ? "home-hero-logo" : ""
-                                    visible: titleBlock.logoShown
-                                    width: Math.min(parent.width, theme.space(130))
-                                    height: parent.height
+                                    visible: logoArea.logoShown
+                                    anchors.fill: parent
                                     source: slide.loaded && slide.hasLogo ? Fmt.fileUrl(slide.d.logo) : ""
                                     // Decoded no larger than the box it fits into
                                     sourceSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
                                     fillMode: Image.PreserveAspectFit
                                     horizontalAlignment: Image.AlignLeft
-                                    verticalAlignment: Image.AlignBottom
+                                    verticalAlignment: Image.AlignTop
                                     asynchronous: true
                                     smooth: true
                                     mipmap: true
                                 }
-                                // In the logo's box until the logo is there, from its foot
-                                Label {
-                                    id: titleLabel
-                                    visible: !titleBlock.logoShown
-                                    anchors.bottom: parent.bottom
-                                    width: parent.width
-                                    text: slide.c.title || ""
-                                    role: "display"
-                                    font.pointSize: theme.typeDisplay * (hero.framed && !slide.hasLogo ? 1.2 : 1)
-                                    color: slide.ink
-                                    wrapMode: Text.Wrap
-                                    maximumLineCount: 2
-                                    elide: Text.ElideRight
-                                    lineHeight: 0.92
-                                }
                                 MouseArea {
-                                    width: titleBlock.logoShown ? logo.paintedWidth : Math.min(titleLabel.implicitWidth, titleBlock.width)
-                                    height: titleBlock.logoShown ? logo.paintedHeight : parent.height
-                                    anchors.bottom: parent.bottom
+                                    visible: logoArea.logoShown
+                                    width: logo.paintedWidth
+                                    height: logo.paintedHeight
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: page.openSeries(slide.c)
                                     Accessible.role: Accessible.Button
@@ -1548,56 +1580,87 @@ Item {
                                     Accessible.onPressAction: page.openSeries(slide.c)
                                 }
                             }
-                            // The episode, then what the show is about, the same two lines
-                            // for every show
+
                             Column {
+                                id: lower
+                                anchors.bottom: parent.bottom
                                 width: parent.width
-                                spacing: theme.space(1.5)
+                                spacing: theme.space(3)
+                                // The title: in the display cut where there is no logo, a
+                                // smaller line under the logo where there is one
                                 Label {
-                                    objectName: slide.current ? "home-hero-episode" : ""
+                                    id: titleLabel
+                                    objectName: slide.current ? "home-hero-title" : ""
                                     width: parent.width
-                                    text: page.episodeLabel(slide.ep)
-                                    role: "title"
-                                    font.pointSize: theme.typeNormal * 1.15
+                                    text: slide.c.title || ""
+                                    role: "display"
+                                    font.pointSize: slide.hasLogo ? theme.typeHeading : theme.typeDisplay * (hero.framed ? 1.2 : 1)
                                     color: slide.ink
+                                    wrapMode: slide.hasLogo ? Text.NoWrap : Text.Wrap
+                                    maximumLineCount: slide.hasLogo ? 1 : 2
                                     elide: Text.ElideRight
+                                    lineHeight: 0.92
+                                    MouseArea {
+                                        width: Math.min(titleLabel.implicitWidth, titleLabel.width)
+                                        height: parent.height
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: page.openSeries(slide.c)
+                                        Accessible.role: Accessible.Button
+                                        Accessible.name: words.t("home-hero-open", { title: slide.c.title || "" })
+                                        Accessible.onPressAction: page.openSeries(slide.c)
+                                    }
                                 }
-                                Label {
-                                    objectName: slide.current ? "home-hero-synopsis" : ""
-                                    readonly property string body: slide.d && slide.d.synopsis ? slide.d.synopsis.split(/\n\s*\n/)[0].trim() : ""
-                                    visible: body !== ""
-                                    width: Math.min(parent.width, theme.space(170))
-                                    text: body
-                                    role: "ui"
-                                    color: slide.inkDim
-                                    wrapMode: Text.Wrap
-                                    maximumLineCount: 2
-                                    elide: Text.ElideRight
+                                // The episode, then what the show is about, the same two lines
+                                // for every show
+                                Column {
+                                    width: parent.width
+                                    spacing: theme.space(1.5)
+                                    Label {
+                                        objectName: slide.current ? "home-hero-episode" : ""
+                                        width: parent.width
+                                        text: page.episodeLabel(slide.ep)
+                                        role: "title"
+                                        font.pointSize: theme.typeNormal * 1.15
+                                        color: slide.ink
+                                        elide: Text.ElideRight
+                                    }
+                                    Label {
+                                        objectName: slide.current ? "home-hero-synopsis" : ""
+                                        readonly property string body: slide.d && slide.d.synopsis ? slide.d.synopsis.split(/\n\s*\n/)[0].trim() : ""
+                                        visible: body !== ""
+                                        width: Math.min(parent.width, theme.space(170))
+                                        text: body
+                                        role: "ui"
+                                        color: slide.inkDim
+                                        wrapMode: Text.Wrap
+                                        maximumLineCount: 2
+                                        elide: Text.ElideRight
+                                    }
                                 }
-                            }
-                            Row {
-                                spacing: theme.space(2.5)
-                                Button {
-                                    id: resumeButton
-                                    objectName: slide.current ? "home-resume" : ""
-                                    // The top of the page's vertical key order: Down from here
-                                    // lands on the first card, Up from the first row comes back
-                                    readonly property bool gridStop: slide.current
-                                    primary: true
-                                    tint: slide.inkAccent
-                                    icon: "play"
-                                    // One wording for every show, whether the episode was
-                                    // stopped partway or not started yet
-                                    readonly property var number: slide.ep ? words.episodeNumber(slide.ep.number) : null
-                                    text: !slide.ep ? "" : number === null ? words.t("series-play-continue")
-                                          : words.t("series-play-continue-episode", { number: number })
-                                    onClicked: page.playEntry(slide.entry)
-                                }
-                                Button {
-                                    ghost: true
-                                    icon: "layers"
-                                    msg: "action-open-series"
-                                    onClicked: page.openSeries(slide.c)
+                                Row {
+                                    spacing: theme.space(2.5)
+                                    Button {
+                                        id: resumeButton
+                                        objectName: slide.current ? "home-resume" : ""
+                                        // The top of the page's vertical key order: Down from here
+                                        // lands on the first card, Up from the first row comes back
+                                        readonly property bool gridStop: slide.current
+                                        primary: true
+                                        tint: slide.inkAccent
+                                        icon: "play"
+                                        // One wording for every show, whether the episode was
+                                        // stopped partway or not started yet
+                                        readonly property var number: slide.ep ? words.episodeNumber(slide.ep.number) : null
+                                        text: !slide.ep ? "" : number === null ? words.t("series-play-continue")
+                                              : words.t("series-play-continue-episode", { number: number })
+                                        onClicked: page.playEntry(slide.entry)
+                                    }
+                                    Button {
+                                        ghost: true
+                                        icon: "layers"
+                                        msg: "action-open-series"
+                                        onClicked: page.openSeries(slide.c)
+                                    }
                                 }
                             }
                         }
@@ -1656,6 +1719,7 @@ Item {
             width: parent.width
             entries: page.continueList
             lead: hero.index
+            onStep: function(by) { hero.show(hero.index + by) }
         }
         Item { width: 1; height: continueRow.visible ? theme.space(4) : 0 }
 
