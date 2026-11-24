@@ -18,7 +18,7 @@
 [![nightly](https://img.shields.io/github/v/release/marcusbandit/Anibeam?include_prereleases&filter=*nightly*&style=for-the-badge&label=nightly&labelColor=0D0E11&color=46E0C4)](https://github.com/marcusbandit/Anibeam/releases)
 [![android](https://img.shields.io/github/v/release/marcusbandit/Anibeam?include_prereleases&filter=android-v*&style=for-the-badge&label=phone&logo=android&logoColor=8ADFB5&labelColor=0D0E11&color=8ADFB5)](https://github.com/marcusbandit/Anibeam/releases?q=android&expanded=true)
 <br>
-[![platforms](https://img.shields.io/badge/linux_·_windows_·_macos_·_android_·_ios-7CBCF5?style=for-the-badge&label=runs_on&labelColor=0D0E11)](#install)
+[![platforms](https://img.shields.io/badge/linux_·_windows_·_macos_·_android_·_ios_%28preview%29-7CBCF5?style=for-the-badge&label=runs_on&labelColor=0D0E11)](#install)
 [![downloads](https://img.shields.io/github/downloads/marcusbandit/Anibeam/total?style=for-the-badge&labelColor=0D0E11&color=C0ABF0)](https://github.com/marcusbandit/Anibeam/releases)
 [![license](https://img.shields.io/github/license/marcusbandit/Anibeam?style=for-the-badge&labelColor=0D0E11&color=A3AEC5)](LICENSE)
 [![ko-fi](https://img.shields.io/badge/ko--fi-buy_me_a_coffee-F0A772?style=for-the-badge&logo=kofi&logoColor=F0A772&labelColor=0D0E11)](https://ko-fi.com/marcusbandit)
@@ -40,33 +40,33 @@ AniList and MyAnimeList.
 
 No media server, account, or telemetry required. Desktop builds for Linux, Windows, and
 Apple silicon Macs bundle the player and a built-in qBittorrent client for optional automatic
-downloads. A standalone phone app is available for Android and iPhone (sideloaded).
+downloads. The Android app runs on its own. An iPhone app is in the works as an early preview.
 
 ## Features
 
-- **Automatic library and matching:** Scans your folders, watches for new files, matches shows
+- **Automatic library and matching.** Scans your folders, watches for new files, matches shows
   on AniList and TVmaze, fetches posters, IMDb scores, and airing times, and groups franchises
   together with a Related section on each show page.
-- **Built-in mpv player and TV casting:** Remembers resume points, skips intros and outros
+- **Built-in mpv player and TV casting.** Remembers resume points, skips intros and outros
   (via AniSkip and chapter markers), supports custom subtitle styling and audio/subtitle
   delay, and casts to Chromecast and DLNA TVs.
-- **Tracking, stats, and recommendations:** Two-way sync with AniList and MyAnimeList
+- **Tracking, stats, and recommendations.** Two-way sync with AniList and MyAnimeList
   (progress, scores, list status, dates, rewatches, and notes), or local-only tracking without
   an account. Includes watching stats, year recap, personalized recommendations on Home, and
   Discord Rich Presence.
-- **Watch together:** Start a synced room from any episode and invite up to 10 friends with a
+- **Watch together.** Start a synced room from any episode and invite up to 10 friends with a
   six-letter code, a `rooms.anibeam.app` link, a QR code, or Discord. Everyone plays their own
   copy in sync, with opening-based offset alignment and one-click episode fetching for friends
   who don't have the file yet.
-- **Airing schedule and downloads:** Browse current and past seasons, export an iCal airing
+- **Airing schedule and downloads.** Browse current and past seasons, export an iCal airing
   schedule, search releases across signed source lists you add (RSS, Torznab/Prowlarr/Jackett,
   and JSON), subscribe to airing shows, and use rolling downloads to keep long shows a few
   episodes ahead while optionally cleaning up watched files.
-- **Themes and languages:** 35 built-in themes (including Catppuccin, Gruvbox, Tokyo Night,
+- **Themes and languages.** 35 built-in themes (including Catppuccin, Gruvbox, Tokyo Night,
   and Nord), dark/light/system mode, custom accent and text size, and 13 languages.
-- **Phone app (Android and iPhone):** Runs standalone with its own library, built-in torrent
-  engine, and libmpv playback, or streams from your computer over Tailscale with automatic
-  transcoding and per-person progress.
+- **Phone app.** Works on its own with a local library, built-in torrent engine, and libmpv
+  playback. It also streams from your computer over Tailscale with automatic transcoding and
+  per-person progress. The Android app is ready, and the iPhone app is an early preview.
 
 <table>
   <tr>
@@ -89,74 +89,136 @@ downloads. A standalone phone app is available for Android and iPhone (sideloade
 
 ## Install
 
-Download from **[anibeam.app/download](https://anibeam.app/download/)** or **[GitHub Releases](https://github.com/marcusbandit/Anibeam/releases/latest)**.
+Install on Linux or macOS with one command:
 
-| Platform | Install | Notes |
-| --- | --- | --- |
-| Linux & macOS (quick install) | `curl -fsSL https://anibeam.app/install.sh \| sh` | Uses AUR on Arch, apt on Ubuntu/Debian, dnf on Fedora, AppImage elsewhere, and Homebrew or `.dmg` on Apple silicon Macs. Prefix `sh` with `ANIBEAM_CHANNEL=nightly` for the latest nightly. |
-| Arch Linux | `yay -S anibeam-bin` | Prebuilt AUR package (`yay -S anibeam` compiles from source). |
-| Ubuntu / Debian | `sudo curl -fsSLo /etc/apt/sources.list.d/anibeam.sources https://anibeam.app/apt/anibeam.sources`<br>`sudo apt update && sudo apt install anibeam` | Ubuntu 24.04+, Debian 13+. Updates with `apt upgrade`. |
-| Fedora | `sudo dnf config-manager addrepo --from-repofile=https://anibeam.app/rpm/anibeam.repo`<br>`sudo dnf install anibeam` | Fedora 41+. Updates with `dnf upgrade`. |
-| Other Linux | `Anibeam-<version>-x86_64.AppImage` | Requires glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+). Standalone `.deb` and `.rpm` packages are also attached to Releases. |
-| Windows 10 / 11 | `Anibeam-<version>-windows-x64-setup.exe` | Per-user installer (no admin prompt). A portable `.zip` is also available. |
-| macOS 15+ | `brew tap marcusbandit/anibeam https://github.com/marcusbandit/Anibeam`<br>`brew install --cask marcusbandit/anibeam/anibeam` | Apple silicon only. You can also download the `.dmg` and drag it into Applications. |
-| Android 8+ | `Anibeam-<version>.apk` | Sideload from the latest `android` release. |
-| iPhone (iOS 17+) | Add the Anibeam source in AltStore, SideStore, or LiveContainer (links below) | Unsigned IPA for sideloading; the sideloading app signs it. |
+```sh
+curl -fsSL https://anibeam.app/install.sh | sh
+```
 
-**iPhone sideloading:** Add the Anibeam source to get both Anibeam and Anibeam Nightly side by side with automatic updates:
-[AltStore](https://anibeam.app/install/?to=altstore&source=1) · [SideStore](https://anibeam.app/install/?to=sidestore&source=1) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&source=1)
+The script uses your package manager on Arch, Ubuntu, Debian, Fedora, and Macs with Homebrew. Everywhere else, it uses the AppImage or the `.dmg`. You can [read the script first](https://anibeam.app/install.sh).
+
+On Windows and Android, download the right build for your device from **[anibeam.app/download](https://anibeam.app/download/)**. All builds are also available on [GitHub Releases](https://github.com/marcusbandit/Anibeam/releases/latest).
+
+> [!NOTE]
+> **The iPhone app is not finished.** It is an early preview that still uses the Android app's interface while a native iPhone interface is being built. You sideload it yourself. Expect rough edges.
+
+### By platform
 
 <details>
-<summary><b>iPhone</b>: install a single IPA without adding the source</summary>
+<summary><b>Arch Linux</b></summary>
 
-<br>
+```sh
+yay -S anibeam-bin
+```
 
-- Stable: [AltStore](https://anibeam.app/install/?to=altstore&channel=stable) · [SideStore](https://anibeam.app/install/?to=sidestore&channel=stable) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=stable)
-- Nightly: [AltStore](https://anibeam.app/install/?to=altstore&channel=nightly) · [SideStore](https://anibeam.app/install/?to=sidestore&channel=nightly) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=nightly)
-
-If a channel has no IPA yet, the install page will say so.
+`anibeam-bin` installs the prebuilt package. Use `anibeam` to build from source instead.
 
 </details>
 
 <details>
-<summary><b>macOS</b>: opening an unnotarized build for the first time</summary>
+<summary><b>Ubuntu 24.04+ and Debian 13+</b></summary>
 
-<br>
+```sh
+sudo curl -fsSLo /etc/apt/sources.list.d/anibeam.sources https://anibeam.app/apt/anibeam.sources &&
+sudo apt update && sudo apt install anibeam
+```
 
-The Mac build is not notarized, so macOS blocks the first launch. Open **System Settings > Privacy & Security**, scroll to the Anibeam notice, and click **Open Anyway**, or run:
+Run `apt upgrade` for updates.
 
-```bash
+</details>
+
+<details>
+<summary><b>Fedora 41+</b></summary>
+
+```sh
+sudo dnf config-manager addrepo --from-repofile=https://anibeam.app/rpm/anibeam.repo &&
+sudo dnf install anibeam
+```
+
+Run `dnf upgrade` for updates.
+
+</details>
+
+<details>
+<summary><b>Other Linux</b>: AppImage, .deb or .rpm</summary>
+
+The install script above puts the AppImage in `~/.local/bin` and adds a menu entry. To install it manually, download `Anibeam-<version>-x86_64.AppImage` from [Releases](https://github.com/marcusbandit/Anibeam/releases/latest) and run it:
+
+```sh
+chmod +x Anibeam-*-x86_64.AppImage && ./Anibeam-*-x86_64.AppImage
+```
+
+The AppImage requires glibc 2.39 or newer, which means Ubuntu 24.04, Debian 13, Fedora 40, or newer. If you see a FUSE error, install `libfuse2`, or `libfuse2t64` on Ubuntu 24.04. You can also start it with `--appimage-extract-and-run`. The release also has `.deb` and `.rpm` packages.
+
+</details>
+
+<details>
+<summary><b>macOS 15+</b> on Apple silicon</summary>
+
+Install with Homebrew:
+
+```sh
+brew tap marcusbandit/anibeam https://github.com/marcusbandit/Anibeam &&
+brew install --cask marcusbandit/anibeam/anibeam
+```
+
+Or download the `.dmg` from [Releases](https://github.com/marcusbandit/Anibeam/releases/latest) and drag Anibeam into your Applications folder.
+
+The Mac build is not notarized, so macOS blocks the first launch. Open **System Settings > Privacy & Security**, scroll to the Anibeam notice, and click **Open Anyway**. Or run:
+
+```sh
 xattr -dr com.apple.quarantine /Applications/Anibeam.app
 ```
 
 </details>
 
 <details>
-<summary><b>Windows</b>: SmartScreen warning on the unsigned installer</summary>
+<summary><b>Windows 10 and 11</b></summary>
 
-<br>
+Download `Anibeam-<version>-windows-x64-setup.exe` from [anibeam.app/download](https://anibeam.app/download/) or [Releases](https://github.com/marcusbandit/Anibeam/releases/latest). It installs for your user account only and needs no admin prompt. A portable `.zip` is available alongside it.
 
-If Windows Defender SmartScreen prompts you, click **More info**, then **Run anyway**.
+The installer is unsigned, so Windows SmartScreen may block it. Click **More info**, then **Run anyway**.
 
 </details>
 
 <details>
-<summary><b>AppImage</b>: making it executable and FUSE notes</summary>
+<summary><b>Android 8+</b></summary>
 
-<br>
-
-```bash
-chmod +x ./*-x86_64.AppImage
-./*-x86_64.AppImage
-```
-
-If it complains about FUSE, install `libfuse2` (`libfuse2t64` on Ubuntu 24.04) or launch with `--appimage-extract-and-run`.
+Download `Anibeam-<version>.apk` from the latest [Android release](https://github.com/marcusbandit/Anibeam/releases?q=android&expanded=true) and open it on your phone. Android will ask once for permission to install apps from your browser or file manager.
 
 </details>
 
-AppImage, Windows, and macOS builds update themselves in-app (switch between Stable and Nightly in **Settings > About**). AUR, apt, and dnf installs update through your system package manager.
+<details>
+<summary><b>iPhone</b>: early preview, sideloaded</summary>
 
-Want to check the code (or have an AI agent review it) before installing? [docs/safety-audit.md](docs/safety-audit.md) maps every installer, network host, credential store, subprocess, local listener, and CI build workflow, alongside commands to verify the whole tree. See also [Privacy](https://anibeam.app/privacy/) and [SECURITY.md](SECURITY.md).
+Add the Anibeam source to your sideloading app. You get Anibeam and Anibeam Nightly side by side, and both stay updated from there:
+[AltStore](https://anibeam.app/install/?to=altstore&source=1) · [SideStore](https://anibeam.app/install/?to=sidestore&source=1) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&source=1)
+
+Or install a single IPA without adding the source:
+
+- Stable: [AltStore](https://anibeam.app/install/?to=altstore&channel=stable) · [SideStore](https://anibeam.app/install/?to=sidestore&channel=stable) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=stable)
+- Nightly: [AltStore](https://anibeam.app/install/?to=altstore&channel=nightly) · [SideStore](https://anibeam.app/install/?to=sidestore&channel=nightly) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&channel=nightly)
+
+Requires iOS 17 or newer. The IPA is unsigned, and your sideloading app signs it. If a channel has no IPA yet, the install page says so.
+
+</details>
+
+<details>
+<summary><b>Nightly builds</b></summary>
+
+Install the latest nightly on Linux or macOS:
+
+```sh
+curl -fsSL https://anibeam.app/install.sh | ANIBEAM_CHANNEL=nightly sh
+```
+
+Nightly builds use the AppImage on Linux and the `.dmg` on macOS, since AUR, apt, dnf, and Homebrew carry stable releases only. On Windows, download a nightly build from [Releases](https://github.com/marcusbandit/Anibeam/releases).
+
+</details>
+
+The AppImage, Windows, and macOS builds update themselves. Switch between Stable and Nightly anytime in **Settings > About**. AUR, apt, and dnf installs update through your system package manager.
+
+Want to inspect the code or have an AI agent review it before installing? [docs/safety-audit.md](docs/safety-audit.md) maps every installer, network host, credential store, subprocess, local listener, and CI build workflow, with commands to verify the whole tree. See also [Privacy](https://anibeam.app/privacy/) and [SECURITY.md](SECURITY.md).
 
 ## Getting started
 
@@ -184,9 +246,20 @@ See the [Downloads](https://anibeam.app/wiki/downloads/) and [Sources](https://a
 
 </details>
 
+## Sources
+
+Anibeam ships no download sources and links to no list of them. Instead, downloads read source lists: signed files of source definitions that anyone can publish. Add one by URL in **Settings > Downloads > Source lists**. Each definition is plain data and runs no code. When you add a list, Anibeam shows its signing key and refuses any later update signed with a different key.
+
+There are two ways to help:
+
+- **Publish a source list.** Start from [anibeam-endpoints-template](https://github.com/marcusbandit/anibeam-endpoints-template). Click **Use this template**, replace the examples with your own definitions, add your own signing key, and share the URL anywhere. The template's README explains the format. On Linux and Android, an `anibeam://add-repo?url=<your list's URL>` link lets people add your list in one click.
+- **Ask for a new kind of input.** Anibeam reads RSS feeds, torznab APIs, and JSON feeds. If a feed uses another format, [open an issue](https://github.com/marcusbandit/Anibeam/issues/new) describing its structure.
+
+Please don't name or link a site, or a list of sites, in an issue or pull request here. Which sources exist is up to the people who publish lists, not this project.
+
 ## Phone app and Tailscale streaming
 
-The phone app for Android and iPhone works standalone with its own local library, built-in torrent engine, and libmpv playback, syncing to the same AniList or MyAnimeList account.
+The phone app works standalone with its own local library, built-in torrent engine, and libmpv playback, syncing to the same AniList or MyAnimeList account.
 
 It can also browse and stream your computer's library from anywhere over [Tailscale](https://tailscale.com) with automatic transcoding and per-person progress: sign in to Tailscale on both devices, then turn on **Settings > Accounts > Phone app > Share over Tailscale** on your computer. Only devices on your tailnet can connect. To keep sharing when the desktop window is closed, run `anibeam serve` (or enable the `anibeam-host` systemd user service on Linux). See [apps/phone/README.md](apps/phone/README.md) for full details.
 
