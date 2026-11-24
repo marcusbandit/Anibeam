@@ -341,6 +341,7 @@ Anibeam is free and open source. If you get good use out of it and want to suppo
 ## Credits
 
 - [AniList](https://anilist.co), [TVmaze](https://www.tvmaze.com), [IMDb](https://www.imdb.com), and [AniSkip](https://aniskip.com) for metadata, ratings, and skip times; [MyAnimeList](https://myanimelist.net) for tracking.
+- [ani.zip](https://ani.zip) for episode titles, synopses, stills, and show artwork, drawn from [AniDB](https://anidb.net) and [TheTVDB](https://thetvdb.com).
 - [mpv](https://mpv.io) and KDE's [MpvQt](https://invent.kde.org/libraries/mpvqt) for video playback; [Qt](https://www.qt.io) (desktop) and [Slint](https://slint.dev) (mobile) for the UI.
 - [qBittorrent](https://www.qbittorrent.org) and [librqbit](https://github.com/ikatson/rqbit) for downloads.
 

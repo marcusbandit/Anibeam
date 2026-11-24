@@ -272,8 +272,6 @@ home-continue-fact = 視聴中の作品が{ $count }件
 home-on-hold = 保留
 home-on-hold-fact = 再開待ちの作品が{ $count }件
 home-hero-open = { $title }を開く
-home-hero-pick-up = 前回の続きから
-home-hero-up-next = 次に視聴
 home-hero-downloading = { $count }話をダウンロード中
 home-hero-min-left = 残り{ $count }分
 home-hero-watched = { $total }話中{ $watched }話視聴
@@ -281,6 +279,11 @@ home-hero-resume = 第{ $number }話を続きから再生
 home-hero-play = 第{ $number }話を再生
 home-hero-resume-unnumbered = 続きから再生
 home-hero-play-unnumbered = エピソードを再生
+home-hero-previous = 前の作品
+home-hero-next = 次の作品
+home-card-episode = 第{ $number }話
+home-card-episode-season = シーズン{ $season } 第{ $number }話
+home-card-episode-titled = { $episode } · { $title }
 home-downloaded = 最近ダウンロード
 home-downloaded-fact = 過去2週間に新しいファイルがある作品が{ $count }件
 home-week = 今週
@@ -2260,7 +2263,7 @@ settings-about-credits = クレジット
 settings-about-ratings = 評価
 settings-about-ratings-helper = 情報提供: IMDb（https://www.imdb.com）。許可を得て使用しています。
 settings-about-series = 作品とエピソード
-settings-about-series-helper = AniListとTVmaze。スキップ時間はAniSkipから。
+settings-about-series-helper = AniListとTVmaze。エピソード詳細と画像はAniDBとTheTVDBのデータを使うani.zipから。スキップ時間はAniSkipから。
 
 ## SettingsPlaybackTab
 

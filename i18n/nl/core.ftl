@@ -535,6 +535,7 @@ core-presence-extra = Extra
 core-presence-room = Samen kijken
 core-presence-in-room = In een kamer
 core-presence-no-room = Die Discord-uitnodiging heeft nog geen kamer. Vraag of ze er een starten.
+core-presence-button-site = Anibeam downloaden
 
 ## trackers/src/accounts.rs
 
@@ -583,17 +584,26 @@ core-trackers-oauth-could-not-start = Kon het inloggen niet starten
 core-trackers-oauth-port-failed = poort { $port } op deze computer kon niet worden geopend: { $error }
 core-trackers-oauth-port-busy = poort { $port } op deze computer wordt door een ander programma gebruikt. Wacht even en probeer het opnieuw, of sluit dat programma als de poort bezet blijft.
 core-trackers-oauth-provider-error = { $site } gaf een fout: { $error }
-core-trackers-page-connected = { $site } is gekoppeld aan { $app }
-core-trackers-page-close-tab = Je kunt dit tabblad sluiten.
+core-trackers-page-connected = { $site } en { $app } zijn gekoppeld
+core-trackers-page-signed-in = Ingelogd als { $username }
+core-trackers-page-close-tab = Alles staat klaar. Dit tabblad sluit zo vanzelf, of je kunt het nu sluiten.
 core-trackers-page-failed-title = { $app }, inloggen mislukt
-core-trackers-page-failed = Inloggen is niet afgerond
+core-trackers-page-failed = Het inloggen liep vast
 core-trackers-page-go-back = Ga terug naar { $app } en probeer het opnieuw.
 core-trackers-page-finishing-title = { $app }, bijna klaar
-core-trackers-page-finishing = Bijna klaar
-core-trackers-page-finishing-body = { $site } heeft gereageerd en Anibeam rondt het inloggen af. Ga terug naar { $app } om verder te gaan.
+core-trackers-page-finishing = Nog even afronden
+core-trackers-page-finishing-body = { $site } heeft gereageerd en het inloggen wordt nog afgerond. Ga terug naar { $app } om het resultaat te zien.
 core-trackers-page-cancelled-title = { $app }, inloggen geannuleerd
 core-trackers-page-cancelled = Inloggen is geannuleerd
-core-trackers-page-cancelled-body = Je kunt dit tabblad sluiten. Begin opnieuw vanuit { $app } als je toch wilt inloggen.
+core-trackers-page-cancelled-body = Je kunt dit tabblad sluiten. Begin opnieuw vanuit { $app } wanneer je er klaar voor bent.
+core-trackers-page-status-connected = Gekoppeld
+core-trackers-page-status-failed = Niet gekoppeld
+core-trackers-page-status-finishing = Bijna klaar
+core-trackers-page-status-cancelled = Geannuleerd
+core-trackers-page-status-connecting = Koppelen
+core-trackers-page-connecting-title = { $app }, koppelen
+core-trackers-page-connecting = Even overstappen vanaf { $site }
+core-trackers-page-no-token = Dit adres had geen inlogtoken. Ga terug naar { $app } en probeer het opnieuw.
 
 ## trackers/src/on_hold.rs
 

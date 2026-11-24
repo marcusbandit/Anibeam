@@ -335,8 +335,6 @@ home-continue-fact = { $count } serier i gang
 home-on-hold = På pause
 home-on-hold-fact = { $count } serier at vende tilbage til
 home-hero-open = Åbn { $title }
-home-hero-pick-up = Fortsæt, hvor du stoppede
-home-hero-up-next = Næste
 home-hero-downloading = Downloader { $count ->
     [one] { $count } afsnit
    *[other] { $count } afsnit
@@ -347,6 +345,11 @@ home-hero-resume = Fortsæt afsnit { $number }
 home-hero-play = Afspil afsnit { $number }
 home-hero-resume-unnumbered = Fortsæt afsnit
 home-hero-play-unnumbered = Afspil afsnit
+home-hero-previous = Forrige serie
+home-hero-next = Næste serie
+home-card-episode = Afs. { $number }
+home-card-episode-season = S{ $season } afs. { $number }
+home-card-episode-titled = { $episode } · { $title }
 home-downloaded = Downloadet for nylig
 home-downloaded-fact = { $count } serier med nye filer de sidste 2 uger
 home-week = Denne uge
@@ -2705,7 +2708,7 @@ settings-about-credits = Kreditering
 settings-about-ratings = Bedømmelser
 settings-about-ratings-helper = Oplysninger stillet til rådighed af IMDb (https://www.imdb.com). Brugt med tilladelse.
 settings-about-series = Serier og afsnit
-settings-about-series-helper = AniList og TVmaze. Springtider fra AniSkip.
+settings-about-series-helper = AniList og TVmaze. Episodedetaljer og billeder fra ani.zip med data fra AniDB og TheTVDB. Springtider fra AniSkip.
 
 ## SettingsPlaybackTab
 

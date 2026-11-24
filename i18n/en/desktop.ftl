@@ -337,8 +337,6 @@ home-continue-fact = { $count } series in progress
 home-on-hold = On hold
 home-on-hold-fact = { $count } series to come back to
 home-hero-open = Open { $title }
-home-hero-pick-up = Pick up where you stopped
-home-hero-up-next = Up next
 home-hero-downloading = Downloading { $count ->
     [one] { $count } episode
    *[other] { $count } episodes
@@ -349,6 +347,12 @@ home-hero-resume = Resume episode { $number }
 home-hero-play = Play episode { $number }
 home-hero-resume-unnumbered = Resume episode
 home-hero-play-unnumbered = Play episode
+home-hero-previous = Previous show
+home-hero-next = Next show
+home-card-episode = EP { $number }
+home-card-episode-season = S{ $season } EP { $number }
+# $episode is "EP 7" or "S2 EP 7"; $title is the episode's own title
+home-card-episode-titled = { $episode } · { $title }
 home-downloaded = Recently downloaded
 home-downloaded-fact = { $count } series with new files in the last 2 weeks
 home-week = This week
@@ -2851,7 +2855,7 @@ settings-about-credits = Credits
 settings-about-ratings = Ratings
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
 settings-about-series = Series and episodes
-settings-about-series-helper = AniList and TVmaze. Skip times from AniSkip.
+settings-about-series-helper = AniList and TVmaze. Episode details and artwork from ani.zip, with data from AniDB and TheTVDB. Skip times from AniSkip.
 
 ## SettingsPlaybackTab
 

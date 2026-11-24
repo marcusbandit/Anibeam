@@ -67,6 +67,8 @@ rm -f "$app/AppRun" "$app/AppRun.wrapped" "$app/.DirIcon" \
 desktop="$tree/usr/share/applications/com.marcusrosado.Anibeam.desktop"
 sed -i -e '/^X-AppImage-/d' -e 's/^Exec=.*/Exec=anibeam %u/' "$desktop"
 install -m 755 "$here/anibeam.sh" "$tree/usr/bin/anibeam"
+# The hidden entry Join from Discord opens, when the build has a Discord application
+"$here/discord-entry.sh" "$app/usr/bin/anibeam" "$tree/usr/share/applications"
 # squashfs-root comes out drwx------; every user has to read the install.
 chmod -R u+rwX,go+rX,go-w "$tree"
 

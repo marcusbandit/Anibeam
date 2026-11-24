@@ -335,8 +335,6 @@ home-continue-fact = { $count } series bezig
 home-on-hold = In de wacht
 home-on-hold-fact = { $count } series om naar terug te keren
 home-hero-open = { $title } openen
-home-hero-pick-up = Ga verder waar je stopte
-home-hero-up-next = Hierna
 home-hero-downloading = { $count ->
     [one] { $count } aflevering
    *[other] { $count } afleveringen
@@ -347,6 +345,11 @@ home-hero-resume = Hervat aflevering { $number }
 home-hero-play = Speel aflevering { $number }
 home-hero-resume-unnumbered = Aflevering hervatten
 home-hero-play-unnumbered = Aflevering afspelen
+home-hero-previous = Vorige serie
+home-hero-next = Volgende serie
+home-card-episode = Afl. { $number }
+home-card-episode-season = S{ $season } afl. { $number }
+home-card-episode-titled = { $episode } · { $title }
 home-downloaded = Recent gedownload
 home-downloaded-fact = { $count } series met nieuwe bestanden in de afgelopen 2 weken
 home-week = Deze week
@@ -2704,7 +2707,7 @@ settings-about-credits = Credits
 settings-about-ratings = Beoordelingen
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
 settings-about-series = Series en afleveringen
-settings-about-series-helper = AniList en TVmaze. Overslaantijden van AniSkip.
+settings-about-series-helper = AniList en TVmaze. Afleveringsdetails en afbeeldingen van ani.zip, met gegevens van AniDB en TheTVDB. Overslaantijden van AniSkip.
 
 ## SettingsPlaybackTab
 

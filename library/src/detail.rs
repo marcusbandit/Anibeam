@@ -11,13 +11,51 @@ use serde_json::Value;
 use crate::cards::{next_up, upcoming};
 use crate::classifier;
 use crate::labels;
-use crate::snapshot::{FileRow, MediaRow, Snapshot, season_of};
+use crate::snapshot::{FileRow, MediaRow, SeriesRow, Snapshot, season_of};
 use anibeam_contract::i18n::tr;
 use anibeam_contract::*;
 use anibeam_foundation::store::sql::{as_i64, placeholders};
 use anibeam_foundation::time;
 use anibeam_foundation::titles;
 use anibeam_foundation::watch::MARK_FRACTION;
+
+/// One regular episode as ani.zip keeps it, filled in where it is silent
+/// by the franchise fallback (#1461), for the series page.
+#[derive(Default)]
+struct AniZipEpisodeView {
+    title: Option<String>,
+    still: Option<String>,
+    synopsis: Option<String>,
+    aired_at: Option<i64>,
+}
+
+/// What the series page reads off ani.zip's tables and the fallback's.
+#[derive(Default)]
+struct AniZipView {
+    episodes: HashMap<i64, AniZipEpisodeView>,
+    logo: Option<String>,
+    artwork: Vec<Artwork>,
+}
+
+impl AniZipView {
+    /// The episode with this number, a whole number only.
+    fn episode(&self, number: f64) -> Option<&AniZipEpisodeView> {
+        (number.fract() == 0.0 && number >= 1.0)
+            .then(|| self.episodes.get(&(number as i64)))
+            .flatten()
+    }
+}
+
+/// Midnight UTC of a `YYYY-MM-DD`.
+fn day_start(day: &str) -> Option<i64> {
+    let mut parts = day.splitn(3, '-');
+    let year: i32 = parts.next()?.parse().ok()?;
+    let month: u8 = parts.next()?.parse().ok()?;
+    let day: u8 = parts.next()?.parse().ok()?;
+    let date =
+        ::time::Date::from_calendar_date(year, ::time::Month::try_from(month).ok()?, day).ok()?;
+    Some(date.midnight().assume_utc().unix_timestamp())
+}
 
 impl Snapshot {
     /// The series page. Takes the connection because the character images
@@ -67,8 +105,10 @@ impl Snapshot {
             .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
             .unwrap_or_default();
         let versions = episode_versions(&episodes);
+        let zip = self.anizip_of(conn, row)?;
         let episode = |f: &FileRow| {
             let air = self.episode_airing(row, f);
+            let detail = zip.episode(f.number);
             let tracked = card.watched.is_some_and(|w| f.number <= f64::from(w));
             let here = completed_keys.contains(f.episode_key.as_str());
             Episode {
@@ -76,14 +116,20 @@ impl Snapshot {
                 number: f.number,
                 season: f.season,
                 code: labels::episode_code(f.season, f.number),
-                // The provider's title, else whatever the release name
-                // carries after its episode token.
-                title: air.and_then(|a| a.title.clone()).or_else(|| {
-                    Path::new(&f.path)
-                        .file_name()
-                        .and_then(|n| classifier::file_episode_title(&n.to_string_lossy()))
-                }),
-                air_date: air.and_then(|a| a.aired_at).map(time::from_secs),
+                // ani.zip's title, else the provider's, else whatever the
+                // release name carries after its episode token.
+                title: detail
+                    .and_then(|d| d.title.clone())
+                    .or_else(|| air.and_then(|a| a.title.clone()))
+                    .or_else(|| {
+                        Path::new(&f.path)
+                            .file_name()
+                            .and_then(|n| classifier::file_episode_title(&n.to_string_lossy()))
+                    }),
+                air_date: air
+                    .and_then(|a| a.aired_at)
+                    .or_else(|| detail.and_then(|d| d.aired_at))
+                    .map(time::from_secs),
                 path: f.path.clone(),
                 sidecars: f.sidecars.clone(),
                 resume: self.resume_of(id, &f.episode_key),
@@ -101,6 +147,8 @@ impl Snapshot {
                 .to_string(),
                 fixed: f.fixed,
                 versions: versions.get(&version_key(f)).cloned().unwrap_or_default(),
+                still: detail.and_then(|d| d.still.clone()),
+                synopsis: detail.and_then(|d| d.synopsis.clone()),
             }
         };
 
@@ -126,13 +174,21 @@ impl Snapshot {
             })
             .map(|(c, number)| {
                 let air = airing.iter().find(|a| a.number == number);
+                let detail = zip.episode(f64::from(number));
                 AbsentEpisode {
                     number,
                     season,
                     code: labels::episode_code(season, f64::from(number)),
-                    title: air.and_then(|a| a.title.clone()),
-                    air_date: air.and_then(|a| a.aired_at).map(time::from_secs),
+                    title: detail
+                        .and_then(|d| d.title.clone())
+                        .or_else(|| air.and_then(|a| a.title.clone())),
+                    air_date: air
+                        .and_then(|a| a.aired_at)
+                        .or_else(|| detail.and_then(|d| d.aired_at))
+                        .map(time::from_secs),
                     cube: c.to_string(),
+                    still: detail.and_then(|d| d.still.clone()),
+                    synopsis: detail.and_then(|d| d.synopsis.clone()),
                 }
             })
             .collect();
@@ -149,16 +205,23 @@ impl Snapshot {
         let notes = self.notes_of(row);
         let upcoming = upcoming(airing, &notes, released, plan_total, card.status, now)
             .into_iter()
-            .map(|(number, at, predicted)| UpcomingEpisode {
-                number,
-                season,
-                code: labels::episode_code(season, f64::from(number)),
-                title: airing
-                    .iter()
-                    .find(|a| a.number == number)
-                    .and_then(|a| a.title.clone()),
-                at: time::from_secs(at),
-                predicted,
+            .map(|(number, at, predicted)| {
+                let detail = zip.episode(f64::from(number));
+                UpcomingEpisode {
+                    number,
+                    season,
+                    code: labels::episode_code(season, f64::from(number)),
+                    title: detail.and_then(|d| d.title.clone()).or_else(|| {
+                        airing
+                            .iter()
+                            .find(|a| a.number == number)
+                            .and_then(|a| a.title.clone())
+                    }),
+                    at: time::from_secs(at),
+                    predicted,
+                    still: detail.and_then(|d| d.still.clone()),
+                    synopsis: detail.and_then(|d| d.synopsis.clone()),
+                }
             })
             .collect();
 
@@ -259,8 +322,136 @@ impl Snapshot {
                 None => false,
             },
             suggested_fix,
+            logo: zip.logo,
+            artwork: zip.artwork,
             card,
         }))
+    }
+
+    /// What ani.zip keeps for an AniList series (#1036): each regular
+    /// episode's title and still, the clear logo, and the artwork. Nothing
+    /// for any other match or an unmatched folder, the same rule the image
+    /// cache fetches and pins by. A path is handed out only when the image cache holds
+    /// the file's row.
+    fn anizip_of(&self, conn: &Connection, row: &SeriesRow) -> Result<AniZipView, CoreError> {
+        let mut view = AniZipView::default();
+        let Some(anilist_id) = row
+            .anilist_id
+            .filter(|_| row.provider == Some(Provider::Anilist))
+        else {
+            return Ok(view);
+        };
+        let local = |p: Option<String>| {
+            p.map(|p| {
+                Path::new(&self.images_dir)
+                    .join(p)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+        };
+        let mut stmt = conn.prepare(
+            "SELECT z.number, z.title, i.path, z.aired_at, z.air_date, z.synopsis
+             FROM anizip_episodes z LEFT JOIN images i ON i.url = z.still_url
+             WHERE z.anilist_id = ?1 AND z.number IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([anilist_id as i64], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, Option<String>>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, Option<i64>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, Option<String>>(5)?,
+            ))
+        })?;
+        for row in rows {
+            let (number, title, still, aired_at, air_date, synopsis) = row?;
+            let aired_at = aired_at.or_else(|| air_date.as_deref().and_then(day_start));
+            view.episodes.insert(
+                number,
+                AniZipEpisodeView {
+                    title,
+                    still: local(still),
+                    synopsis,
+                    aired_at,
+                },
+            );
+        }
+        // The franchise fallback stands in while ani.zip has no regular
+        // episodes for the series, and only then (#1461): once ani.zip maps
+        // the season, another source's guesses never fill its gaps.
+        let mut stmt = conn.prepare(
+            "SELECT e.number, e.title, i.path, e.aired_at, e.synopsis
+             FROM fallback_episodes e LEFT JOIN images i ON i.url = e.still_url
+             WHERE e.anilist_id = ?1
+               AND NOT EXISTS (SELECT 1 FROM anizip_episodes z WHERE z.anilist_id = ?1 AND z.number IS NOT NULL)",
+        )?;
+        let rows = stmt.query_map([anilist_id as i64], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, Option<String>>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, Option<i64>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+            ))
+        })?;
+        for row in rows {
+            let (number, title, still, aired_at, synopsis) = row?;
+            let e = view.episodes.entry(number).or_default();
+            e.title = e.title.take().or(title);
+            e.still = e.still.take().or_else(|| local(still));
+            e.synopsis = e.synopsis.take().or(synopsis);
+            e.aired_at = e.aired_at.or(aired_at);
+        }
+        let mut stmt = conn.prepare(
+            "SELECT a.kind, a.url, a.lang, i.path FROM anizip_images a
+             LEFT JOIN images i ON i.url = a.url
+             WHERE a.anilist_id = ?1 ORDER BY a.rank",
+        )?;
+        let rows = stmt.query_map([anilist_id as i64], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, Option<String>>(3)?,
+            ))
+        })?;
+        let mut logos: Vec<(bool, u8, Option<String>)> = Vec::new();
+        for row in rows {
+            let (kind, url, lang, path) = row?;
+            let path = local(path);
+            if kind == "Clearlogo" {
+                // English first, then a logo that names no language, then
+                // any other, each in the reply's own order.
+                let pick = match lang.as_deref().map(str::to_ascii_lowercase) {
+                    Some(l) if l.starts_with("en") => 0,
+                    None => 1,
+                    Some(_) => 2,
+                };
+                logos.push((path.is_none(), pick, path.clone()));
+            }
+            view.artwork.push(Artwork { kind, url, path });
+        }
+        // A logo on disk wins over a better one that is not, so a page
+        // never goes without while a usable file is there.
+        // No logo of its own at all: the nearest franchise season's
+        // (#1461). One of its own that is not on disk yet is waited for,
+        // the same rule the image cache fetches and pins by.
+        let own_logo = !logos.is_empty();
+        logos.sort_by_key(|(missing, pick, _)| (*missing, *pick));
+        view.logo = logos.into_iter().next().and_then(|(_, _, path)| path);
+        if !own_logo {
+            let borrowed: Option<String> = conn
+                .query_row(
+                    "SELECT i.path FROM fallback_shows b JOIN images i ON i.url = b.logo_url
+                     WHERE b.anilist_id = ?1",
+                    [anilist_id as i64],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            view.logo = local(borrowed);
+        }
+        Ok(view)
     }
 
     fn resume_of(&self, series: u64, key: &str) -> Option<ResumePoint> {

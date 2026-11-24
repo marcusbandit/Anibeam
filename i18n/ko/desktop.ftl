@@ -290,8 +290,6 @@ home-continue-fact = 보는 중인 작품 { $count }개
 home-on-hold = 보류
 home-on-hold-fact = 다시 볼 작품 { $count }개
 home-hero-open = { $title } 열기
-home-hero-pick-up = 멈춘 곳부터 이어 보기
-home-hero-up-next = 다음 에피소드
 home-hero-downloading = 에피소드 { $count }개 다운로드 중
 home-hero-min-left = { $count }분 남음
 home-hero-watched = { $total }화 중 { $watched }화 시청
@@ -299,6 +297,11 @@ home-hero-resume = { $number }화 이어 보기
 home-hero-play = { $number }화 재생
 home-hero-resume-unnumbered = 에피소드 이어 보기
 home-hero-play-unnumbered = 에피소드 재생
+home-hero-previous = 이전 작품
+home-hero-next = 다음 작품
+home-card-episode = { $number }화
+home-card-episode-season = 시즌{ $season } { $number }화
+home-card-episode-titled = { $episode } · { $title }
 home-downloaded = 최근 다운로드
 home-downloaded-fact = 최근 2주 동안 새 파일이 생긴 작품 { $count }개
 home-week = 이번 주
@@ -2507,7 +2510,7 @@ settings-about-credits = 크레딧
 settings-about-ratings = 평점
 settings-about-ratings-helper = 정보 제공: IMDb (https://www.imdb.com). 허가를 받아 사용해요.
 settings-about-series = 작품과 에피소드
-settings-about-series-helper = AniList와 TVmaze. 스킵 구간은 AniSkip 제공.
+settings-about-series-helper = AniList와 TVmaze. 에피소드 정보와 이미지는 AniDB와 TheTVDB 데이터를 사용하는 ani.zip 제공. 스킵 구간은 AniSkip 제공.
 
 ## SettingsPlaybackTab
 

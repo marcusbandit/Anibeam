@@ -39,26 +39,30 @@ impl Window {
         }
     }
 
+    /// A window as a caller stored it: when it started and what it counted.
+    pub fn from_parts(start_ms: u64, count: u32) -> Window {
+        Window { start_ms, count }
+    }
+
+    /// When the window started and what it has counted, for a caller that
+    /// stores them.
+    pub fn parts(self) -> (u64, u32) {
+        (self.start_ms, self.count)
+    }
+
     /// Counts one message sent at `now_ms`.
     pub fn hit(&mut self, now_ms: u64) -> Verdict {
-        count(&mut self.start_ms, &mut self.count, now_ms)
-    }
-}
-
-/// Counts one message against a window kept as two numbers, for a caller that
-/// stores them itself (the room's members, whose layout is persisted).
-pub(crate) fn count(start_ms: &mut u64, count: &mut u32, now_ms: u64) -> Verdict {
-    if now_ms >= *start_ms + 1_000 || now_ms < *start_ms {
-        *start_ms = now_ms;
-        *count = 0;
-    }
-    *count += 1;
-    if *count <= RATE_PER_SEC {
-        Verdict::Pass
-    } else if *count == RATE_PER_SEC + 1 {
-        Verdict::Refuse
-    } else {
-        Verdict::Drop
+        if now_ms >= self.start_ms.saturating_add(1_000) || now_ms < self.start_ms {
+            *self = Window::new(now_ms);
+        }
+        self.count = self.count.saturating_add(1);
+        if self.count <= RATE_PER_SEC {
+            Verdict::Pass
+        } else if self.count == RATE_PER_SEC + 1 {
+            Verdict::Refuse
+        } else {
+            Verdict::Drop
+        }
     }
 }
 
@@ -112,6 +116,13 @@ mod tests {
             w.hit(5_000);
         }
         assert_eq!(w.hit(4_000), Verdict::Pass);
+    }
+
+    #[test]
+    fn a_window_near_the_end_of_the_clock_still_counts() {
+        let mut w = Window::from_parts(u64::MAX - 10, u32::MAX);
+        assert_eq!(w.hit(u64::MAX - 5), Verdict::Drop);
+        assert_eq!(w.parts(), (u64::MAX - 10, u32::MAX));
     }
 
     #[test]

@@ -335,8 +335,6 @@ home-continue-fact = { $count } serie in corso
 home-on-hold = In pausa
 home-on-hold-fact = { $count } serie da riprendere
 home-hero-open = Apri { $title }
-home-hero-pick-up = Riprendi da dove hai smesso
-home-hero-up-next = Prossimo
 home-hero-downloading = { $count ->
     [one] Download di { $count } episodio
    *[other] Download di { $count } episodi
@@ -347,6 +345,11 @@ home-hero-resume = Riprendi ep. { $number }
 home-hero-play = Riproduci ep. { $number }
 home-hero-resume-unnumbered = Riprendi episodio
 home-hero-play-unnumbered = Riproduci episodio
+home-hero-previous = Serie precedente
+home-hero-next = Serie successiva
+home-card-episode = Ep. { $number }
+home-card-episode-season = S{ $season } ep. { $number }
+home-card-episode-titled = { $episode } · { $title }
 home-downloaded = Scaricati di recente
 home-downloaded-fact = { $count } serie con file nuovi nelle ultime 2 settimane
 home-week = Questa settimana
@@ -2705,7 +2708,7 @@ settings-about-credits = Crediti
 settings-about-ratings = Voti
 settings-about-ratings-helper = Dati concessi da IMDb (https://www.imdb.com). Usati con permesso.
 settings-about-series = Serie ed episodi
-settings-about-series-helper = AniList e TVmaze. Tempi di salto da AniSkip.
+settings-about-series-helper = AniList e TVmaze. Dettagli degli episodi e immagini da ani.zip, con dati di AniDB e TheTVDB. Tempi di salto da AniSkip.
 
 ## SettingsPlaybackTab
 

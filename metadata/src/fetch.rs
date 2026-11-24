@@ -8,7 +8,8 @@
 //! half fetched: a failure halfway through leaves the row exactly as it
 //! was rather than with recommendations and no relations. The images come
 //! last and are waited for, so by the time the job reports the match the
-//! record draws correctly with the network unplugged.
+//! record draws correctly with the network unplugged. ani.zip's episode
+//! details ride along as a side-fetch the way Jikan's titles do (#1036).
 
 use rusqlite::{Transaction, params};
 
@@ -65,7 +66,25 @@ pub async fn fetch_and_write(
     let enrichment: Enrichment = enrichment.ok_or_else(|| no_such_media(anilist_id))?;
     let (schedule, schedule_raw) = metadata.net.anilist.schedule_raw(anilist_id).await?;
 
-    let mal_id = media.id_mal.or(enrichment.id_mal);
+    // ani.zip's mapping names a MAL id AniList has none for (#1036), so it
+    // is asked first then, and Jikan can be asked with what it found; an
+    // ani.zip that cannot answer now leaves the id an earlier answer kept.
+    // That id is for Jikan alone: it never reaches the record or the
+    // series, which MAL list writes go through.
+    let mut mal_id = media.id_mal.or(enrichment.id_mal);
+    let mut anizip = None;
+    if mal_id.is_none() {
+        let read = metadata.anizip_show(anilist_id).await;
+        mal_id = match read.mal_id() {
+            Some(found) => Some(found),
+            None => metadata
+                .services
+                .store
+                .read(move |c| crate::anizip::kept_mal(c, anilist_id))
+                .unwrap_or(None),
+        };
+        anizip = Some(read);
+    }
     let jikan = match mal_id {
         Some(mal_id) => metadata.jikan_episodes(mal_id).await,
         None => JikanEpisodes::whole(Vec::new()),
@@ -73,6 +92,10 @@ pub async fn fetch_and_write(
     let whole = jikan.whole;
     let owed = mal_id.is_some() && crate::team::owes_titles(&jikan);
     let jikan = jikan.episodes;
+    let anizip = match anizip {
+        Some(read) => read,
+        None => metadata.anizip_show(anilist_id).await,
+    };
 
     let write = record::build(&media, Some(&enrichment));
     let titles = record::streaming_titles(&enrichment.streaming_episodes);
@@ -103,6 +126,7 @@ pub async fn fetch_and_write(
                 record::upsert_episodes(tx, anilist_id, &episodes, false)?;
             }
             crate::owed::mark(tx, anilist_id, owed)?;
+            crate::anizip::write(tx, anilist_id, &anizip, now)?;
             write_match_only(
                 tx,
                 series,
@@ -115,9 +139,24 @@ pub async fn fetch_and_write(
         })
         .await?;
 
+    // A season ani.zip has not mapped yet takes its episode details and its
+    // logo from the franchise around it (#1461), in a job of its own that
+    // starts now, so the match never waits on the walk.
+    crate::fallback::follow_up(metadata, anilist_id);
+
     // Waited for rather than fired off: a card that reports a match and
     // then draws a blank poster for the next few seconds is worse than a
-    // match that takes those seconds to report.
+    // match that takes those seconds to report. The clear logo and the
+    // stills of the episodes on disk come with them.
+    let mut urls = urls;
+    urls.extend(
+        metadata
+            .services
+            .store
+            .write_async(move |c| crate::anizip::image_urls(c, anilist_id))
+            .await
+            .unwrap_or_default(),
+    );
     metadata.net.images.ensure(&urls).await;
     reread_after_record(metadata, series).await;
     Ok(())

@@ -266,8 +266,6 @@ home-continue-fact = { $count } 部番剧正在观看
 home-on-hold = 搁置
 home-on-hold-fact = { $count } 部番剧等你回来
 home-hero-open = 打开《{ $title }》
-home-hero-pick-up = 从停下处继续
-home-hero-up-next = 下一集
 home-hero-downloading = 正在下载 { $count } 集
 home-hero-min-left = 剩余 { $count } 分钟
 home-hero-watched = 已看 { $watched } / { $total }
@@ -275,6 +273,11 @@ home-hero-resume = 继续第 { $number } 集
 home-hero-play = 播放第 { $number } 集
 home-hero-resume-unnumbered = 继续播放
 home-hero-play-unnumbered = 播放
+home-hero-previous = 上一部作品
+home-hero-next = 下一部作品
+home-card-episode = 第{ $number }集
+home-card-episode-season = 第{ $season }季 第{ $number }集
+home-card-episode-titled = { $episode } · { $title }
 home-downloaded = 最近下载
 home-downloaded-fact = 最近两周有 { $count } 部番剧有新文件
 home-week = 本周
@@ -2198,7 +2201,7 @@ settings-about-credits = 致谢
 settings-about-ratings = 评分
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
 settings-about-series = 番剧和剧集
-settings-about-series-helper = AniList 和 TVmaze。跳过时间来自 AniSkip。
+settings-about-series-helper = AniList 和 TVmaze。剧集详情和图片来自 ani.zip，数据源自 AniDB 和 TheTVDB。跳过时间来自 AniSkip。
 
 ## SettingsPlaybackTab
 

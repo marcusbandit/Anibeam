@@ -206,6 +206,9 @@ fn a_match_through_an_outage_keeps_the_rows_and_skips_jikan() {
     http.push_json(200, bare_enrichment(1, 1001));
     http.push_json(200, schedule_json(1, Some((3, now + 86_400)), &nodes));
     http.push_for("jikan.moe", 504, "gateway timeout");
+    // ani.zip's side-fetch, which has no entry for either (#1036).
+    http.push_for("api.ani.zip", 404, "\"Not Found\"");
+    http.push_for("api.ani.zip", 404, "\"Not Found\"");
     apply(&core, &c, series[0], 1);
     assert_eq!(numbers(&core, 1), vec![1, 2, 3, 10]);
     assert_eq!(jikan_requests(&http), 1);
@@ -216,7 +219,7 @@ fn a_match_through_an_outage_keeps_the_rows_and_skips_jikan() {
     apply(&core, &c, series[1], 2);
     assert_eq!(numbers(&core, 2), vec![1, 2, 3]);
     assert_eq!(jikan_requests(&http), 1, "{:#?}", http.requests());
-    assert_eq!(http.requests().len(), 7);
+    assert_eq!(http.requests().len(), 9);
     assert_eq!(jikan_warnings(&c), 1);
 
     core.shutdown();

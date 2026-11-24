@@ -298,6 +298,14 @@ pub struct Episode {
     /// named by its release, so a shell can offer a pick between them.
     #[serde(default)]
     pub versions: Vec<EpisodeVersion>,
+    /// The episode's still, a local file path once the image cache holds it
+    /// (ani.zip, #1036); None without one.
+    #[serde(default)]
+    pub still: Option<String>,
+    /// What the episode is about, plain text: ani.zip's, else the franchise
+    /// fallback's (#1461); None without one.
+    #[serde(default)]
+    pub synopsis: Option<String>,
 }
 
 /// One file of an episode that is on disk more than once: two releases of it.
@@ -320,6 +328,12 @@ pub struct AbsentEpisode {
     pub title: Option<String>,
     pub air_date: Option<SystemTime>,
     pub cube: String,
+    /// As `Episode::still`.
+    #[serde(default)]
+    pub still: Option<String>,
+    /// As `Episode::synopsis`.
+    #[serde(default)]
+    pub synopsis: Option<String>,
 }
 
 /// An episode still to come: when the record schedules it, or when it is
@@ -332,6 +346,12 @@ pub struct UpcomingEpisode {
     pub title: Option<String>,
     pub at: SystemTime,
     pub predicted: bool,
+    /// As `Episode::still`.
+    #[serde(default)]
+    pub still: Option<String>,
+    /// As `Episode::synopsis`.
+    #[serde(default)]
+    pub synopsis: Option<String>,
 }
 
 /// What the user told a series' schedule that its provider does not say
@@ -456,6 +476,24 @@ pub struct SeriesDetail {
     /// A misreading of this series' files the core can see, with its fix.
     #[serde(default)]
     pub suggested_fix: Option<SuggestedFix>,
+    /// The show's clear logo, a local file path once the image cache holds
+    /// it: the English one when there are several (ani.zip, #1036).
+    #[serde(default)]
+    pub logo: Option<String>,
+    /// Every piece of artwork ani.zip knows for the show, in its own order.
+    #[serde(default)]
+    pub artwork: Vec<Artwork>,
+}
+
+/// One piece of a show's artwork (ani.zip, #1036). `kind` is `Clearlogo`,
+/// `Fanart`, `Banner` or `Poster`; `path` is the local file once the image
+/// cache holds it, which only the logo is fetched for up front.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct Artwork {
+    pub kind: String,
+    pub url: String,
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]

@@ -80,6 +80,9 @@ pub struct RawEpisode {
     pub number: Option<i64>,
     pub airstamp: Option<String>,
     pub runtime: Option<u32>,
+    /// HTML, as TVmaze writes every summary.
+    pub summary: Option<String>,
+    pub image: Option<ImageSet>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -136,6 +139,10 @@ pub struct TvmazeEpisode {
     pub name: Option<String>,
     pub airstamp: Option<i64>,
     pub runtime: Option<u32>,
+    /// The summary as TVmaze wrote it, HTML and all.
+    pub summary: Option<String>,
+    /// The episode's still, the original size.
+    pub image: Option<String>,
 }
 
 impl Show {
@@ -202,6 +209,11 @@ impl Show {
                     name: e.name.clone().filter(|n| !n.trim().is_empty()),
                     airstamp: e.airstamp.as_deref().and_then(parse_airstamp),
                     runtime: e.runtime,
+                    summary: e.summary.clone().filter(|s| !s.trim().is_empty()),
+                    image: e
+                        .image
+                        .as_ref()
+                        .and_then(|i| i.original.clone().or_else(|| i.medium.clone())),
                 })
             })
             .collect();
@@ -282,6 +294,20 @@ impl TvmazeClient {
         }
         check(&response)?;
         Ok(Some(response.json()?))
+    }
+
+    /// The show behind a TheTVDB series id, the way `lookup_imdb` finds one
+    /// behind an IMDb title: a 404 is a series TVmaze has no show for.
+    pub async fn lookup_thetvdb(&self, thetvdb: u64) -> Result<Option<u64>, CoreError> {
+        let response = self
+            .get(format!("{TVMAZE_API}/lookup/shows?thetvdb={thetvdb}"))
+            .await?;
+        if response.status == 404 {
+            return Ok(None);
+        }
+        check(&response)?;
+        let show: Option<Show> = response.json()?;
+        Ok(show.map(|s| s.id).filter(|id| *id > 0))
     }
 
     /// The show behind an IMDb title id. TVmaze answers with a redirect to
@@ -371,6 +397,8 @@ mod tests {
                 name: Some("On the Horizon".into()),
                 airstamp: Some(1_791_547_200),
                 runtime: Some(22),
+                summary: episodes[0].summary.clone(),
+                image: episodes[0].image.clone(),
             }
         );
         assert_eq!(episodes[2].name.as_deref(), Some("The Order"));

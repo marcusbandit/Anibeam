@@ -18,6 +18,8 @@ Item {
     property bool grows: false
     property bool spread: false
     property bool bare: false
+    // A red dot beside the heading: this group is what its settings section's dot is about
+    property bool warns: false
     // Search lands here when its words name the group rather than one row
     readonly property bool settingTarget: true
     property real flash: 0
@@ -79,6 +81,15 @@ Item {
             font.pointSize: theme.typeLarge
             font.variableAxes: ({ "wdth": 74, "wght": 500 })
             color: root.flash > 0 ? Qt.tint(theme.text, Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, root.flash)) : theme.text
+            // The group is why its settings index entry wears a red dot: the same dot, here
+            Rectangle {
+                objectName: "panel-warns-dot"
+                visible: root.warns
+                x: parent.paintedWidth + theme.space(3)
+                y: (parent.height - height) / 2
+                width: theme.space(2); height: width; radius: width / 2
+                color: theme.red
+            }
         }
     }
     Rectangle {

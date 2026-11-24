@@ -21,7 +21,7 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, SystemTime};
 
 use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use rand::Rng;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -66,6 +66,10 @@ const MAX_REQUEST: usize = 8 * 1024;
 /// says nothing on, so a connection that stays silent is dropped rather
 /// than allowed to hold the whole flow until it times out.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How long a page may take to reach the browser before the listener gives
+/// up on that connection and goes back to accepting.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// What the pages call each provider. The site's own name, so the tab a
 /// user is looking at says what they just signed in to; `Tracker::label`
@@ -159,7 +163,7 @@ async fn run(
     let (callback, stream) = tokio::time::timeout(FLOW_TIMEOUT, serve(&listener, t, &state))
         .await
         .map_err(|_| accounts::tracker_error(t, tr("core-trackers-oauth-timed-out", &[])))??;
-    let mut tab = HeldTab(Some(stream));
+    let mut tab = HeldTab(Some(stream), t);
 
     // The browser's request is held while this runs, so the page it gets
     // says what actually happened: a provider refusal reaches the tab as the
@@ -182,16 +186,16 @@ async fn run(
     let signed_in = match tokio::time::timeout(hold, &mut signing_in).await {
         Ok(signed_in) => {
             match &signed_in {
-                Ok(_) => tab.answer(OK, &page(Page::Connected(site_name(t)))).await,
+                Ok(username) => tab.answer(OK, &page(Page::Connected(t, username))).await,
                 Err(e) => {
-                    tab.answer(BAD_REQUEST, &page(Page::Failed(&page_message(e))))
+                    tab.answer(BAD_REQUEST, &page(Page::Failed(t, &page_message(e))))
                         .await
                 }
             }
             signed_in
         }
         Err(_) => {
-            tab.answer(OK, &page(Page::Finishing(site_name(t)))).await;
+            tab.answer(OK, &page(Page::Finishing(t))).await;
             signing_in.await
         }
     };
@@ -448,11 +452,11 @@ async fn serve(
         // Neither parameter present is that hop, and the page below reissues
         // the request with the fragment as a query the listener can read.
         if t == Tracker::Anilist && get("access_token").is_none() && get("error").is_none() {
-            reply(&mut stream, OK, FRAGMENT_FORWARDER).await;
+            reply(&mut stream, OK, &forwarder(t)).await;
             continue;
         }
         if let Some(error) = get("error") {
-            reply(&mut stream, BAD_REQUEST, &page(Page::Failed(&error))).await;
+            reply(&mut stream, BAD_REQUEST, &page(Page::Failed(t, &error))).await;
             return Err(accounts::tracker_error(
                 t,
                 tr(
@@ -495,7 +499,7 @@ async fn serve(
 /// why, in the catalog's words under `id`.
 async fn refuse(mut stream: TcpStream, t: Tracker, id: &str) -> CoreError {
     let message = tr(id, &[]);
-    reply(&mut stream, BAD_REQUEST, &page(Page::Failed(&message))).await;
+    reply(&mut stream, BAD_REQUEST, &page(Page::Failed(t, &message))).await;
     accounts::tracker_error(t, message)
 }
 
@@ -563,8 +567,18 @@ fn http_head(status: &str, body: &str) -> String {
 /// the tab, so a client that has already gone away is worth a log line and
 /// nothing more. The flow itself turns on what the request carried.
 async fn reply(stream: &mut TcpStream, status: &str, body: &str) {
-    if let Err(e) = write_all(stream, &http_head(status, body), body).await {
-        tracing::debug!("the callback page could not be written: {e}");
+    // Bounded: a page is a few hundred kilobytes, more than a socket's
+    // buffers hold, so a client that connects and never reads would
+    // otherwise hold the one-at-a-time listener until the flow times out.
+    match tokio::time::timeout(
+        WRITE_TIMEOUT,
+        write_all(stream, &http_head(status, body), body),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => tracing::debug!("the callback page could not be written: {e}"),
+        Err(_) => tracing::debug!("the callback page was not read within {WRITE_TIMEOUT:?}"),
     }
     // A client reading to EOF needs the write half closed before it sees
     // the page as complete.
@@ -575,10 +589,10 @@ async fn reply(stream: &mut TcpStream, status: &str, body: &str) {
 /// way. Answered once, through `answer`. A job cancelled or superseded in
 /// the meantime is dropped mid-await and never reaches `answer`, so the
 /// drop answers instead, with the cancelled page, rather than leaving the
-/// tab with a reset connection. That write is synchronous: the page is a
-/// couple of kilobytes onto a loopback socket, which the kernel's send
-/// buffer takes whole, and a drop has no executor to await on.
-struct HeldTab(Option<TcpStream>);
+/// tab with a reset connection. That write is synchronous, because a drop
+/// has no executor to await on: the page goes onto a loopback socket the
+/// browser is reading, and the write timeout bounds the wait if it is not.
+struct HeldTab(Option<TcpStream>, Tracker);
 
 impl HeldTab {
     async fn answer(&mut self, status: &str, body: &str) {
@@ -596,7 +610,7 @@ impl Drop for HeldTab {
         };
         let _ = stream.set_nonblocking(false);
         let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
-        let body = page(Page::Cancelled);
+        let body = page(Page::Cancelled(self.1));
         use std::io::Write;
         let written = stream
             .write_all(http_head(OK, &body).as_bytes())
@@ -687,114 +701,237 @@ fn query_pairs(query: &str) -> Vec<(String, String)> {
 
 // The pages ------------------------------------------------------------------
 
-/// The look every page shares: Anibeam Dark's ground and brand teal, the
-/// mono face, one quiet card in the middle of the tab. These pages are the
-/// only interface a user sees in the browser, so they look like the app
-/// rather than like a server default.
-const PAGE_STYLE: &str = "html,body{margin:0;height:100%;background:#07090f;color:#e6ebf5;\
-font-family:'JetBrains Mono',ui-monospace,monospace}\
-body{display:flex;align-items:center;justify-content:center}\
-main{background:#0d1119;border:1px solid #161c28;border-radius:20px;padding:2.5rem 3rem;max-width:32rem;\
-display:flex;flex-direction:column;gap:0.75rem}\
-.mark{width:2.5rem;height:2.5rem;border-radius:50%;display:flex;align-items:center;justify-content:center;\
-font-size:1.25rem;font-weight:700;background:rgba(70,224,196,0.14);color:#46e0c4}\
-.mark.bad{background:rgba(240,113,138,0.14);color:#f0718a}\
-h1{margin:0.5rem 0 0;font-weight:600;font-size:1.1rem}\
-p{margin:0;color:#a3aec5;font-size:0.875rem;line-height:1.5}\
-.brand{color:#46e0c4}";
+/// The look every page shares: an eyecatch, the card an anime cuts to
+/// between its halves. The logo's ア with its speed lines runs off the edge
+/// of the tab, and the outcome is set huge in Archivo, the site's face.
+/// Every page sits on the app's own ground, Anibeam Dark or Light after the
+/// browser; a finished sign-in paints the ア in Anibeam's yellow, never the
+/// whole tab. One motion: the ア cuts in once, like a smear frame.
+///
+/// Nothing is fetched. The icon is inline and Archivo rides along as a data
+/// url, so the type is the same on every machine whether or not Archivo is
+/// installed; that puts a page at about 250 kilobytes, which the loopback
+/// socket hands to the browser in a moment.
+const PAGE_STYLE: &str = r#"
+:root{--ground:#07090f;--fg:#f2f5fa;--fg-2:#a3aec5;--art:#161c28;--state:#fdc901;color-scheme:dark}
+@media (prefers-color-scheme:light){:root{--ground:#f4f6fb;--fg:#0e1220;--fg-2:#4a536a;--art:#e3e8f1;color-scheme:light}}
+.ok{--state:#fdc901;--art:#fdc901}
+.bad{--state:#f0718a}.off{--state:var(--fg-2)}
+@media (prefers-color-scheme:light){.bad{--state:#c8405e}.ok,.wait,.go{--state:var(--fg)}}
+*{box-sizing:border-box}
+html{background:var(--ground);overflow-x:clip}
+body{margin:0;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;justify-content:space-between;
+gap:3rem;padding:clamp(20px,5vw,64px);overflow-x:clip;position:relative;background:var(--ground);color:var(--fg);
+font:400 18px/1.5 Archivo,system-ui,sans-serif}
+.art{position:absolute;z-index:0;right:-14vmin;top:50%;width:min(82vmin,780px);color:var(--art);
+transform:translateY(-55%) rotate(-6deg);animation:cut .42s cubic-bezier(.2,.9,.1,1) both}
+.art svg{width:100%;height:auto;display:block}.art rect{display:none}.art path{fill:currentColor}
+header,main{position:relative;z-index:1}
+header{display:flex;align-items:center;gap:.6rem;font-weight:700;font-size:1.05rem;letter-spacing:-.01em}
+header svg{width:30px;height:30px}
+main{max-width:min(100%,62rem)}
+.word{display:block;margin:0 0 .12em -.04em;color:var(--state);font-weight:900;font-stretch:125%;
+font-size:clamp(2.4rem,11.5vw,11rem);line-height:.86;letter-spacing:-.045em;text-wrap:balance;
+-webkit-text-stroke:.07em var(--ground);paint-order:stroke fill}
+h1{margin:0;max-width:24ch;font-size:clamp(1.5rem,3.2vw,2.4rem);line-height:1.12;font-weight:650;font-stretch:105%;
+letter-spacing:-.02em;text-wrap:balance}
+p{margin:.9rem 0 0;max-width:38ch;color:var(--fg-2);text-wrap:pretty}
+.who{color:var(--fg);font-size:clamp(1.1rem,1.8vw,1.35rem)}
+.who b{font-weight:800}
+.why{font:500 .95rem/1.4 ui-monospace,monospace;color:var(--fg);overflow-wrap:anywhere}
+@keyframes cut{from{transform:translate(45%,-55%) rotate(-6deg) skewX(-18deg);filter:blur(6px)}}
+@media (max-width:640px){.art{width:92vmin;right:-30vmin;top:28%}}
+@media (prefers-reduced-motion:reduce){.art{animation:none}}
+"#;
 
-/// Anibeam's name as the pages set it, in the brand colour.
-const BRAND: &str = "<span class=\"brand\">Anibeam</span>";
+/// Archivo, the face the site and the shell set Anibeam in, latin and
+/// latin-ext, copied from `site/fonts` so the crate stands on its own.
+/// Its licence is in `assets/OFL-Archivo.txt`.
+const ARCHIVO: [(&[u8], &str); 2] = [
+    (
+        include_bytes!("../assets/Archivo-latin-100-900.woff2"),
+        "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,\
+         U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+    ),
+    (
+        include_bytes!("../assets/Archivo-latin-ext-100-900.woff2"),
+        "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,\
+         U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF",
+    ),
+];
 
-/// The tabs the listener leaves behind.
+/// The `@font-face` rules for [`ARCHIVO`], built once.
+fn font_faces() -> &'static str {
+    static FACES: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        ARCHIVO
+            .iter()
+            .map(|(bytes, range)| {
+                format!(
+                    "@font-face{{font-family:Archivo;font-weight:100 900;font-stretch:62% 125%;\
+                     src:url(data:font/woff2;base64,{}) format('woff2');unicode-range:{range}}}",
+                    STANDARD.encode(bytes)
+                )
+            })
+            .collect()
+    });
+    &FACES
+}
+
+/// The app's icon, inline. The header shows it whole; the art behind the
+/// words is its ア alone.
+/// A copy of `apps/linux/assets/icon.svg`, kept in the crate like the fonts.
+const ICON: &str = include_str!("../assets/icon.svg");
+
+/// The tabs the listener leaves behind, each for the tracker it belongs to.
 enum Page<'a> {
-    /// A finished sign-in. The tab asks the browser to close it a beat
-    /// later; a browser that refuses a script closing a tab it did not open
-    /// leaves the page saying the same thing in words.
-    Connected(&'a str),
+    /// A finished sign-in, with the account it signed in as. The tab asks
+    /// the browser to close it a beat later; a browser that refuses a script
+    /// closing a tab it did not open leaves the page saying the same thing
+    /// in words.
+    Connected(Tracker, &'a str),
     /// A sign-in that failed, with the words why.
-    Failed(&'a str),
+    Failed(Tracker, &'a str),
     /// The tab let go before the sign-in finished. Neither a success nor a
     /// failure, because neither is known yet; the app is where the outcome
     /// lands.
-    Finishing(&'a str),
+    Finishing(Tracker),
     /// A sign-in cancelled, or replaced by a newer one, while it was being
     /// finished.
-    Cancelled,
+    Cancelled(Tracker),
 }
 
-/// One page. Its title, heading and closing line come from the catalog,
-/// whose words are the app's own and go in as they are, with Anibeam's name
-/// plain in the title and marked up as [`BRAND`] in the body. The site and
-/// the failure's words are escaped first: the failure comes off the query
-/// the browser was redirected with, and nothing a provider or a crafted
-/// link says should be able to write markup here.
+/// One page. Its words come from the catalog, which are the app's own and go
+/// in as they are. The username and the failure's words are escaped first:
+/// the failure comes off the query the browser was redirected with, and
+/// nothing a provider or a crafted link says should be able to write markup
+/// here.
 fn page(kind: Page) -> String {
-    // The catalog's ids as [title, heading, closing line], the mark and
-    // whether it is the red one, the site, the failure's words, and whether
-    // the tab is asked to close.
-    let ([title, heading, line], mark, bad, site, why, close) = match kind {
-        Page::Connected(site) => (CONNECTED, "&#10003;", false, site, None, true),
-        Page::Failed(why) => (FAILED, "!", true, "", Some(why), false),
-        Page::Finishing(site) => (FINISHING, "&#8230;", false, site, None, false),
-        Page::Cancelled => (CANCELLED, "&#215;", true, "", None, false),
+    let (t, words, state, extra, close) = match kind {
+        Page::Connected(t, username) => {
+            let who = format!(
+                "<p class=\"who\">{}</p>",
+                tr(
+                    "core-trackers-page-signed-in",
+                    &[("username", format!("<b>{}</b>", escape(username)).into())]
+                )
+            );
+            (t, CONNECTED, "ok", who, true)
+        }
+        Page::Failed(t, why) => (
+            t,
+            FAILED,
+            "bad",
+            format!("<p class=\"why\">{}</p>", escape(why)),
+            false,
+        ),
+        Page::Finishing(t) => (t, FINISHING, "wait", String::new(), false),
+        Page::Cancelled(t) => (t, CANCELLED, "off", String::new(), false),
     };
-    let site = escape(site);
-    let words = |id, app: &str| tr(id, &[("site", site.as_str().into()), ("app", app.into())]);
-    let why = why
-        .map(|why| format!("<p>{}</p>", escape(why)))
-        .unwrap_or_default();
     let close = match close {
-        true => "\n<script>setTimeout(function(){window.close()},1500)</script>",
+        true => "<script>setTimeout(function(){window.close()},1500)</script>",
         false => "",
     };
+    shell(t, words, state, &extra, close)
+}
+
+/// The page around a set of words: `[title, status, heading, closing line]`
+/// as catalog ids, the state class, anything that goes between the heading
+/// and the closing line, and a trailing script.
+fn shell(
+    t: Tracker,
+    [title, status, heading, line]: Words,
+    state: &str,
+    extra: &str,
+    script: &str,
+) -> String {
+    let words = |id: &str| {
+        tr(
+            id,
+            &[("site", site_name(t).into()), ("app", "Anibeam".into())],
+        )
+    };
+    let line = match line {
+        "" => String::new(),
+        id => format!("<p class=\"line\">{}</p>", words(id)),
+    };
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\">\n\
-         <title>{}</title>\n\
-         <style>{PAGE_STYLE}</style></head>\n\
-         <body><main><div class=\"mark{}\">{mark}</div>\
-         <h1>{}</h1>{why}<p>{}</p></main>{close}</body></html>",
-        words(title, "Anibeam"),
-        if bad { " bad" } else { "" },
-        words(heading, BRAND),
-        words(line, BRAND),
+        "<!doctype html><html><head><meta charset=\"utf-8\">\
+         <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
+         <title>{}</title><style>{}{PAGE_STYLE}</style></head>\
+         <body class=\"{state}\"><div class=\"art\" aria-hidden=\"true\">{ICON}</div>\
+         <header>{ICON}Anibeam</header>\
+         <main><strong class=\"word\">{}</strong><h1>{}</h1>{extra}{line}</main>{script}</body></html>",
+        words(title),
+        font_faces(),
+        words(status),
+        words(heading),
     )
 }
 
-/// Each page's [title, heading, closing line] in the catalog.
-const CONNECTED: [&str; 3] = [
+/// A page's words as catalog ids: [title, status, heading, closing line].
+type Words = [&'static str; 4];
+
+const CONNECTED: Words = [
     "core-trackers-page-connected",
+    "core-trackers-page-status-connected",
     "core-trackers-page-connected",
     "core-trackers-page-close-tab",
 ];
-const FAILED: [&str; 3] = [
+const FAILED: Words = [
     "core-trackers-page-failed-title",
+    "core-trackers-page-status-failed",
     "core-trackers-page-failed",
     "core-trackers-page-go-back",
 ];
-const FINISHING: [&str; 3] = [
+const FINISHING: Words = [
     "core-trackers-page-finishing-title",
+    "core-trackers-page-status-finishing",
     "core-trackers-page-finishing",
     "core-trackers-page-finishing-body",
 ];
-const CANCELLED: [&str; 3] = [
+const CANCELLED: Words = [
     "core-trackers-page-cancelled-title",
+    "core-trackers-page-status-cancelled",
     "core-trackers-page-cancelled",
     "core-trackers-page-cancelled-body",
+];
+const CONNECTING: Words = [
+    "core-trackers-page-connecting-title",
+    "core-trackers-page-status-connecting",
+    "core-trackers-page-connecting",
+    "",
 ];
 
 /// The implicit-grant hop: the fragment never reaches the server, so this
 /// page reads it in the browser and reloads with the same parameters as a
-/// query, which the listener can read.
-const FRAGMENT_FORWARDER: &str = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Connecting</title>\n\
-<style>html,body{margin:0;height:100%;background:#07090f;color:#a3aec5;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center}</style></head>\n\
-<body>Connecting<script>\n\
-(function(){\n\
-  var h=window.location.hash;\n\
-  if(!h){document.body.textContent='No token in URL.';return;}\n\
-  window.location.replace(window.location.pathname+'?'+h.slice(1));\n\
-})();\n\
-</script></body></html>";
+/// query, which the listener can read. It wears the same look for the
+/// moment it is on screen, and turns into the failure when there is no
+/// fragment to forward.
+fn forwarder(t: Tracker) -> String {
+    let none = tr("core-trackers-page-no-token", &[("app", "Anibeam".into())]);
+    let failed = tr("core-trackers-page-status-failed", &[]);
+    let heading = tr("core-trackers-page-failed", &[]);
+    // A JSON string is a JavaScript string literal, and the words go in as
+    // text, so nothing in the catalog can break out of the script.
+    // `<` is escaped as well, so no `</script>` in a translation can end
+    // the element.
+    let quote = |s: &str| {
+        serde_json::to_string(s)
+            .unwrap_or_default()
+            .replace('<', "\\u003c")
+    };
+    let script = format!(
+        "<script>(function(){{var h=window.location.hash;\
+         if(!h){{document.body.className='bad';document.querySelector('.word').textContent={failed};\
+         document.querySelector('h1').textContent={heading};\
+         var p=document.createElement('p');p.textContent={none};document.querySelector('main').appendChild(p);return;}}\
+         window.location.replace(window.location.pathname+'?'+h.slice(1));}})();</script>",
+        failed = quote(&failed),
+        none = quote(&none),
+        heading = quote(&heading),
+    );
+    shell(t, CONNECTING, "go", "", &script)
+}
 
 fn escape(text: &str) -> String {
     text.replace('&', "&amp;")
@@ -879,66 +1016,89 @@ mod tests {
 
     #[test]
     fn the_pages_name_the_site_and_escape_what_a_provider_sent() {
-        let shown = page(Page::Connected(site_name(Tracker::Mal)));
-        assert!(shown.contains("MyAnimeList is connected to"), "{shown}");
-        assert!(shown.contains("You can close this tab."), "{shown}");
+        let shown = page(Page::Connected(Tracker::Mal, "<i>alex</i>"));
+        assert!(shown.contains("MyAnimeList"), "{shown}");
+        assert!(shown.contains("<b>&lt;i&gt;alex&lt;/i&gt;</b>"), "{shown}");
         assert!(shown.contains("window.close()"), "{shown}");
-        assert!(
-            page(Page::Connected(site_name(Tracker::Anilist))).contains("AniList is connected to")
-        );
-        let shown = page(Page::Failed("<script>alert(1)</script>"));
+        assert!(page(Page::Connected(Tracker::Anilist, "alex")).contains("AniList"));
+        let shown = page(Page::Failed(Tracker::Mal, "<script>alert(1)</script>"));
         assert!(!shown.contains("<script>alert"));
         assert!(shown.contains("&lt;script&gt;"));
-        assert!(shown.contains("try again"), "{shown}");
-        assert!(shown.contains("class=\"mark bad\""), "{shown}");
+        assert!(shown.contains("<body class=\"bad\">"), "{shown}");
         assert!(!shown.contains("window.close()"), "{shown}");
-        assert!(FRAGMENT_FORWARDER.contains("window.location.hash"));
+        let hop = forwarder(Tracker::Anilist);
+        assert!(hop.contains("window.location.hash"), "{hop}");
+        assert!(hop.contains("<body class=\"go\">"), "{hop}");
     }
 
-    /// Only a finished sign-in closes its tab, and only a failure or a
-    /// cancel wears the red mark.
+    /// Every page is whole on its own: every catalog id resolves, nothing is
+    /// fetched from anywhere, the icon is inline, and the title is plain text.
     #[test]
-    fn each_page_has_its_own_mark_and_only_success_closes_the_tab() {
-        let finishing = page(Page::Finishing("<b>"));
-        assert!(finishing.contains("class=\"mark\">&#8230;"), "{finishing}");
-        assert!(finishing.contains("&lt;b&gt;"), "{finishing}");
-        assert!(!finishing.contains("<b>"), "{finishing}");
-        // Each page's own words in the right slot: a swapped title and
-        // heading would put the heading's words in the tab's title.
-        let titled = |shown: &str, title: &str, heading: &str| {
-            assert!(
-                shown.contains(&format!("<title>{title}</title>")),
-                "{shown}"
-            );
-            assert!(shown.contains(&format!("<h1>{heading}</h1>")), "{shown}");
-        };
-        titled(&finishing, "Anibeam, still finishing", "Still finishing");
-        titled(
-            &page(Page::Failed("why")),
-            "Anibeam, sign-in failed",
-            "Sign-in did not finish",
-        );
-        titled(
-            &page(Page::Cancelled),
-            "Anibeam, sign-in canceled",
-            "Sign-in was canceled",
-        );
-        let cancelled = page(Page::Cancelled);
-        assert!(
-            cancelled.contains("class=\"mark bad\">&#215;"),
-            "{cancelled}"
-        );
-        for shown in [finishing, cancelled] {
-            assert!(!shown.contains("window.close()"), "{shown}");
-            assert!(
-                shown.contains("<span class=\"brand\">Anibeam</span>"),
-                "{shown}"
-            );
+    fn every_page_is_self_contained_and_fully_worded() {
+        let pages = [
+            page(Page::Connected(Tracker::Anilist, "alex")),
+            page(Page::Failed(Tracker::Anilist, "why")),
+            page(Page::Finishing(Tracker::Mal)),
+            page(Page::Cancelled(Tracker::Mal)),
+            forwarder(Tracker::Anilist),
+        ];
+        for shown in &pages {
+            assert!(!shown.contains("core-trackers-"), "a missing id: {shown}");
+            let outside = shown
+                .replace("http://www.w3.org/2000/svg", "")
+                .split("url(data:")
+                .map(|part| part.split_once(')').map_or(part, |(_, rest)| rest))
+                .collect::<String>();
+            assert!(!outside.contains("http"), "a fetch: {shown}");
+            assert!(!shown.contains("@import"), "{shown}");
+            assert!(shown.contains("fill=\"#FDC901\""), "the icon: {shown}");
             assert!(
                 !shown.contains("<title><span"),
                 "the title is plain: {shown}"
             );
+            assert!(shown.len() < 320 * 1024, "{} bytes", shown.len());
         }
+    }
+
+    /// Only a finished sign-in closes its tab, and each outcome wears its
+    /// own state on the beam.
+    #[test]
+    fn each_page_has_its_own_state_and_only_success_closes_the_tab() {
+        for (shown, state) in [
+            (page(Page::Connected(Tracker::Mal, "alex")), "ok"),
+            (page(Page::Failed(Tracker::Mal, "why")), "bad"),
+            (page(Page::Finishing(Tracker::Mal)), "wait"),
+            (page(Page::Cancelled(Tracker::Mal)), "off"),
+        ] {
+            assert!(
+                shown.contains(&format!("<body class=\"{state}\">")),
+                "{shown}"
+            );
+            assert_eq!(shown.contains("window.close()"), state == "ok", "{shown}");
+        }
+    }
+
+    /// Each page's own words in the right slot: a swap would put the
+    /// heading's words in the tab's title or the status line.
+    #[test]
+    fn each_page_puts_its_words_in_the_right_slots() {
+        let shown = page(Page::Failed(Tracker::Mal, "why"));
+        let words = |id: &str| tr(id, &[("app", "Anibeam".into())]);
+        assert!(
+            shown.contains(&format!(
+                "<title>{}</title>",
+                words("core-trackers-page-failed-title")
+            )),
+            "{shown}"
+        );
+        assert!(
+            shown.contains(&format!(
+                "<strong class=\"word\">{}</strong><h1>{}</h1>",
+                words("core-trackers-page-status-failed"),
+                words("core-trackers-page-failed")
+            )),
+            "{shown}"
+        );
     }
 
     #[test]
