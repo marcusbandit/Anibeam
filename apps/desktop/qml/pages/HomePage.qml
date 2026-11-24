@@ -1,9 +1,11 @@
 // Home: the page the app opens on, ordered by what the app is for. First the hero: the
-// series to go on with, one at a time in the series page head's look (the banner across the
-// window, the next episode's still, the logo or the title, one row of actions), stepping on
-// by itself after a stretch with no input, or by hand with its arrows and dots. Then Continue
-// as episode cards: the still of the episode to play, the show, the episode and how far into
-// it you stopped. A series on hold is in neither; it waits on a shelf of its own further down.
+// series to go on with, one at a time and the same for every show (#1468): the banner across
+// the window, the poster in front, the logo or the title, the episode, two lines of the
+// show's synopsis and the two actions. It steps on by itself after a stretch with no input,
+// or by hand with its arrows. Under it Continue, one row of episode cards that steps along
+// with the hero, the hero's series at its left and lit; with more series than fit, the row
+// runs on in a loop and its right edge falls into shadow. A series on hold is in neither; it
+// waits on a shelf of its own further down.
 // Then the week: seven day columns from today with the airing series' posters placed on the
 // day their next episode lands, and a Later column for the rest. Then the series with episodes
 // waiting, a row not started yet, and the library's genres as a way in. A series dropped on
@@ -59,7 +61,7 @@ Item {
     // being watched with episodes seen, since plenty get watched somewhere else. They are
     // ordered by the later of the last play here and, while an episode is out and unseen,
     // the day that episode arrived: a new episode of a show being followed is the obvious
-    // next watch. The hero cycles through the first of them and Continue holds them all. At
+    // next watch. The hero cycles through all of them and Continue holds them all. At
     // most sixteen series are read; a dropped one is never among them, and one on hold is
     // left out too: it is on hold for a reason (#1464).
     function startedOf(c) {
@@ -98,11 +100,12 @@ Item {
         return out
     }
     property var continueList: []   // [{ card, detail, episode, partial }]
-    // The hero's turn: the first few of Continue, one at a time. Its slides hang off a model of
+    // The hero's turn: every series in Continue, one at a time, in Continue's order, so the
+    // hero's place is the Continue card at the row's left. Its slides hang off a model of
     // series ids kept in place across reloads (syncHero), so a read that leaves a series in the
     // hero keeps its slide, a crossfade under way and the focus inside it; each slide reads its
     // entry from heroEntries by id, which a reload replaces.
-    readonly property var heroList: continueList.slice(0, 8)
+    readonly property var heroList: continueList
     readonly property var heroEntries: {
         var m = {}
         for (var i = 0; i < heroList.length; i++) m[heroList[i].card.id] = heroList[i]
@@ -475,32 +478,6 @@ Item {
             }
         }
         Item { id: actionSlot; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); width: childrenRect.width; height: childrenRect.height }
-    }
-
-    // A fact on the hero: a glass pill over the art, as on the series page head; `quiet`
-    // drops the fill for the genres
-    component HeroPill: Corner {
-        id: pill
-        property string icon: ""
-        property string text: ""
-        property bool quiet: false
-        property color ink: "#f4f6f8"
-        implicitWidth: pillContent.implicitWidth + theme.space(3) * 2
-        implicitHeight: theme.space(7)
-        radius: height / 2
-        smoothing: theme.cornerSmoothing
-        color: quiet ? "transparent" : Qt.rgba(0, 0, 0, 0.32)
-        borderColor: Qt.rgba(1, 1, 1, quiet ? 0.22 : 0.14)
-        borderWidth: 1
-        Accessible.role: Accessible.StaticText
-        Accessible.name: text
-        Row {
-            id: pillContent
-            anchors.centerIn: parent
-            spacing: theme.space(1.5)
-            Icon { visible: pill.icon !== ""; anchors.verticalCenter: parent.verticalCenter; glyph: pill.icon; color: pill.ink; size: theme.space(3.5) }
-            Label { anchors.verticalCenter: parent.verticalCenter; text: pill.text; role: "ui"; font.pointSize: theme.typeSmall; color: pill.ink }
-        }
     }
 
     // The newest episode number on disk, off the card's code (S02E03, EP 3)
@@ -918,12 +895,11 @@ Item {
         }
     }
 
-    // ---- Continue (#1033): one card a series, the episode to go on with. The still of that
-    // episode at 16:9 (a frame from its own file where it has none, else a plain face), how far into
-    // it you stopped as a thin bar along its foot, then the show and the episode. A click,
-    // Return or Space plays it from where it stopped; the series is in the context menu, from
-    // a right click or Shift+F10 / the Menu key on a focused card. Every series Continue holds
-    // is shown, as many rows as it takes, since the shelves below leave all of them out.
+    // ---- Continue (#1033): one card a series, the episode to go on with. A picture from that
+    // episode at 16:9 (a plain face where the record has none), how far into it you stopped
+    // as a thin bar along its foot, then the show and the episode. A click, Return or Space
+    // plays it from where it stopped; the series is in the context menu, from a right click
+    // or Shift+F10 / the Menu key on a focused card.
     function episodeLabel(ep) {
         if (!ep) return ""
         var n = words.episodeNumber(ep.number)
@@ -942,17 +918,21 @@ Item {
     component EpisodeCard: Item {
         id: ecard
         property var entry: null
-        readonly property bool gridStop: true
+        // The hero's series: lit in the accent while it is up there
+        property bool lead: false
+        // Wholly inside the row, so the keys stop on it; a card gliding in or out, or one
+        // under the right edge's shadow, is passed over
+        property bool reachable: true
+        readonly property bool gridStop: reachable
         objectName: "continue-" + (card.id || 0)
         readonly property var card: entry ? entry.card : ({})
         readonly property var ep: entry ? entry.episode : null
-        readonly property string still: ep && ep.still ? ep.still : ""
-        // Without a still, a frame from the episode's own file (#1469); never the show's
-        // banner or poster, so with neither the card keeps its plain face
-        readonly property string art: still || (ep && ep.frame ? ep.frame : "")
+        // A picture from the episode and nothing else: its still, else a frame from its file.
+        // Neither is a plain face, never the show's banner or poster.
+        readonly property string art: ep ? (ep.still || ep.frame || "") : ""
         readonly property real frac: page.resumeFrac(entry)
         height: thumb.height + theme.space(2.5) + text.height
-        activeFocusOnTab: true
+        activeFocusOnTab: reachable
         Keys.onReturnPressed: page.playEntry(entry)
         Keys.onEnterPressed: page.playEntry(entry)
         Keys.onSpacePressed: page.playEntry(entry)
@@ -995,7 +975,8 @@ Item {
                 width: theme.space(12); height: width; radius: width / 2
                 color: Qt.rgba(0, 0, 0, 0.5)
                 border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
-                opacity: em.containsMouse || ecard.activeFocus ? 1 : 0
+                // Not on a card under the right edge's shadow, where the row's arrow comes up
+                opacity: (em.containsMouse && ecard.reachable) || ecard.activeFocus ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
                 Icon { anchors.centerIn: parent; anchors.horizontalCenterOffset: theme.space(0.25); glyph: "play"; size: theme.space(5); color: "#ffffff" }
             }
@@ -1024,13 +1005,15 @@ Item {
                 }
             }
         }
-        // The frame's edge above the art: the focus ring, the hover line
+        // The frame's edge above the art: the focus ring, the accent ring of the hero's
+        // series, the hover line
         Corner {
             anchors.fill: thumb
             radius: thumb.radius
             smoothing: thumb.smoothing
-            borderColor: ecard.activeFocus ? theme.focusRing : em.containsMouse ? theme.lineStrong : "transparent"
-            borderWidth: ecard.activeFocus ? 2 : 1
+            borderColor: ecard.activeFocus ? theme.focusRing : ecard.lead ? theme.accent : em.containsMouse ? theme.lineStrong : "transparent"
+            borderWidth: ecard.activeFocus || ecard.lead ? 2 : 1
+            Behavior on borderColor { ColorAnimation { duration: theme.motionNormal } }
         }
         Column {
             id: text
@@ -1042,7 +1025,7 @@ Item {
                 text: ecard.card.title || ""
                 role: "ui"
                 font.weight: 600
-                color: em.containsMouse ? theme.accent : theme.text
+                color: em.containsMouse || ecard.lead ? theme.accent : theme.text
                 elide: Text.ElideRight
             }
             Label {
@@ -1066,24 +1049,226 @@ Item {
         onActiveFocusChanged: if (!em.containsMouse) frame.hoverCard(ecard, ecard.card, activeFocus)
         Component.onDestruction: frame.hoverCard(ecard, null, false)
     }
+    // Continue as one row (#1468): as many cards as the width holds, the hero's series at the
+    // left and lit. Each step of the hero glides the row one card along; with more series
+    // than fit, the row has no ends: the card that leaves at the left comes round again at
+    // the right, and a heavy shadow over the right edge says more follow. With all of them in
+    // view the row stands still and only the light moves. Nothing in it takes the wheel, so a
+    // scroll over it moves the page.
     component ContinueRow: Column {
         id: row
         property var entries: []
+        // The hero's place in Continue
+        property int lead: 0
+        // A card under the pointer or the focus holds the hero, as the hero itself does
+        readonly property bool held: rowHover.hovered || focusInside
+        readonly property bool focusInside: {
+            for (var f = row.Window.activeFocusItem; f; f = f.parent) if (f === row) return true
+            return false
+        }
         readonly property real minWidth: theme.space(76)
+        readonly property int count: entries.length
         readonly property int cols: Math.max(1, Math.floor((width + page.gap) / (minWidth + page.gap)))
         readonly property real cardWidth: Math.floor((width - page.gap * (cols - 1)) / cols)
+        readonly property real pitch: cardWidth + page.gap
+        readonly property bool loops: count > cols
+        // The cards' height, which the track takes, since they sit in it by hand
+        property real cardH: 0
+        // Where the row stands, counted in cards and never wrapped: `target` is where it is
+        // headed and `pos` follows it, between two whole numbers while it glides
+        property int target: 0
+        property real pos: 0
+        function snap() {
+            glide.stop()
+            target = lead
+            pos = lead
+        }
+        // The card standing at `place` once the row is still, by its index
+        function cardAt(place) {
+            var n = count
+            return n ? cards.itemAt(((target + place) % n + n) % n) : null
+        }
+        // The focused card's place, or -1 with the focus elsewhere
+        function focusedPlace() {
+            for (var i = 0; i < cards.count; i++) {
+                var c = cards.itemAt(i)
+                if (c && c.activeFocus) return Math.round(c.place)
+            }
+            return -1
+        }
+        // A step of the hero's glides the row by one. A focused card that would glide out of
+        // reach hands the focus to the card that takes its place.
+        function follow() {
+            if (reloading) return
+            if (!loops || count === 0) { snap(); return }
+            var at = ((target % count) + count) % count
+            var d = ((lead - at) % count + count) % count
+            if (d > count / 2) d -= count
+            if (d === 0) return
+            var had = focusedPlace()
+            if (Math.abs(d) !== 1 || theme.reducedMotion) snap()
+            else {
+                target += d
+                glide.from = pos
+                glide.to = target
+                glide.restart()
+            }
+            if (had >= 0) {
+                var to = cardAt(had)
+                if (to) to.forceActiveFocus()
+            }
+        }
+        // A reload rebuilds every card in the new order, so the row snaps to the hero's place
+        // once the reload has settled, and a lead change that came with it never glides
+        property bool reloading: false
+        function settle() { reloading = false; snap() }
+        onEntriesChanged: { reloading = true; Qt.callLater(row.settle) }
+        onLeadChanged: follow()
+        onLoopsChanged: snap()
+        // Left and Right walk the cards in the order they stand on screen, which is not their
+        // order in the model once the row has come round
+        function stepFocus(from, by) {
+            if (!loops) return false
+            var to = cardAt(Math.round(from.place) + by)
+            if (to && to.reachable) to.forceActiveFocus()
+            return true
+        }
+        // Tab and Shift+Tab the same way, leaving the row from its ends for whatever the focus
+        // chain holds past the row's first or last card in the model
+        function tabFocus(from, by) {
+            if (!loops) return false
+            var to = cardAt(Math.round(from.place) + by)
+            if (to && to.reachable) { to.forceActiveFocus(); return true }
+            // Forward from the last reachable card in the model, back from the first
+            var edge = null
+            for (var i = 0; i < cards.count; i++) {
+                var c = cards.itemAt(by > 0 ? i : cards.count - 1 - i)
+                if (c && c.reachable) edge = c
+            }
+            var out = edge ? edge.nextItemInFocusChain(by > 0) : null
+            if (out) out.forceActiveFocus(by > 0 ? Qt.TabFocusReason : Qt.BacktabFocusReason)
+            return true
+        }
+        NumberAnimation {
+            id: glide
+            target: row; property: "pos"
+            duration: 380
+            easing.type: Easing.InOutCubic
+        }
+        // Steps the row and the hero together, as the hero's own arrows do
+        signal step(int by)
         visible: entries.length > 0
         spacing: theme.space(3)
+        HoverHandler { id: rowHover }
         Heading {
             text: words.t("home-continue")
             fact: words.t("home-continue-fact", { count: row.entries.length })
         }
-        Flow {
+        // The track runs out to the window's edges, so a card glides in from the edge and out
+        // past it rather than vanishing at the column's side
+        Item {
+            id: track
+            objectName: "home-continue-track"
             width: row.width
-            spacing: page.gap
+            height: row.count ? row.cardH : 0
+            Item {
+                id: lane
+                x: -scroll.gutter
+                y: -theme.space(1)
+                width: scroll.width
+                height: parent.height + theme.space(2)
+                clip: true
+                Repeater {
+                    id: cards
+                    model: row.entries
+                    EpisodeCard {
+                        id: slot
+                        required property var modelData
+                        required property int index
+                        entry: modelData
+                        width: row.cardWidth
+                        lead: index === ((row.lead % Math.max(1, row.count)) + Math.max(1, row.count)) % Math.max(1, row.count)
+                        // Its place counted in cards from the row's left. The card that just
+                        // left at the left keeps going off that side while a step glides on.
+                        readonly property real place: {
+                            if (!row.loops) return index
+                            var n = row.count, d = ((index - row.target) % n + n) % n
+                            if (row.pos < row.target && d === n - 1) d = -1
+                            return d - (row.pos - row.target)
+                        }
+                        x: scroll.gutter + place * row.pitch
+                        y: theme.space(1)
+                        visible: x + width > 0 && x < lane.width
+                        // Inside the row, and clear of the right edge's shadow when it loops
+                        reachable: place > -0.01 && place < row.cols - (row.loops ? 1.99 : 0.99)
+                        Keys.onLeftPressed: function(event) { event.accepted = row.stepFocus(slot, -1) }
+                        Keys.onRightPressed: function(event) { event.accepted = row.stepFocus(slot, 1) }
+                        Keys.onTabPressed: function(event) { event.accepted = row.tabFocus(slot, 1) }
+                        Keys.onBacktabPressed: function(event) { event.accepted = row.tabFocus(slot, -1) }
+                        onHeightChanged: if (index === 0) row.cardH = height
+                        Component.onCompleted: if (index === 0) row.cardH = height
+                    }
+                }
+                // More to the right: the last card in view sinks into the page
+                Rectangle {
+                    objectName: "home-continue-more"
+                    visible: row.loops
+                    z: 2
+                    anchors.right: parent.right
+                    width: scroll.gutter + row.cardWidth
+                    height: parent.height
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
+                        GradientStop { position: 0.25; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.55) }
+                        GradientStop { position: 0.55; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.9) }
+                        GradientStop { position: 0.8; color: theme.bg }
+                        GradientStop { position: 1; color: theme.bg }
+                    }
+                }
+            }
+            // The row's edges, while it loops: a pointer resting on the shadowed right end or
+            // at the very left brings up an arrow there, which steps the row and the hero
+            // together. Moving off the edge puts it away.
+            HoverHandler {
+                id: edgeHover
+                enabled: row.loops
+                onPointChanged: {
+                    var x = point.position.x
+                    var side = !hovered ? "" : x >= row.width - row.cardWidth ? "right" : x < theme.space(16) ? "left" : ""
+                    if (side !== edges.shown) edges.shown = ""
+                    edges.pending = side
+                    if (side !== "") edgeRest.restart(); else edgeRest.stop()
+                }
+                onHoveredChanged: if (!hovered) { edgeRest.stop(); edges.shown = "" }
+            }
+            QtObject {
+                id: edges
+                property string shown: ""
+                property string pending: ""
+            }
+            Timer { id: edgeRest; interval: 300; onTriggered: edges.shown = edges.pending }
             Repeater {
-                model: row.entries
-                EpisodeCard { required property var modelData; entry: modelData; width: row.cardWidth }
+                model: ["left", "right"]
+                Button {
+                    id: edgeArrow
+                    required property string modelData
+                    readonly property bool on: row.loops && edges.shown === modelData
+                    objectName: "home-continue-" + modelData
+                    z: 3
+                    x: modelData === "left" ? theme.space(3) : row.width - width - theme.space(3)
+                    y: Math.round(row.cardWidth * 9 / 32 - height / 2)
+                    width: height
+                    ghost: true
+                    takesFocus: false
+                    icon: modelData === "left" ? "chevron-left" : "chevron-right"
+                    accessibleName: words.t(modelData === "left" ? "home-hero-previous" : "home-hero-next")
+                    opacity: on ? 1 : 0
+                    visible: opacity > 0
+                    enabled: on
+                    Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
+                    onClicked: row.step(modelData === "left" ? -1 : 1)
+                }
             }
         }
     }
@@ -1099,13 +1284,15 @@ Item {
         anchors.fill: parent
         visible: !page.libraryEmpty
 
-        // ---- The hero (#1464): the Continue series one at a time, in the series page head's
-        // look. The banner (the episode's still where there is no banner) runs to the window's
-        // edges under a quiet scrim and fades into the page; low on it sit the still of the
-        // episode to play (the poster without one), the logo or the title, the facts, the
-        // episode and its synopsis, how far you are, and one row of actions. The arrows and
-        // dots step through the series; after a stretch with no input it moves on by itself,
-        // slowly, and never while the pointer is on it. Each step crossfades.
+        // ---- The hero (#1464, #1468): the Continue series one at a time, every one in the same
+        // shape. The show's banner runs to the window's edges under a quiet scrim and fades into
+        // the page (with no banner, its poster blurred in its place); low on it sit the poster,
+        // the logo or the title, the episode, two lines of the show's synopsis and the two
+        // actions. The poster is a picture and nothing more: playing is the button's job and
+        // Continue's. A show with no logo makes its poster the larger centre piece, the title
+        // beside it. The arrows step through the series, and Continue steps with them; after a
+        // stretch with no input it moves on by itself, slowly, and never while the pointer is
+        // on it or on Continue. Each step crossfades.
         Item {
             id: hero
             objectName: "home-hero"
@@ -1116,22 +1303,25 @@ Item {
             readonly property int count: heroIds.count
             // The series shown and the one fading out under it, by id, so a reload that moves
             // them in the list moves nothing on screen; `index` is the shown one's place, for
-            // the dots and the steps
+            // the steps and for Continue's row
             property int shownId: -1
             property int prevId: -1
             property int index: 0
             property real fade: 1
-            // A short window gives the hero less of its height, so Continue still shows under it
-            readonly property real frameH: Math.round(Math.min(theme.space(56), page.height * 0.24))
-            // The still or poster box drops out on a narrow window, the words keep the width
+            // The poster's height, one size for every show; a short window gives the hero
+            // less, so Continue still shows under it. A show with a logo fits its words into
+            // the same height, the logo's top on the poster's top.
+            readonly property real frameH: Math.round(Math.min(theme.space(85), page.height * 0.325))
+            // The poster drops out on a narrow window, the words keep the width
             readonly property bool framed: width >= theme.space(200)
             readonly property real topPad: Math.round(Math.max(theme.space(16), Math.min(theme.space(40), page.height * 0.13)))
             readonly property real tail: theme.space(4)
+            // The tallest slide sets the height, so a step never moves Continue
             readonly property real contentH: {
                 var h = framed ? frameH : 0
                 for (var i = 0; i < slides.count; i++) {
                     var s = slides.itemAt(i)
-                    if (s) h = Math.max(h, s.wordsH)
+                    if (s) h = Math.max(h, s.blockH)
                 }
                 return Math.ceil(h)
             }
@@ -1162,7 +1352,7 @@ Item {
                 lastInput = Date.now()
                 if (fadeIn.running) { pendingId = id === shownId ? -1 : id; return }
                 if (id === shownId) return
-                // Focus on the outgoing slide goes to the incoming one's Resume, since the
+                // Focus on the outgoing slide goes to the incoming one's button, since the
                 // outgoing slide is disabled and would drop it
                 var old = slides.itemAt(index)
                 var refocus = false
@@ -1188,15 +1378,16 @@ Item {
                 }
             }
             // On by itself after eight seconds with no input, and never while the pointer
-            // rests on the hero, the keyboard focus is inside it, or it is scrolled away. Any
-            // step, a pointer leaving the hero and a scroll start the eight seconds again.
+            // rests on the hero or on Continue, the keyboard focus is inside either, or the
+            // hero is scrolled away. Any step, a pointer leaving and a scroll start the eight
+            // seconds again.
             readonly property int idleMs: 8000
             property real lastInput: Date.now()
             readonly property bool focusInside: {
                 for (var f = hero.Window.activeFocusItem; f; f = f.parent) if (f === hero) return true
                 return false
             }
-            readonly property bool held: heroHover.hovered || focusInside
+            readonly property bool held: heroHover.hovered || focusInside || continueRow.held
             onHeldChanged: lastInput = Date.now()
             Connections { target: scroll; function onContentYChanged() { hero.lastInput = Date.now() } }
             Timer {
@@ -1217,17 +1408,21 @@ Item {
                     readonly property var entry: page.heroEntries[sid] || null
                     readonly property bool current: sid === hero.shownId
                     readonly property bool leaving: sid === hero.prevId
-                    // Only what is on screen, or next up, holds its art in memory
-                    readonly property bool loaded: current || leaving || (hero.count > 1 && index === (hero.index + 1) % hero.count)
+                    // Only what is on screen, or next up either way, holds its art in memory
+                    readonly property bool loaded: current || leaving
+                        || (hero.count > 1 && (index === (hero.index + 1) % hero.count || index === (hero.index - 1 + hero.count) % hero.count))
                     readonly property var c: entry ? entry.card : ({})
                     readonly property var d: entry ? entry.detail : null
                     readonly property var ep: entry ? entry.episode : null
-                    readonly property bool partial: entry ? entry.partial : false
-                    readonly property real wordsH: wordsCol.implicitHeight
-                    readonly property string backdrop: d && d.banner ? d.banner : ep && ep.still ? ep.still : ""
-                    readonly property string still: ep && ep.still ? ep.still : ""
-                    readonly property bool hasMinutes: !!(d && d.episode_minutes)
-                    readonly property real frac: page.resumeFrac(entry)
+                    // The layout follows the record alone, so a logo that is slow or fails to
+                    // load never moves anything
+                    readonly property bool hasLogo: !!(d && d.logo)
+                    readonly property real posterH: hero.frameH
+                    // With a logo the words take the poster's height whatever the window;
+                    // without one, the words' own height
+                    readonly property real blockH: Math.max(hero.framed || hasLogo ? posterH : 0, hasLogo ? 0 : lower.implicitHeight)
+                    readonly property string banner: d && d.banner ? d.banner : ""
+                    readonly property string poster: c.poster || ""
                     function focusResume() { resumeButton.forceActiveFocus() }
                     // The incoming slide fades in over the outgoing one, which stays whole
                     // under it, so the art never dips to the page between the two
@@ -1236,11 +1431,11 @@ Item {
                     enabled: current
                     width: hero.width
                     height: hero.height
-                    PosterTone { id: tone; source: slide.c.poster ? Fmt.fileUrl(slide.c.poster) : "" }
-                    readonly property color bandBase: theme.bandBase(tone.tone, slide.c.poster ? 0.5 : 0.25)
+                    PosterTone { id: tone; source: slide.loaded && slide.poster ? Fmt.fileUrl(slide.poster) : "" }
+                    readonly property color bandBase: theme.bandBase(tone.tone, slide.poster ? 0.5 : 0.25)
                     readonly property color inkAccent: theme.bandAccent(tone.tone, bandBase)
                     readonly property color ink: "#f4f6f8"
-                    readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
+                    readonly property color inkDim: Qt.rgba(1, 1, 1, 0.72)
 
                     Item {
                         id: back
@@ -1252,21 +1447,35 @@ Item {
                         opacity: slide.current ? hero.fade : 1
                         // Faded as one picture, or the scrims would fade apart from the art
                         layer.enabled: opacity < 1
+                        readonly property bool hasArt: art.visible || soft.visible
                         Rectangle { anchors.fill: parent; color: slide.bandBase }
                         Image {
                             id: art
-                            visible: slide.backdrop !== "" && status === Image.Ready
+                            visible: slide.banner !== "" && status === Image.Ready
                             anchors.fill: parent
-                            source: slide.loaded && slide.backdrop ? Fmt.fileUrl(slide.backdrop) : ""
+                            source: slide.loaded && slide.banner ? Fmt.fileUrl(slide.banner) : ""
                             // Decoded at the width it is drawn, not the banner's own
                             sourceSize.width: Math.ceil(back.width * Screen.devicePixelRatio)
                             fillMode: Image.PreserveAspectCrop
-                            verticalAlignment: slide.d && slide.d.banner ? Image.AlignTop : Image.AlignVCenter
+                            verticalAlignment: Image.AlignTop
                             asynchronous: true
                         }
-                        Rectangle { visible: art.visible; anchors.fill: parent; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.35) }
+                        // No banner: the poster, decoded tiny and drawn large, so it reads as
+                        // its colours and nothing sharp
+                        Image {
+                            id: soft
+                            visible: slide.banner === "" && slide.poster !== "" && status === Image.Ready
+                            anchors.fill: parent
+                            source: slide.loaded && slide.banner === "" && slide.poster ? Fmt.fileUrl(slide.poster) : ""
+                            sourceSize: Qt.size(12, 18)
+                            fillMode: Image.PreserveAspectCrop
+                            smooth: true
+                            opacity: 0.8
+                            asynchronous: true
+                        }
+                        Rectangle { visible: back.hasArt; anchors.fill: parent; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.35) }
                         Rectangle {
-                            visible: art.visible
+                            visible: back.hasArt
                             anchors.fill: parent
                             gradient: Gradient {
                                 orientation: Gradient.Horizontal
@@ -1284,7 +1493,7 @@ Item {
                                 GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
                                 GradientStop { position: fade.start; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
                                 GradientStop { position: fade.start + (fade.solid - fade.start) * 0.5; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.6) }
-                                GradientStop { position: fade.solid; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, art.visible ? 0.97 : 1) }
+                                GradientStop { position: fade.solid; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, back.hasArt ? 0.97 : 1) }
                                 GradientStop { position: 1; color: theme.bg }
                             }
                         }
@@ -1296,118 +1505,74 @@ Item {
                         opacity: slide.current ? hero.fade : Math.max(0, 1 - hero.fade * 2)
                         layer.enabled: opacity > 0 && opacity < 1
 
-                        // The episode's still at 16:9, or the poster where the record has no still
+                        // The poster, on the hero's foot line. Nothing happens on it.
                         Corner {
-                            id: frameBox
+                            id: posterBox
+                            objectName: slide.current ? "home-hero-poster" : ""
                             visible: hero.framed
                             x: 0
                             y: hero.topPad + hero.contentH - height
-                            height: hero.frameH
-                            width: slide.still ? Math.round(height * 16 / 9) : Math.round(height * 2 / 3)
+                            height: slide.posterH
+                            width: Math.round(height * 2 / 3)
                             radius: theme.radiusTile
                             smoothing: theme.cornerSmoothing
                             color: Qt.rgba(0, 0, 0, 0.3)
-                            fillItem: frameImg.status === Image.Ready ? frameImg : null
+                            fillItem: posterImg.status === Image.Ready ? posterImg : null
                             Image {
-                                id: frameImg
+                                id: posterImg
                                 visible: false
-                                width: frameBox.width; height: frameBox.height
-                                source: !slide.loaded ? "" : slide.still ? Fmt.fileUrl(slide.still) : slide.c.poster ? Fmt.fileUrl(slide.c.poster) : ""
-                                sourceSize: Qt.size(Math.ceil(frameBox.width * 2), Math.ceil(frameBox.height * 2))
+                                width: posterBox.width; height: posterBox.height
+                                source: slide.loaded && slide.poster ? Fmt.fileUrl(slide.poster) : ""
+                                sourceSize: Qt.size(Math.ceil(posterBox.width * 2), Math.ceil(posterBox.height * 2))
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
                             }
                             Corner {
                                 anchors.fill: parent
-                                radius: frameBox.radius
-                                smoothing: frameBox.smoothing
-                                fillGradient: LinearGradient {
-                                    x1: 0; y1: 0; x2: 0; y2: frameBox.height
-                                    GradientStop { position: 0; color: Qt.rgba(0, 0, 0, fm.containsMouse ? 0.25 : 0) }
-                                    GradientStop { position: 0.6; color: Qt.rgba(0, 0, 0, fm.containsMouse ? 0.3 : 0.05) }
-                                    GradientStop { position: 1; color: Qt.rgba(0, 0, 0, slide.frac > 0 ? 0.5 : 0.1) }
-                                }
-                                borderColor: fm.containsMouse ? Qt.rgba(1, 1, 1, 0.3) : Qt.rgba(1, 1, 1, 0.1)
+                                radius: posterBox.radius
+                                smoothing: posterBox.smoothing
+                                borderColor: Qt.rgba(1, 1, 1, 0.12)
                                 borderWidth: 1
                             }
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: theme.space(16); height: width; radius: width / 2
-                                color: Qt.rgba(0, 0, 0, 0.5)
-                                border.color: Qt.rgba(1, 1, 1, 0.35); border.width: 1
-                                opacity: fm.containsMouse ? 1 : 0
-                                Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
-                                Icon { anchors.centerIn: parent; anchors.horizontalCenterOffset: theme.space(0.5); glyph: "play"; size: theme.space(7); color: "#ffffff" }
-                            }
-                            Rectangle {
-                                visible: slide.frac > 0
-                                anchors.left: parent.left; anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                anchors.margins: theme.space(4)
-                                height: theme.space(1.25)
-                                radius: height / 2
-                                color: Qt.rgba(1, 1, 1, 0.25)
-                                Rectangle { width: Math.max(height, parent.width * slide.frac); height: parent.height; radius: height / 2; color: slide.inkAccent }
-                            }
-                            MouseArea {
-                                id: fm
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: page.playEntry(slide.entry)
-                                onContainsMouseChanged: frame.hoverCard(frameBox, slide.c, containsMouse)
-                                Accessible.role: Accessible.Button
-                                Accessible.name: (slide.c.title || "") + ", " + page.episodeLabel(slide.ep)
-                                Accessible.onPressAction: page.playEntry(slide.entry)
-                            }
-                            Component.onDestruction: frame.hoverCard(frameBox, null, false)
                         }
 
-                        // The words end on the frame's bottom edge, so the actions line up with it
-                        Column {
-                            id: wordsCol
-                            x: hero.framed ? frameBox.width + theme.space(8) : 0
-                            y: hero.topPad + hero.contentH - implicitHeight
+                        // The words end on the poster's foot, so the actions line up with it.
+                        // With a logo they span the poster's height: the logo fills what the
+                        // lines under it leave, its top on the poster's top.
+                        Item {
+                            id: wordsBox
+                            x: hero.framed ? posterBox.width + theme.space(8) : 0
+                            height: slide.hasLogo ? hero.contentH : lower.implicitHeight
+                            y: hero.topPad + hero.contentH - height
                             width: hero.width - x - (stepper.visible ? stepper.width + theme.space(6) : 0)
-                            spacing: theme.space(3)
 
-                            // The show's logo when the record has one, from its left edge; the
-                            // title in the display cut otherwise. Either opens the series.
+                            // The logo, from its top left corner, as tall as the room allows and
+                            // no wider than a bound, so every logo starts on one line
                             Item {
-                                id: titleBlock
-                                width: parent.width
-                                readonly property bool logoShown: logo.status === Image.Ready && logo.implicitWidth > 0
-                                readonly property real logoW: Math.min(width, theme.space(110))
-                                height: logoShown ? Math.min(theme.space(22), Math.round(logoW * logo.implicitHeight / logo.implicitWidth)) : titleLabel.height
+                                id: logoArea
+                                visible: slide.hasLogo
+                                width: Math.min(parent.width, theme.space(140))
+                                height: Math.max(0, wordsBox.height - lower.implicitHeight - theme.space(3))
+                                readonly property bool logoShown: logo.status === Image.Ready
                                 Image {
                                     id: logo
                                     objectName: slide.current ? "home-hero-logo" : ""
-                                    visible: titleBlock.logoShown
-                                    width: titleBlock.logoW
-                                    height: parent.height
-                                    source: slide.d && slide.d.logo ? Fmt.fileUrl(slide.d.logo) : ""
+                                    visible: logoArea.logoShown
+                                    anchors.fill: parent
+                                    source: slide.loaded && slide.hasLogo ? Fmt.fileUrl(slide.d.logo) : ""
+                                    // Decoded no larger than the box it fits into
+                                    sourceSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
                                     fillMode: Image.PreserveAspectFit
                                     horizontalAlignment: Image.AlignLeft
-                                    verticalAlignment: Image.AlignBottom
+                                    verticalAlignment: Image.AlignTop
                                     asynchronous: true
                                     smooth: true
                                     mipmap: true
                                 }
-                                Label {
-                                    id: titleLabel
-                                    visible: !titleBlock.logoShown
-                                    width: parent.width
-                                    text: slide.c.title || ""
-                                    role: "display"
-                                    color: slide.ink
-                                    wrapMode: Text.Wrap
-                                    maximumLineCount: 2
-                                    elide: Text.ElideRight
-                                    lineHeight: 0.92
-                                }
                                 MouseArea {
-                                    width: titleBlock.logoShown ? logo.paintedWidth : Math.min(titleLabel.implicitWidth, titleBlock.width)
-                                    height: parent.height
+                                    visible: logoArea.logoShown
+                                    width: logo.paintedWidth
+                                    height: logo.paintedHeight
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: page.openSeries(slide.c)
                                     Accessible.role: Accessible.Button
@@ -1415,100 +1580,87 @@ Item {
                                     Accessible.onPressAction: page.openSeries(slide.c)
                                 }
                             }
-                            // The facts as pills, the genres quieter
-                            Flow {
-                                objectName: slide.current ? "home-hero-facts" : ""
-                                width: parent.width
-                                spacing: theme.space(2)
-                                HeroPill { visible: (slide.c.community_score || 0) > 0; icon: "star"; ink: slide.inkAccent; text: visible ? words.score(slide.c.community_score) : "" }
-                                HeroPill { visible: !!(slide.d && slide.d.year); text: visible ? String(slide.d.year) : "" }
-                                HeroPill { visible: slide.hasMinutes; icon: "clock"; text: slide.hasMinutes ? words.t("series-facts-each", { runtime: words.runtime(slide.d.episode_minutes) }) : "" }
-                                HeroPill {
-                                    objectName: slide.current ? "hero-downloading" : ""
-                                    visible: !!(slide.c.downloading && slide.c.downloading.length > 0)
-                                    icon: "download"
-                                    ink: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3)
-                                    text: visible ? words.t("home-hero-downloading", { count: slide.c.downloading.length }) : ""
-                                }
-                                Repeater {
-                                    model: slide.d && slide.d.genres ? slide.d.genres.slice(0, 3) : []
-                                    HeroPill { required property string modelData; text: modelData; quiet: true }
-                                }
-                            }
-                            // The episode to play, and what it is about: the episode's own
-                            // synopsis where the record has one, the show's otherwise
+
                             Column {
+                                id: lower
+                                anchors.bottom: parent.bottom
                                 width: parent.width
-                                spacing: theme.space(1.5)
-                                Label {
-                                    objectName: slide.current ? "home-hero-episode" : ""
-                                    width: parent.width
-                                    text: page.episodeLabel(slide.ep)
-                                    role: "title"
-                                    font.pointSize: theme.typeNormal * 1.15
-                                    color: slide.ink
-                                    elide: Text.ElideRight
-                                }
-                                Label {
-                                    readonly property string body: {
-                                        var s = slide.ep && typeof slide.ep.synopsis === "string" && slide.ep.synopsis.trim() !== "" ? slide.ep.synopsis
-                                              : slide.d && slide.d.synopsis ? slide.d.synopsis : ""
-                                        return s.split(/\n\s*\n/)[0].trim()
-                                    }
-                                    visible: body !== ""
-                                    width: Math.min(parent.width, theme.space(170))
-                                    text: body
-                                    role: "ui"
-                                    color: slide.inkDim
-                                    wrapMode: Text.Wrap
-                                    maximumLineCount: 2
-                                    elide: Text.ElideRight
-                                }
-                            }
-                            // How far: the minutes left in a stopped episode, else the cubes
-                            // and the count watched
-                            Row {
                                 spacing: theme.space(3)
-                                readonly property real watchedFrac: slide.c.total_episodes > 0 ? page.watchedOf(slide.c) / slide.c.total_episodes : 0
-                                visible: slide.partial || watchedFrac > 0 || !!slide.c.cubes
-                                EpisodeCubes {
-                                    visible: !slide.partial && codes.length > 0
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: Math.min(implicitWidth, theme.space(60))
-                                    height: implicitHeight
-                                    codes: slide.c.cubes ? slide.c.cubes : ""
-                                    cubeSize: theme.space(2)
-                                    maxRows: 1
-                                }
+                                // The title: in the display cut where there is no logo, a
+                                // smaller line under the logo where there is one
                                 Label {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    role: "ledger"
-                                    color: slide.inkDim
-                                    text: slide.partial ? words.t("home-hero-min-left", { count: page.minutesLeft(slide.entry) })
-                                        : slide.c.total_episodes > 0 ? words.t("home-hero-watched", { watched: page.watchedOf(slide.c), total: slide.c.total_episodes }) : ""
+                                    id: titleLabel
+                                    objectName: slide.current ? "home-hero-title" : ""
+                                    width: parent.width
+                                    text: slide.c.title || ""
+                                    role: "display"
+                                    font.pointSize: slide.hasLogo ? theme.typeHeading : theme.typeDisplay * (hero.framed ? 1.2 : 1)
+                                    color: slide.ink
+                                    wrapMode: slide.hasLogo ? Text.NoWrap : Text.Wrap
+                                    maximumLineCount: slide.hasLogo ? 1 : 2
+                                    elide: Text.ElideRight
+                                    lineHeight: 0.92
+                                    MouseArea {
+                                        width: Math.min(titleLabel.implicitWidth, titleLabel.width)
+                                        height: parent.height
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: page.openSeries(slide.c)
+                                        Accessible.role: Accessible.Button
+                                        Accessible.name: words.t("home-hero-open", { title: slide.c.title || "" })
+                                        Accessible.onPressAction: page.openSeries(slide.c)
+                                    }
                                 }
-                            }
-                            Row {
-                                spacing: theme.space(2.5)
-                                Button {
-                                    id: resumeButton
-                                    objectName: slide.current ? "home-resume" : ""
-                                    // The top of the page's vertical key order: Down from here
-                                    // lands on the first card, Up from the first row comes back
-                                    readonly property bool gridStop: slide.current
-                                    primary: true
-                                    tint: slide.inkAccent
-                                    icon: "play"
-                                    text: !slide.ep ? "" : words.episodeNumber(slide.ep.number) === null
-                                          ? words.t(slide.partial ? "home-hero-resume-unnumbered" : "home-hero-play-unnumbered")
-                                          : words.t(slide.partial ? "home-hero-resume" : "home-hero-play", { number: words.episodeNumber(slide.ep.number) })
-                                    onClicked: page.playEntry(slide.entry)
+                                // The episode, then what the show is about, the same two lines
+                                // for every show
+                                Column {
+                                    width: parent.width
+                                    spacing: theme.space(1.5)
+                                    Label {
+                                        objectName: slide.current ? "home-hero-episode" : ""
+                                        width: parent.width
+                                        text: page.episodeLabel(slide.ep)
+                                        role: "title"
+                                        font.pointSize: theme.typeNormal * 1.15
+                                        color: slide.ink
+                                        elide: Text.ElideRight
+                                    }
+                                    Label {
+                                        objectName: slide.current ? "home-hero-synopsis" : ""
+                                        readonly property string body: slide.d && slide.d.synopsis ? slide.d.synopsis.split(/\n\s*\n/)[0].trim() : ""
+                                        visible: body !== ""
+                                        width: Math.min(parent.width, theme.space(170))
+                                        text: body
+                                        role: "ui"
+                                        color: slide.inkDim
+                                        wrapMode: Text.Wrap
+                                        maximumLineCount: 2
+                                        elide: Text.ElideRight
+                                    }
                                 }
-                                Button {
-                                    ghost: true
-                                    icon: "layers"
-                                    msg: "action-open-series"
-                                    onClicked: page.openSeries(slide.c)
+                                Row {
+                                    spacing: theme.space(2.5)
+                                    Button {
+                                        id: resumeButton
+                                        objectName: slide.current ? "home-resume" : ""
+                                        // The top of the page's vertical key order: Down from here
+                                        // lands on the first card, Up from the first row comes back
+                                        readonly property bool gridStop: slide.current
+                                        primary: true
+                                        tint: slide.inkAccent
+                                        icon: "play"
+                                        // One wording for every show, whether the episode was
+                                        // stopped partway or not started yet
+                                        readonly property var number: slide.ep ? words.episodeNumber(slide.ep.number) : null
+                                        text: !slide.ep ? "" : number === null ? words.t("series-play-continue")
+                                              : words.t("series-play-continue-episode", { number: number })
+                                        onClicked: page.playEntry(slide.entry)
+                                    }
+                                    Button {
+                                        ghost: true
+                                        icon: "layers"
+                                        msg: "action-open-series"
+                                        onClicked: page.openSeries(slide.c)
+                                    }
                                 }
                             }
                         }
@@ -1516,7 +1668,8 @@ Item {
                 }
             }
 
-            // The steps: back, a dot a series, on. At the foot of the band, level with the actions.
+            // The steps, back and on, at the foot of the band, level with the actions. Continue's
+            // lit card says where in the turn the hero is.
             Row {
                 id: stepper
                 objectName: "home-hero-steps"
@@ -1540,43 +1693,9 @@ Item {
                     onClicked: hero.show(hero.index - 1)
                     Tooltip { msg: "home-hero-previous" }
                 }
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: theme.space(1)
-                    Repeater {
-                        model: hero.count
-                        Item {
-                            id: dot
-                            required property int index
-                            readonly property bool on: index === hero.index
-                            objectName: "home-hero-dot-" + index
-                            width: theme.space(5); height: theme.space(5)
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: dot.on ? theme.space(5) : theme.space(2)
-                                height: theme.space(2)
-                                radius: height / 2
-                                color: dot.on ? "#f4f6f8" : dm.containsMouse ? Qt.rgba(1, 1, 1, 0.6) : Qt.rgba(1, 1, 1, 0.3)
-                                Behavior on width { NumberAnimation { duration: theme.motionNormal; easing.type: Easing.OutCubic } }
-                            }
-                            MouseArea {
-                                id: dm
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: hero.show(dot.index)
-                                Accessible.role: Accessible.Button
-                                Accessible.name: { var e = dot.index < heroIds.count ? page.heroEntries[heroIds.get(dot.index).sid] : null; return e ? e.card.title || "" : "" }
-                                Accessible.onPressAction: hero.show(dot.index)
-                            }
-                        }
-                    }
-                }
                 Button {
                     objectName: "home-hero-next"
                     anchors.verticalCenter: parent.verticalCenter
-                    // A click leaves the focus where it was, so a clicked arrow does not hold
-                    // the cycle; Tab still reaches it
                     takesFocus: false
                     activeFocusOnTab: true
                     Accessible.focusable: true
@@ -1592,12 +1711,15 @@ Item {
 
         Item { width: 1; height: hero.visible ? theme.space(2) : 0 }
 
-        // ---- Continue: every series with an episode to go on with, the hero's among them (#719)
+        // ---- Continue: every series with an episode to go on with, the hero's among them (#719),
+        // stepping along with the hero (#1468)
         ContinueRow {
             id: continueRow
             objectName: "home-continue"
             width: parent.width
             entries: page.continueList
+            lead: hero.index
+            onStep: function(by) { hero.show(hero.index + by) }
         }
         Item { width: 1; height: continueRow.visible ? theme.space(4) : 0 }
 

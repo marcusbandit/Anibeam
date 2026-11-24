@@ -335,16 +335,7 @@ home-continue-fact = { $count } Serien angefangen
 home-on-hold = Pausiert
 home-on-hold-fact = { $count } Serien zum Wiederaufnehmen
 home-hero-open = { $title } öffnen
-home-hero-downloading = Lade { $count ->
-    [one] { $count } Folge
-   *[other] { $count } Folgen
-}
 home-hero-min-left = noch { $count } Min.
-home-hero-watched = { $watched } von { $total } geschaut
-home-hero-resume = Weiter ab Folge { $number }
-home-hero-play = Folge { $number } abspielen
-home-hero-resume-unnumbered = Folge fortsetzen
-home-hero-play-unnumbered = Folge abspielen
 home-hero-previous = Vorherige Serie
 home-hero-next = Nächste Serie
 home-card-episode = Folge { $number }
