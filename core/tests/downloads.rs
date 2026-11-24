@@ -83,10 +83,12 @@ fn fake_anirss(capture: &Path) -> String {
     format!(
         "#!/bin/sh\necho \"$*\" > '{args}'\n\
          printf '%s|%s|%s' \"$ANIRSS_QBT_URL\" \"$ANIRSS_QBT_USERNAME\" \"$ANIRSS_QBT_PASSWORD\" > '{qbt}'\n\
+         echo $$ > '{pid}'\n\
          printf '%s' \"$ANIRSS_API_TOKEN\" > '{token}'\nexec sleep 300\n",
         args = capture.join("args").display(),
         qbt = capture.join("qbt").display(),
         token = capture.join("token").display(),
+        pid = capture.join("pid").display(),
     )
 }
 
@@ -314,6 +316,107 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     assert_eq!(search.items[1].seeders, None);
     assert_eq!(search.groups.len(), 1);
     assert!(search.best_fit.available);
+
+    // The sidecar dies and the next search starts it again. That start reads the
+    // endpoints too, so the status never says Ready over a list it did not read (#1433).
+    let pid = captured(capture.path(), "pid");
+    for name in ["pid", "token"] {
+        std::fs::remove_file(capture.path().join(name)).unwrap();
+    }
+    std::process::Command::new("kill")
+        .args(["-9", pid.trim()])
+        .status()
+        .unwrap();
+    // Dead, a zombie until the core reaps it, before the search asks whether it is alive.
+    // ps, not /proc, so the wait holds on macOS too.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", pid.trim()])
+        .output()
+        .is_ok_and(|o| {
+            let stat = String::from_utf8_lossy(&o.stdout);
+            !stat.trim().is_empty() && !stat.trim_start().starts_with('Z')
+        })
+    {
+        assert!(
+            Instant::now() < deadline,
+            "the fake anirss outlived kill -9"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    for _ in 0..2 {
+        http.push_for(
+            "/health",
+            200,
+            json!({"ok": true, "version": "0.5.0", "features": ["qbt_clients", "qbt_env_session"]})
+                .to_string(),
+        );
+    }
+    http.push_for(
+        "/endpoints",
+        200,
+        json!({"endpoints": [
+            {"name": "tracker", "kind": anibeam_core::releases::kinds::RENAMED[0].0, "url": "https://tracker.example/", "client_side_refine": false},
+            {"name": "from-config", "kind": anibeam_core::releases::kinds::RENAMED[0].0, "url": "https://config.example/", "client_side_refine": false}
+        ]}).to_string(),
+    );
+    http.push_for(
+        "/qbt/status",
+        200,
+        json!({"url": "http://localhost:9090", "reachable": true, "authenticated": false, "login_failed": false}).to_string(),
+    );
+    http.push_for(
+        "/search",
+        200,
+        json!({
+            "query": "Frieren 1080p",
+            "endpoint": "tracker",
+            "fell_back": false,
+            "tried": [{"endpoint": "tracker", "status": "ok", "count": 2, "error": null}],
+            "items": items.clone()
+        })
+        .to_string(),
+    );
+    http.push_for(
+        "/refine/analyze",
+        200,
+        json!({
+            "query": "Frieren 1080p",
+            "client_side": false,
+            "auto_resolution": {"applied": false},
+            "items": items.clone(),
+            "groups": [{"label": "Lumen", "tokens": ["[Lumen]"], "member_count": 1, "has_poster": false, "members": [0]}],
+            "best_fit": {"available": true, "query": "Frieren 1080p [Lumen]", "item": release_json(1, json!(42)), "profile": ["[Lumen]"]}
+        })
+        .to_string(),
+    );
+    let job = started(
+        &core,
+        Call::SearchReleases {
+            query: "Frieren 1080p".to_string(),
+            endpoint: None,
+        },
+    );
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(done.body, EventBody::ReleasesFound { .. }),
+        "{:?}",
+        done.body
+    );
+    assert_ne!(captured(capture.path(), "pid").trim(), pid.trim());
+    // The shells hear it: the open settings page drops its dot on this event
+    common::wait_for(
+        &c,
+        |e| {
+            matches!(&e.body, EventBody::DownloadsStatusChanged { status }
+                if status.endpoints.iter().any(|e| e.name == "from-config"))
+        },
+        Duration::from_secs(10),
+    );
+    let status = downloads_status(&core);
+    assert_eq!(status.anirss.state, AnirssState::Ready);
+    let names: Vec<&str> = status.endpoints.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, ["tracker", "from-config"]);
 
     // An anirss from before the server mode: `--serve` is a usage error,
     // and the status names the version and the one Anibeam needs.

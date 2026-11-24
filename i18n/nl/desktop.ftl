@@ -2186,6 +2186,9 @@ endpoint-repos-panel-link-ask = Deze bronlijst uit de link toevoegen?
 endpoint-repos-panel-link-no-url = Deze link bevat geen adres van een bronlijst.
 endpoint-repos-panel-link-not-a-url = Het adres van de bronlijst in deze link kon niet worden gelezen.
 endpoint-repos-panel-link-not-https = Het adres van de bronlijst in deze link gebruikt geen https, dus er is niets toegevoegd.
+endpoint-repos-panel-config-head = Bronnen uit je instellingenbestand
+endpoint-repos-panel-config-why = Je hebt ze ingesteld in { $path }, dus je kunt ze alleen daar wijzigen.
+endpoint-repos-panel-config-locked = Alleen-lezen
 
 ## SourceAttach.qml
 
@@ -2529,10 +2532,6 @@ settings-downloads-magnet-anibeam = Anibeam opent ze
 settings-downloads-magnet-other = Een andere app opent ze
 settings-downloads-magnet-none = Niets opent ze
 settings-downloads-magnet-use = Open ze in Anibeam
-settings-downloads-sources-title = Zoekbronnen
-settings-downloads-sources-empty = Nog geen bronnen ingesteld
-settings-downloads-sources-connect = Koppel de zoekhulp om ze te tonen
-settings-downloads-config-file = Instellingenbestand van de zoekhulp
 settings-downloads-unsaved = Niet-opgeslagen wijzigingen
 settings-downloads-discard = Weggooien
 

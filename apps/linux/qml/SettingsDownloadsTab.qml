@@ -1,8 +1,8 @@
 // Downloads: the source lists first, since nothing searches without one (#1003), then the
 // torrent client (which one, which of the person's saved clients, where, the login, a test),
 // then how searches run (the search helper, anirss, or Anibeam itself) and, for the helper,
-// how Anibeam reaches it and its state, Rolling downloads, finished shows and the search
-// sources anirss was configured with. Edits sit in a draft until Save: the secrets only cross
+// how Anibeam reaches it and its state, Rolling downloads and finished shows. The search
+// helper's own sources show among the source lists, locked (#1434). Edits sit in a draft until Save: the secrets only cross
 // once, and saving stops a running sidecar (its environment carries the password), so a save
 // is one deliberate act followed by a reconnect. While the draft differs, a bar floats at the
 // foot of the section with Discard and Save, so the way to keep a change is never a scroll away from it.
@@ -43,7 +43,6 @@ SettingsTab {
     // The saved engine, as the Save to row applies at once and reads the saved client's folder
     readonly property bool savedNative: !!settings && settings.engine === "Native"
     readonly property var clients: [{ name: "qBittorrent", id: "Qbittorrent" }]
-    readonly property var endpoints: status && status.endpoints ? status.endpoints : []
     readonly property string clientName: {
         for (var i = 0; i < clients.length; i++) if (draft && clients[i].id === draft.torrent_client) return clients[i].name
         return "qBittorrent"
@@ -180,7 +179,7 @@ SettingsTab {
     }
 
     // The source lists first: nothing searches without one (#1003)
-    EndpointReposPanel { grows: false; warns: frame.wantsSourceList(tab.status) }
+    EndpointReposPanel { grows: false; helper: tab.status; warns: frame.wantsSourceList(tab.status) }
     Panel {
         title: words.t("settings-downloads-torrent-title")
         SettingRow { label: words.t("settings-downloads-which-client")
@@ -275,24 +274,6 @@ SettingsTab {
             Switch { checked: frame.prefs.keepDownloadsQuery; onToggled: function(on) { frame.prefs.keepDownloadsQuery = on } } }
         SettingRow { label: words.t("settings-downloads-prune")
             Switch { objectName: "downloads-prune-finished"; checked: !!tab.draft && tab.draft.prune_finished_feeds !== false; onToggled: function(on) { tab.edit(function(d) { d.prune_finished_feeds = on }) } } }
-    }
-    Panel {
-        title: words.t("settings-downloads-sources-title")
-        SettingRow { visible: tab.endpoints.length === 0; label: tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready") ? words.t("settings-downloads-sources-empty") : words.t("settings-downloads-sources-connect")
-            Button { visible: !(tab.nativeEngine || (tab.anirss && tab.anirss.state === "Ready")); msg: "action-connect"; icon: "refresh-cw"; enabled: !tab.dirty; onClicked: tab.connect() } }
-        Repeater {
-            model: tab.endpoints
-            SettingRow {
-                required property var modelData
-                required property int index
-                label: modelData.name
-                line: modelData.url
-                Chip { text: String(modelData.kind); small: true; color: theme.raised }
-            }
-        }
-        SettingRow { label: words.t("settings-downloads-config-file")
-            status: tab.anirss && tab.anirss.config_path ? tab.anirss.config_path : "~/.config/anirss/config.toml"
-            Button { msg: "action-open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) } }
     }
     FolderDialog {
         id: saveFolderDialog

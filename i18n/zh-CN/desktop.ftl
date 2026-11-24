@@ -1689,6 +1689,9 @@ endpoint-repos-panel-link-ask = 要从链接添加此来源列表吗？
 endpoint-repos-panel-link-no-url = 此链接中没有来源列表地址。
 endpoint-repos-panel-link-not-a-url = 无法读取此链接中的来源列表地址。
 endpoint-repos-panel-link-not-https = 此链接中的来源列表地址未使用 https，因此没有添加任何内容。
+endpoint-repos-panel-config-head = 你设置文件中的来源
+endpoint-repos-panel-config-why = 这些来源是你在 { $path } 中设置的，所以只能在那里更改。
+endpoint-repos-panel-config-locked = 只读
 
 ## SourceAttach.qml
 
@@ -2023,10 +2026,6 @@ settings-downloads-magnet-anibeam = 由 Anibeam 打开
 settings-downloads-magnet-other = 由其他应用打开
 settings-downloads-magnet-none = 没有应用打开
 settings-downloads-magnet-use = 用 Anibeam 打开
-settings-downloads-sources-title = 搜索来源
-settings-downloads-sources-empty = 还没有设置来源
-settings-downloads-sources-connect = 连接搜索助手后即可列出
-settings-downloads-config-file = 搜索助手的设置文件
 settings-downloads-unsaved = 有未保存的更改
 settings-downloads-discard = 放弃
 
