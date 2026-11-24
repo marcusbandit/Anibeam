@@ -58,13 +58,13 @@ impl DownloadsBackend {
         match engine {
             DownloadsEngine::Anirss => ensure_client(downloads).await.map(DownloadsBackend::Anirss),
             DownloadsEngine::Native => {
-                // The installed endpoints' credentials come from the keyring, and the saved
-                // ranking from anirss's config on disk: both off the runtime
                 let services = downloads.services.clone();
-                let native = on_qbt::blocking(move || {
-                    saved_bestfit(&services).map(|b| Native::for_core(&services, Vec::new(), b))
+                let native = tokio::task::spawn_blocking(move || {
+                    let bestfit = saved_bestfit(&services)?;
+                    Ok::<_, CoreError>(Native::for_core(&services, Vec::new(), bestfit))
                 })
-                .await??;
+                .await
+                .map_err(|e| CoreError::internal(e.to_string()))??;
                 tracing::debug!(
                     "searching on the core's engine: {} endpoints",
                     native.endpoints.len()

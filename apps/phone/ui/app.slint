@@ -1,0 +1,680 @@
+import { Theme } from "theme.slint";
+import { Tr } from "tr.slint";
+import { LangChoice, LangData } from "lang.slint";
+import { AiringMenu, AppData, CalDay, CalItem, CheckRow, DownloadRow, EpisodeLine, EpisodeVersionLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
+import { Button, NavItem, Pane } from "widgets.slint";
+import { HomePage } from "home.slint";
+import { LibraryPage } from "library.slint";
+import { Ask, MorePage, SettingHit, Settings } from "more.slint";
+import { SubtitleData } from "subtitles.slint";
+import { FeedData } from "feed.slint";
+import { DiskData, DiskSheet, HiddenRow } from "disk.slint";
+import { SeriesPage } from "series.slint";
+import { Onboarding } from "onboarding.slint";
+import { FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Suggestion } from "find.slint";
+import { DownloadsPage } from "downloads.slint";
+import { AuthRow, EndpointRow, RepoData, RepoRow } from "repos.slint";
+import { Band, PickRow, PlayerData, PlayerPage } from "player.slint";
+import { NotesPage } from "notes.slint";
+import { StatBar, StatRank, StatsData } from "stats.slint";
+import { BackupData } from "backup.slint";
+import { ActivityData, LogRow } from "activity.slint";
+import { MoveData, MoveLine, MoveSheet } from "listmove.slint";
+import { LookData, LookTheme } from "look.slint";
+import { CalendarPage } from "calendar.slint";
+import { AiringPick, AiringSheet, SeasonSheet } from "airing.slint";
+import { Area, Fold } from "fold.slint";
+import { NotifyQuestion } from "notify.slint";
+import { Sheet } from "sheet.slint";
+import { ShowCard, ShowData, ShowPerson } from "show.slint";
+import { MatchData, MatchRow } from "show-match.slint";
+import { DateTile, ScheduleData } from "show-dates.slint";
+import { ShowSheets } from "show-sheets.slint";
+
+export { Theme, Tr, LangChoice, LangData }
+export { ActivityData, LogRow, LookData, LookTheme, MoveData, MoveLine }
+export { Nav, DiskData, HiddenRow, FeedData, AiringPick, SubtitleData, AiringMenu, AppData, AuthRow, BackupData, Band, CalDay, CalItem, CheckRow, DateTile, Fold, SettingHit, Settings, DownloadRow, EpisodeLine, EpisodeVersionLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, ScheduleData, SeriesHead, MatchData, MatchRow, Shelf, ShowCard, ShowData, ShowPerson, SourceChip, SourceRow, StatBar, StatRank, StatsData, Suggestion, Tile }
+
+// "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
+// A sheet from the foot, the floating glass of the desktop's sheets.
+component MobileDataQuestion inherits Sheet {
+    dismissed => { Ask.mobile = false; }
+    Text {
+        text: Tr.t("app-mobile-title");
+        color: Theme.text;
+        font-size: Theme.section;
+        font-family: Theme.display-face;
+        wrap: word-wrap;
+    }
+    Text {
+        text: Tr.t("app-mobile-note");
+        color: Theme.dim;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
+    Rectangle { height: Theme.unit; }
+    Button {
+        text: Tr.t("app-mobile-keep");
+        primary: true;
+        clicked => { Ask.mobile = false; }
+    }
+    Button {
+        text: Tr.t("app-mobile-use");
+        clicked => {
+            Ask.mobile = false;
+            AppData.set-wifi-only(false);
+        }
+    }
+}
+
+// An episode kept in more than one release: which one plays, each named by its release.
+component VersionsMenu inherits Rectangle {
+    in property <length> inset-bottom;
+    background: #000000b0;
+    TouchArea { clicked => { Ask.versions-open = false; } }
+    Rectangle {
+        x: Fold.sheet-x + Theme.grout;
+        width: Fold.sheet-width - 2 * Theme.grout;
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
+        height: body.preferred-height;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: Theme.pad;
+            padding-top: Theme.pad + Theme.unit;
+            spacing: Theme.unit * 3;
+            Text {
+                text: Ask.versions-title;
+                color: Theme.text;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
+            }
+            Text {
+                text: Tr.n("app-versions-note", "count", Ask.versions.length);
+                color: Theme.dim;
+                font-size: Theme.small + 1px;
+                wrap: word-wrap;
+            }
+            Rectangle { height: Theme.unit; }
+            // Many releases scroll inside the sheet rather than push it off the screen.
+            Flickable {
+                height: Math.min(list.preferred-height, root.height * 0.5);
+                content-height: list.preferred-height;
+                interactive: list.preferred-height > self.height;
+                list := VerticalLayout {
+                    spacing: Theme.unit * 3;
+                    // The release the row plays now is the primary one.
+                    for v in Ask.versions: Button {
+                        text: v.file == Ask.versions-current ? Tr.s("app-versions-plays-now", "release", v.label) : v.label;
+                        primary: v.file == Ask.versions-current;
+                        clicked => {
+                            Ask.versions-open = false;
+                            if (Ask.versions-remote) {
+                                AppData.play-remote(v.file);
+                            } else {
+                                AppData.play(v.file);
+                            }
+                        }
+                    }
+                }
+            }
+            Button {
+                text: Tr.t("common-cancel");
+                clicked => { Ask.versions-open = false; }
+            }
+        }
+    }
+}
+
+// A poster held down: what can be done to the show without opening it.
+component ShowMenu inherits Rectangle {
+    in property <length> inset-bottom;
+    background: #000000b0;
+    TouchArea { clicked => { Ask.menu-id = -1; } }
+    Rectangle {
+        x: Fold.sheet-x + Theme.grout;
+        width: Fold.sheet-width - 2 * Theme.grout;
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
+        height: body.preferred-height;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: Theme.pad;
+            padding-top: Theme.pad + Theme.unit;
+            spacing: Theme.unit * 3;
+            Text {
+                text: Ask.menu-title;
+                color: Theme.text;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
+            }
+            Rectangle { height: Theme.unit; }
+            Button {
+                text: Tr.t("app-menu-get");
+                icon: @image-url("icons/download.svg");
+                has-icon: true;
+                primary: true;
+                clicked => {
+                    FindData.find-series(Ask.menu-id);
+                    Ask.menu-id = -1;
+                    Nav.page = 2;
+                }
+            }
+            Button {
+                text: Tr.t("common-hide");
+                clicked => {
+                    DiskData.hide(Ask.menu-id);
+                    Ask.menu-id = -1;
+                }
+            }
+            Button {
+                text: Tr.t("app-menu-delete");
+                danger: true;
+                clicked => {
+                    AppData.open-series(Ask.menu-id);
+                    AppData.start-delete();
+                    Ask.menu-id = -1;
+                }
+            }
+            Button {
+                text: Tr.t("common-cancel");
+                clicked => { Ask.menu-id = -1; }
+            }
+        }
+    }
+}
+
+// An episode held down: its mark, the desktop's words for the cube's click.
+component MarkMenu inherits Rectangle {
+    in property <length> inset-bottom;
+    background: #000000b0;
+    TouchArea { clicked => { Ask.mark-open = false; } }
+    Rectangle {
+        x: Fold.sheet-x + Theme.grout;
+        width: Fold.sheet-width - 2 * Theme.grout;
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
+        height: body.preferred-height;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        TouchArea { }
+        body := VerticalLayout {
+            padding: Theme.pad;
+            padding-top: Theme.pad + Theme.unit;
+            spacing: Theme.unit * 3;
+            Text {
+                text: Ask.mark-title;
+                color: Theme.text;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
+            }
+            Rectangle { height: Theme.unit; }
+            Button {
+                text: Ask.mark-watched ? AppData.mark-unwatched-label : AppData.mark-watched-label;
+                icon: @image-url("icons/check-check.svg");
+                has-icon: true;
+                primary: true;
+                clicked => {
+                    AppData.mark(Ask.mark-number, Ask.mark-season, Ask.mark-watched);
+                    Ask.mark-open = false;
+                }
+            }
+            Button {
+                text: AppData.mark-cancel-label;
+                clicked => { Ask.mark-open = false; }
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: Tr.t("app-title");
+    background: Theme.ground;
+    default-font-size: Theme.normal;
+    default-font-family: Theme.face;
+
+    property <int> page: Nav.page;
+
+    // Each tab, in the order the bar shows them, with the page it opens and whether
+    // something new waits behind it.
+    property <[{icon: image, label: string, page: int, dot: bool}]> destinations: [
+        { icon: @image-url("icons/house.svg"), label: Tr.t("phone-nav-home"), page: 0, dot: false },
+        { icon: @image-url("icons/calendar-days.svg"), label: Tr.t("nav-calendar"), page: 4, dot: false },
+        { icon: @image-url("icons/layers.svg"), label: Tr.t("phone-nav-library"), page: 1, dot: false },
+        { icon: @image-url("icons/download.svg"), label: Tr.t("phone-nav-downloads"), page: 2, dot: false },
+        { icon: @image-url("icons/ellipsis.svg"), label: Tr.t("nav-more"), page: 3, dot: AppData.update-unseen },
+    ];
+
+    // The system bars draw over the window; keep touch targets out from under them.
+    property <length> inset-top: self.safe-area-insets.top;
+    property <length> inset-bottom: self.safe-area-insets.bottom;
+    property <length> inset-left: self.safe-area-insets.left;
+    property <length> inset-right: self.safe-area-insets.right;
+
+    // Fold works the layout out from the window's size and insets and the hinge.
+    function measure() {
+        if (Fold.width != self.width || Fold.height != self.height) {
+            Fold.still = false;
+            resize-done.running = false;
+            resize-done.running = true;
+        }
+        Fold.width = self.width;
+        Fold.height = self.height;
+        Fold.inset-top = self.inset-top;
+        Fold.inset-bottom = self.inset-bottom;
+        Fold.inset-left = self.inset-left;
+        Fold.inset-right = self.inset-right;
+    }
+    init => { self.measure(); }
+    // A change of posture sets Fold.moving for as long as things take to settle.
+    property <int> posture: Fold.posture;
+    changed posture => { self.start-moving(); }
+    function start-moving() {
+        Fold.moving = true;
+        moving-done.running = false;
+        moving-done.running = true;
+    }
+    moving-done := Timer {
+        interval: 450ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            Fold.moving = false;
+        }
+    }
+    resize-done := Timer {
+        interval: 500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            Fold.still = true;
+        }
+    }
+    changed width => { self.measure(); }
+    changed height => { self.measure(); }
+    changed inset-top => { self.measure(); }
+    changed inset-bottom => { self.measure(); }
+    changed inset-left => { self.measure(); }
+    changed inset-right => { self.measure(); }
+
+    // Where a series page opens in the fold layouts: over the pane that shows, sized for
+    // the page it opened from.
+    property <float> series-share: root.page == 1 ? 0.56 : root.page == 4 ? (AppData.airing-view ? 0.38 : 0.5) : root.page == 0 ? 0.6 : 0.46;
+
+    // How far the series page is in, 0 gone to 1 in place. Leaving the tab takes it away at
+    // once rather than sliding it over the next one.
+    property <float> series-in: AppData.series-open ? 1 : 0;
+    property <bool> series-cut;
+    animate series-in { duration: AppData.series-open ? 200ms : root.series-cut ? 0ms : 320ms; easing: ease-in-out; }
+
+    forward-focus: keys;
+
+    // A view that goes away can take the focused field with it (the search field when a show
+    // opens), and with no focus left Back goes to Android and closes the app. Whenever the
+    // view changes, the window takes the keys back.
+    property <int> find-view: FindData.view;
+    property <bool> series-shown: AppData.series-open;
+    property <bool> player-shown: PlayerData.open;
+    property <bool> notes-shown: AppData.notes-open;
+    property <int> settings-section: Settings.section;
+    // Back on the index with a search, the hits are found again: a feed or repo may be gone.
+    changed settings-section => {
+        if (Settings.section == -1 && Settings.query != "") {
+            Settings.find(Settings.query);
+        }
+        keys.focus();
+    }
+    // Still on what an anibeam://add-repo link opened (src/link.rs). Moved anywhere else by
+    // the person, Back forgets the way back to where they were.
+    property <bool> on-link: AppData.onboarding ? AppData.step == AppData.onboarding-sites : Nav.page == 3 && Settings.section == 3;
+    changed on-link => {
+        if (!root.on-link) {
+            Nav.link-back = false;
+        }
+    }
+    changed find-view => { keys.focus(); }
+    changed notes-shown => { keys.focus(); }
+    // Split, a series opening or closing narrows or widens the page beside it, and its grid
+    // glides to the new columns as it would on a bend.
+    changed series-shown => {
+        keys.focus();
+        if (AppData.series-open) {
+            root.series-cut = false;
+        }
+        if (Fold.split) {
+            root.start-moving();
+        }
+    }
+    changed player-shown => { keys.focus(); }
+
+    // Public for control over adb's `go` (src/control/).
+    public function go(to: int) {
+        root.series-cut = true;
+        AppData.close-series();
+        // Downloads opens on its lenses; a show or a list left open stays as it was.
+        if (to == 2 && !FindData.shown) {
+            FindData.open("");
+        }
+        // More's tab, tapped on More, goes back to its index.
+        if (to == 3 && root.page == 3) {
+            Settings.section = -1;
+        }
+        Nav.page = to;
+        keys.focus();
+    }
+
+    // Takes the focus back from a field, which puts the on-screen keyboard away, as Back does
+    // on a phone while it shows. For control over adb's `back` (src/control/).
+    public function drop-keyboard() {
+        keys.focus();
+    }
+
+    // What Back closes first, by number, for control over adb's `where`: OVER in
+    // src/control/ui.rs names each. It follows the handler below, so a question or sheet
+    // added there gets the next number here and its name there. 0 is nothing.
+    public pure function over() -> int {
+        // Back closes the player's picker before the player, and does nothing while locked.
+        if (PlayerData.open && PlayerData.picker != 0) { return 20; }
+        if (PlayerData.open && PlayerData.locked) { return 21; }
+        if (PlayerData.open) { return 1; }
+        if (AppData.notes-open) { return 2; }
+        if (Ask.mobile) { return 3; }
+        if (AppData.notify-ask) { return 4; }
+        if (Ask.menu-id >= 0) { return 5; }
+        if (Ask.mark-open) { return 6; }
+        if (Ask.versions-open) { return 7; }
+        if (ShowData.sheet != 0) { return 7 + Math.min(ShowData.sheet, 8); }
+        if (AppData.airing-menu.show) { return 16; }
+        if (AiringPick.open) { return 17; }
+        if (DiskData.sheet != 0) { return 18; }
+        if (MoveData.open) { return 19; }
+        // Not drawn over the page, but Back takes it next: it returns to where the link found
+        // the person
+        if (Nav.link-back && root.on-link) { return 22; }
+        return 0;
+    }
+
+    keys := FocusScope {
+        // Back closes a question, then a series page, then goes Home, and only leaves the
+        // app from there. During onboarding it steps back.
+        key-pressed(event) => {
+            if (event.text != Key.Back) {
+                return reject;
+            }
+            if (PlayerData.open && PlayerData.picker != 0) {
+                PlayerData.close-picker();
+                return accept;
+            }
+            // Locked, back does nothing either: an edge swipe is the stray touch most likely.
+            if (PlayerData.open) {
+                if (!PlayerData.locked) {
+                    PlayerData.back();
+                }
+                return accept;
+            }
+            if (AppData.notes-open) {
+                AppData.close-notes();
+                return accept;
+            }
+            if (Ask.mobile) {
+                Ask.mobile = false;
+                return accept;
+            }
+            if (AppData.notify-ask) {
+                AppData.notify-ask = false;
+                return accept;
+            }
+            if (Ask.menu-id >= 0) {
+                Ask.menu-id = -1;
+                return accept;
+            }
+            if (Ask.mark-open) {
+                Ask.mark-open = false;
+                return accept;
+            }
+            if (Ask.versions-open) {
+                Ask.versions-open = false;
+                return accept;
+            }
+            if (ShowData.sheet != 0) {
+                ShowData.close();
+                return accept;
+            }
+            if (AppData.airing-menu.show) {
+                AppData.airing-close();
+                return accept;
+            }
+            if (AiringPick.open) {
+                AiringPick.open = false;
+                return accept;
+            }
+            if (DiskData.sheet != 0) {
+                DiskData.sheet = 0;
+                return accept;
+            }
+            if (MoveData.open) {
+                MoveData.later();
+                return accept;
+            }
+            // What an anibeam://add-repo link opened goes back to where the person was, and
+            // the list it showed is left untrusted.
+            if (Nav.link-back && root.on-link) {
+                Nav.link-back = false;
+                RepoData.cancel();
+                if (AppData.onboarding) {
+                    AppData.step = Nav.link-step;
+                } else {
+                    Settings.section = Nav.link-section;
+                    Nav.page = Nav.link-page;
+                }
+                return accept;
+            }
+            if (AppData.onboarding && AppData.step > 0) {
+                AppData.step -= 1;
+                return accept;
+            }
+            if (AppData.series-open && AppData.deleting) {
+                AppData.cancel-delete();
+                return accept;
+            }
+            if (AppData.series-open) {
+                AppData.close-series();
+                return accept;
+            }
+            if (root.page == 2 && FindData.shown && FindData.view > 0) {
+                FindData.back();
+                return accept;
+            }
+            // In More, Back leaves a section for the index, then clears the search.
+            if (root.page == 3 && Settings.section >= 0) {
+                Settings.section = -1;
+                return accept;
+            }
+            if (root.page == 3 && Settings.query != "") {
+                Settings.query = "";
+                Settings.find("");
+                return accept;
+            }
+            if (root.page != 0) {
+                Nav.page = 0;
+                return accept;
+            }
+            reject
+        }
+
+        body := Rectangle {
+            x: Fold.body-x;
+            y: Fold.body-y;
+            width: Fold.body-width;
+            height: Fold.body-height;
+            animate x, width { duration: Fold.settle; easing: ease-in-out; }
+            clip: true;
+
+            HomePage {
+                visible: root.page == 0;
+            }
+            LibraryPage {
+                visible: root.page == 1;
+            }
+            DownloadsPage {
+                visible: root.page == 2;
+            }
+            MorePage {
+                visible: root.page == 3;
+            }
+            if root.page == 4: CalendarPage { }
+            // Folded, the series page covers the body; otherwise it opens over the pane that
+            // shows, and the page beside it stays in reach. It slides in from the right when
+            // nothing was open, quicker in than out; another series picked while one is open
+            // takes its place at once.
+            if AppData.series-open || root.series-in > 0: Rectangle {
+                property <Area> area: Fold.show(root.series-share);
+                x: self.area.x;
+                y: self.area.y;
+                width: self.area.width;
+                height: self.area.height;
+                animate x, y, width, height { duration: Fold.settle; easing: ease-in-out; }
+                clip: true;
+                Rectangle {
+                    x: (1 - root.series-in) * parent.width;
+                    width: parent.width;
+                    height: parent.height;
+                    background: Theme.ground;
+                    TouchArea { }
+                    SeriesPage { }
+                    // Sliding out, it is already closed: nothing on it takes a touch.
+                    if !AppData.series-open: TouchArea { }
+                    if Fold.split: Rectangle {
+                        x: 0;
+                        width: 1px;
+                        background: Theme.line;
+                        opacity: Fold.posture == 1 ? 1 : 0;
+                        animate opacity { duration: Fold.settle; }
+                    }
+                }
+            }
+        }
+
+        // Navigation: along the bottom folded, down the left otherwise. The rail narrows as
+        // the phone bends, and the body slides with it.
+        nav := Rectangle {
+            x: 0;
+            y: Fold.rail ? 0 : root.height - Fold.bar-height - root.inset-bottom;
+            width: Fold.rail ? root.inset-left + Fold.rail-width : root.width;
+            height: Fold.rail ? root.height : Fold.bar-height + root.inset-bottom;
+            animate width { duration: Fold.settle; easing: ease-in-out; }
+            background: Theme.ground;
+            Rectangle {
+                x: Fold.rail ? parent.width - 1px : 0;
+                y: 0;
+                width: Fold.rail ? 1px : parent.width;
+                height: Fold.rail ? parent.height : 1px;
+                background: Theme.line;
+            }
+            // Stood up, the bar keeps to a phone's width in the middle, under the thumbs.
+            property <length> bar-span: self.width - root.inset-left - root.inset-right;
+            property <length> bar-x: root.inset-left + (self.width - root.inset-left - root.inset-right - self.bar-span) / 2;
+            property <length> item-width: Fold.rail ? Fold.rail-width : self.bar-span / root.destinations.length;
+            property <length> item-height: Fold.rail ? 19 * Theme.unit : Fold.bar-height;
+            // The rail's tabs sit high, where a thumb holding the side reaches them, and
+            // clear of the top inset.
+            property <length> rail-top: root.inset-top + 6 * Theme.unit;
+            for destination[i] in root.destinations: NavItem {
+                x: Fold.rail ? root.inset-left : parent.bar-x + i * parent.item-width;
+                y: Fold.rail ? parent.rail-top + i * parent.item-height : 0;
+                width: parent.item-width;
+                height: parent.item-height;
+                animate width { duration: Fold.settle; easing: ease-in-out; }
+                icon: destination.icon;
+                label: destination.label;
+                active: root.page == destination.page;
+                dot: destination.dot;
+                clicked => { root.go(destination.page); }
+            }
+        }
+
+        // Onboarding covers the bars too, on a ground of its own; unfolded it keeps to a
+        // readable column, and as a book to the right page.
+        if AppData.onboarding: Rectangle {
+            background: Theme.ground;
+            TouchArea { }
+            Onboarding {
+                x: Fold.posture == 0 ? root.inset-left : Fold.sheet-x;
+                y: root.inset-top;
+                width: Fold.posture == 0 ? root.width - root.inset-left - root.inset-right : Fold.sheet-width;
+                height: root.height - root.inset-top - root.inset-bottom;
+            }
+        }
+
+        if Ask.mobile: MobileDataQuestion {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if AppData.notify-ask: NotifyQuestion {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if Ask.menu-id >= 0: ShowMenu {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if Ask.mark-open: MarkMenu {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if Ask.versions-open: VersionsMenu {
+            inset-bottom: root.inset-bottom;
+        }
+
+        ShowSheets {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if AppData.airing-menu.show: AiringSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if AiringPick.open: SeasonSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if DiskData.sheet != 0: DiskSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        if MoveData.open: MoveSheet {
+            inset-bottom: root.inset-bottom;
+        }
+
+        // What's new covers the pages and the bars, onboarding included.
+        // Unfolded it keeps to the same readable column as onboarding.
+        if AppData.notes-open: NotesPage {
+            width: root.width;
+            height: root.height;
+            inset-left: Fold.posture == 0 ? root.inset-left : Fold.sheet-x;
+            inset-right: Fold.posture == 0 ? root.inset-right : root.width - Fold.sheet-x - Fold.sheet-width;
+            inset-top: root.inset-top;
+            inset-bottom: root.inset-bottom;
+        }
+
+        // The player covers everything, the bars included: Android hides them while it plays.
+        if PlayerData.open: PlayerPage {
+            width: root.width;
+            height: root.height;
+            inset-left: root.inset-left;
+            inset-right: root.inset-right;
+            inset-top: root.inset-top;
+            inset-bottom: root.inset-bottom;
+        }
+    }
+}

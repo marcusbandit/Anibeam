@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fails when the tree names a download site (#277, #606): Anibeam ships no sources, and a site
-# exists only as a definition in an endpoint repo the person attaches. CONTRIBUTING.md has the
+# exists only as a definition in an endpoint repo the person attaches. It also fails on the old
+# list of sources Anibeam no longer links (#1417); the template repo is fine. CONTRIBUTING.md has the
 # rule under Sources.
 #
 # Skipped, as the owner decided on 2026-11-06: what is written history (each app's
@@ -9,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-names='nyaa|animetosho|tosho|erai|erai-raws|subsplease|sukebei|1337x|knaben|limetorrents|everythingmoe|ddos-guard|anirena|eztv|eztvx'
+names='nyaa|animetosho|tosho|erai|erai-raws|subsplease|sukebei|1337x|knaben|limetorrents|everythingmoe|ddos-guard|anirena|eztv|eztvx|anibeam[-_]endpoints(?!-template(?![a-z0-9-]))'
 
 # A name counts unless a lower-case letter or a digit runs on into it: tracker_nyaa_kind,
 # nyaaSource and SubspleaseQuirks are hits, surfaceRaised is another word. The name itself
