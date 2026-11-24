@@ -1,0 +1,962 @@
+//! This phone's own library, read from its core, in the shapes the Slint pages take.
+
+use std::collections::{HashMap, HashSet};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use anibeam_companion::calendar;
+use anibeam_companion::format;
+use anibeam_core::i18n::tr;
+use anibeam_core::{AiringStatus, Episode, SeriesCard, SeriesDetail, SeriesKind, WeekDrop};
+use chrono::{Datelike, Days, NaiveDate};
+
+use crate::posters;
+use crate::remote::Art;
+use crate::{CalDay, CalItem, EpisodeLine, EpisodeVersionLine, Hero, SeriesHead, Tile};
+
+/// How many tiles a Home shelf holds.
+const SHELF: usize = 12;
+
+pub fn secs(t: SystemTime) -> i64 {
+    t.duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// The core's cube letters (`library::cards::cubes`) as Theme.cube's codes.
+pub fn cube_codes(cubes: &str) -> Vec<i32> {
+    cubes.chars().map(cube_code).collect()
+}
+
+fn cube_code(c: char) -> i32 {
+    match c {
+        'w' => 0,
+        'l' => 1,
+        'd' => 2,
+        'm' | 'e' => 3,
+        'f' => 5,
+        't' => 6,
+        _ => 4,
+    }
+}
+
+/// "6 Oct", with the year when it is not this one: "6 Oct 2023".
+fn date(at: i64, now: i64) -> String {
+    let year = |t: i64| {
+        chrono::DateTime::from_timestamp(t, 0).map(|d| d.with_timezone(&chrono::Local).year())
+    };
+    if year(at) == year(now) {
+        format::day_month(at)
+    } else {
+        format!("{} {}", format::day_month(at), year(at).unwrap_or_default())
+    }
+}
+
+fn id(series: u64) -> i32 {
+    i32::try_from(series).unwrap_or(-1)
+}
+
+fn title(card: &SeriesCard) -> &str {
+    &card.title
+}
+
+fn tile(card: &SeriesCard, art: &Art) -> Tile {
+    let (poster, has_poster) = art.poster(Some(card.id));
+    Tile {
+        id: id(card.id),
+        title: title(card).into(),
+        poster,
+        has_poster,
+        initials: format::initials(title(card)).into(),
+        cubes: std::rc::Rc::new(slint::VecModel::from(cube_codes(&card.cubes))).into(),
+        ..Default::default()
+    }
+}
+
+fn next_code(card: &SeriesCard) -> Option<String> {
+    card.next_airing
+        .as_ref()
+        .map(|a| format::episode_code(a.season, a.episode))
+}
+
+fn on_phone(card: &SeriesCard) -> String {
+    match card.episodes_on_disk {
+        0 => tr!("phone-nothing-on-phone"),
+        n => tr!("phone-on-phone", count = n),
+    }
+}
+
+/// The library's tile: the next episode and when it airs, else how many are on the phone.
+fn library_tile(card: &SeriesCard, art: &Art, now: i64) -> Tile {
+    let mut t = tile(card, art);
+    if let Some(next) = card.next_airing.as_ref().filter(|a| secs(a.at) > now) {
+        t.badge = format::episode_code(next.season, next.episode).into();
+        t.ledger = format::countdown(secs(next.at) - now).into();
+        t.ledger_tone = 1;
+    } else {
+        t.ledger = on_phone(card).into();
+    }
+    if let Some(d) = card.downloading.first() {
+        t.flag = format!("{}%", (d.progress * 100.0).round() as i64).into();
+    }
+    t
+}
+
+pub fn library<'a>(
+    cards: impl IntoIterator<Item = &'a SeriesCard>,
+    art: &Art,
+    now: i64,
+) -> Vec<Tile> {
+    cards
+        .into_iter()
+        .map(|c| library_tile(c, art, now))
+        .collect()
+}
+
+/// Home, in one read of the cards: the hero, the recently watched and recently downloaded
+/// shelves, and the calendar with the few episodes that air next.
+pub struct HomeView {
+    pub hero: Hero,
+    pub watched: Vec<Tile>,
+    pub downloaded: Vec<Tile>,
+    /// Each day, and what airs on it apart, so the app only rebuilds the days that changed.
+    pub calendar: Vec<(CalDay, Vec<CalItem>)>,
+    pub coming: Vec<CalItem>,
+}
+
+/// The calendar's span: two days back, today, and a week ahead. The core's week airings
+/// reach from three days before the moment the cards were read to eight after, so these
+/// whole days are inside that window all day.
+pub const CAL_BACK: usize = 2;
+pub const CAL_DAYS: usize = CAL_BACK + 8;
+/// How many of the next episodes Home lists.
+const COMING: usize = 4;
+
+pub fn home(cards: &[SeriesCard], art: &Art, now: i64) -> HomeView {
+    let upcoming: Vec<(&SeriesCard, i64)> = cards
+        .iter()
+        .filter_map(|c| c.next_airing.as_ref().map(|a| (c, secs(a.at))))
+        .filter(|(_, at)| *at > now)
+        .collect();
+
+    let hero = upcoming
+        .iter()
+        .min_by_key(|(_, at)| *at)
+        .map(|(c, at)| hero(c, *at, art, now))
+        .unwrap_or_default();
+    let hero_at = upcoming
+        .iter()
+        .min_by_key(|(_, at)| *at)
+        .map(|(c, at)| (c.id, *at));
+    let (calendar, coming) = calendar(cards, art, now, hero_at);
+
+    let mut watched: Vec<&SeriesCard> = cards
+        .iter()
+        .filter(|c| c.last_viewed_at.is_some())
+        .collect();
+    watched.sort_by_key(|c| std::cmp::Reverse(c.last_viewed_at.map(secs)));
+    let watched = watched
+        .into_iter()
+        .take(SHELF)
+        .map(|c| {
+            let mut t = tile(c, art);
+            if let Some(code) = &c.code {
+                t.badge = code.clone().into();
+            }
+            t.ledger = c
+                .last_viewed_at
+                .map(|at| format::ago(now - secs(at)))
+                .unwrap_or_default()
+                .into();
+            t
+        })
+        .collect();
+
+    let mut downloaded: Vec<&SeriesCard> =
+        cards.iter().filter(|c| c.downloaded_at.is_some()).collect();
+    downloaded.sort_by_key(|c| std::cmp::Reverse(c.downloaded_at.map(secs)));
+    let downloaded = downloaded
+        .into_iter()
+        .take(SHELF)
+        .map(|c| {
+            let mut t = tile(c, art);
+            t.ledger = c
+                .downloaded_at
+                .map(|at| format::ago(now - secs(at)))
+                .unwrap_or_default()
+                .into();
+            if let Some(d) = c.downloading.first() {
+                t.flag = format!("{}%", (d.progress * 100.0).round() as i64).into();
+            }
+            t
+        })
+        .collect();
+
+    HomeView {
+        hero,
+        watched,
+        downloaded,
+        calendar,
+        coming,
+    }
+}
+
+/// "Episode 5", or "Episodes 5 to 7" for a drop of several at once.
+fn episodes(drop: &WeekDrop) -> String {
+    let code = |e: u32| match drop.season {
+        Some(s) if s > 1 => format!("S{s} E{e}"),
+        _ => format!("{e}"),
+    };
+    match drop.through.filter(|t| *t > drop.episode) {
+        Some(t) => tr!(
+            "phone-episodes-range",
+            from = code(drop.episode),
+            to = code(t)
+        ),
+        None => tr!("common-episode-n", n = code(drop.episode)),
+    }
+}
+
+/// Every day from two back to a week ahead with what airs on it, in air order, and the
+/// next few still to air across all of them.
+fn calendar(
+    cards: &[SeriesCard],
+    art: &Art,
+    now: i64,
+    hero: Option<(u64, i64)>,
+) -> (Vec<(CalDay, Vec<CalItem>)>, Vec<CalItem>) {
+    let today = calendar::today(now);
+    let mut drops: Vec<(&SeriesCard, &WeekDrop, i64)> = cards
+        .iter()
+        .flat_map(|c| c.week_airings.iter().map(move |d| (c, d, secs(d.at))))
+        .collect();
+    drops.sort_by_key(|(c, _, at)| (*at, c.id));
+    let next_at = drops.iter().map(|(_, _, at)| *at).find(|at| *at > now);
+
+    let item = |c: &SeriesCard, d: &WeekDrop, at: i64, with_day: bool| {
+        let (poster, has_poster) = art.poster(Some(c.id));
+        let state = if at > now {
+            0
+        } else if d.here {
+            1
+        } else {
+            2
+        };
+        let when = match state {
+            0 => format::countdown(at - now),
+            1 => tr!("phone-on-the-phone"),
+            _ => tr!("phone-out-ago", ago = format::ago(now - at)),
+        };
+        CalItem {
+            id: id(c.id),
+            title: title(c).into(),
+            poster,
+            has_poster,
+            initials: format::initials(title(c)).into(),
+            time: format::clock(at).into(),
+            // Home's list spans days, so its rows say which.
+            episode: if with_day {
+                tr!(
+                    "phone-episode-day",
+                    episode = episodes(d),
+                    day = day_word(calendar::today(at), today)
+                )
+            } else {
+                episodes(d)
+            }
+            .into(),
+            when: when.into(),
+            state,
+            soonest: Some(at) == next_at,
+            remote: false,
+        }
+    };
+
+    let timed: Vec<(i64, CalItem)> = drops
+        .iter()
+        .map(|(c, d, at)| (*at, item(c, d, *at, false)))
+        .collect();
+    let days = days_of(timed, now);
+    // Home's hero is the next to air; the list leaves it out rather than say it twice.
+    let coming = drops
+        .iter()
+        .filter(|(c, _, at)| *at > now && Some((c.id, *at)) != hero)
+        .take(COMING)
+        .map(|(c, d, at)| item(c, d, *at, true))
+        .collect();
+    (days, coming)
+}
+
+/// The calendar's days, from two back to a week ahead, each with the items that air on it.
+/// `timed` is in air order; each item carries its air time beside it.
+pub fn days_of(timed: Vec<(i64, CalItem)>, now: i64) -> Vec<(CalDay, Vec<CalItem>)> {
+    let today = calendar::today(now);
+    let first = today - Days::new(CAL_BACK as u64);
+    let mut days: Vec<(CalDay, Vec<CalItem>)> = (0..CAL_DAYS)
+        .map(|i| {
+            let date = first + Days::new(i as u64);
+            let (start, end) = (
+                calendar::midnight(date),
+                calendar::midnight(date + Days::new(1)),
+            );
+            let items: Vec<CalItem> = timed
+                .iter()
+                .filter(|(at, _)| *at >= start && *at < end)
+                .map(|(_, item)| item.clone())
+                .collect();
+            let day = CalDay {
+                weekday: format::day(date, "cal-weekday-short", "%a").into(),
+                date: date.day().to_string().into(),
+                title: day_word(date, today).into(),
+                offset: (date - today).num_days().clamp(-9, 9) as i32,
+                full: format::day(date, "cal-day-full", "%A %-d %B").into(),
+                today: date == today,
+                past: date < today,
+                count: items.len() as i32,
+                ..Default::default()
+            };
+            (day, items)
+        })
+        .collect();
+    let mut next = -1;
+    for (i, (day, items)) in days.iter_mut().enumerate().rev() {
+        day.next = next;
+        if !items.is_empty() {
+            next = i as i32;
+        }
+    }
+    days
+}
+
+/// "Today", "Tomorrow", "Yesterday", else the weekday: "Thursday".
+fn day_word(date: NaiveDate, today: NaiveDate) -> String {
+    match (date - today).num_days() {
+        0 => tr!("cal-today"),
+        1 => tr!("cal-tomorrow"),
+        -1 => tr!("cal-yesterday"),
+        _ => format::day(date, "cal-weekday", "%A"),
+    }
+}
+
+fn hero(card: &SeriesCard, at: i64, art: &Art, now: i64) -> Hero {
+    let (poster, has_poster) = art.poster(Some(card.id));
+    let tone = art.tone(card.id);
+    Hero {
+        show: true,
+        id: id(card.id),
+        title: title(card).into(),
+        poster,
+        has_poster,
+        initials: format::initials(title(card)).into(),
+        episode: format!(
+            "{}  {}",
+            next_code(card).unwrap_or_default(),
+            format::when(at, now)
+        )
+        .into(),
+        countdown: format::countdown(at - now).into(),
+        band: posters::band(tone),
+        ink: posters::ink(tone),
+    }
+}
+
+/// A series page from the core's detail: the band, then every episode in number order,
+/// on the phone or not, aired or still to come.
+/// One row per episode. An episode on disk in more than one release (the core's
+/// `versions`) is led by one copy, the desktop's rule among the copies no torrent is still
+/// writing: the one next up, else one with a resume point, else any whole one; a copy still
+/// downloading leads only when no whole one is there. While deleting, every file keeps its
+/// own row so each can be picked. The order is the files' own.
+pub fn one_per_episode(episodes: &[Episode], deleting: bool) -> Vec<&Episode> {
+    if deleting {
+        return episodes.iter().collect();
+    }
+    let key = |e: &Episode| match e.versions.first() {
+        Some(v) if e.versions.len() > 1 => v.file,
+        _ => e.file,
+    };
+    let mut index: HashMap<u64, usize> = HashMap::new();
+    let mut groups: Vec<Vec<&Episode>> = Vec::new();
+    for e in episodes {
+        let i = *index.entry(key(e)).or_insert_with(|| {
+            groups.push(Vec::new());
+            groups.len() - 1
+        });
+        groups[i].push(e);
+    }
+    groups
+        .into_iter()
+        .map(|all| {
+            let whole = |e: &&Episode| e.downloading.is_none();
+            let pick = |f: fn(&&Episode) -> bool| all.iter().copied().find(|e| whole(e) && f(e));
+            pick(|e| e.next_up)
+                .or_else(|| pick(|e| e.resume.is_some()))
+                .or_else(|| pick(|_| true))
+                .unwrap_or(all[0])
+        })
+        .collect()
+}
+
+/// An episode's versions as its row offers them: the whole copies, each a file to play.
+fn version_lines(e: &Episode, downloading: &HashSet<u64>) -> slint::ModelRc<EpisodeVersionLine> {
+    let list: Vec<(u64, String)> = e
+        .versions
+        .iter()
+        .map(|v| (v.file, v.label.clone()))
+        .collect();
+    crate::versions::model(crate::versions::offered(&list, |f| {
+        !downloading.contains(&f)
+    }))
+}
+
+pub fn series(
+    detail: &SeriesDetail,
+    art: &Art,
+    now: i64,
+    deleting: bool,
+) -> (SeriesHead, Vec<EpisodeLine>) {
+    let card = &detail.card;
+    let (poster, has_poster) = art.poster(Some(card.id));
+    let tone = art.tone(card.id);
+    let movie = card.kind == SeriesKind::Movie;
+
+    let alt = [
+        &card.titles.english,
+        &card.titles.romaji,
+        &card.titles.native,
+    ]
+    .into_iter()
+    .flatten()
+    .find(|t| t.as_str() != card.title)
+    .cloned()
+    .unwrap_or_default();
+    let facts = Facts {
+        movie,
+        film: card.film,
+        format: card.format.as_deref(),
+        season: card.season.as_deref(),
+        year: detail.year,
+        studio: detail.studio.as_deref(),
+        minutes: detail.episode_minutes,
+        total: card.total_episodes,
+        estimate: card.total_is_estimate,
+        status: card.status,
+    }
+    .words();
+    let scores = scores(
+        card.community_score,
+        card.imdb_score,
+        card.imdb_votes,
+        detail.rewatch_count,
+    );
+    let next = card
+        .next_airing
+        .as_ref()
+        .filter(|a| secs(a.at) > now)
+        .map(|a| {
+            tr!(
+                "phone-next-airs",
+                n = a.episode,
+                time = format::countdown_full(secs(a.at) - now)
+            )
+        })
+        .unwrap_or_default();
+    let watched = detail.progress.watched.unwrap_or(0);
+    // The core counts files; a second release of an episode is not another episode, as on
+    // the desktop's page.
+    let extra_versions =
+        (detail.episodes.len() - one_per_episode(&detail.episodes, false).len()) as u64;
+    let on_disk = detail.progress.on_disk.saturating_sub(extra_versions);
+    // No tracker count behind the show: the desktop says so rather than a count of nothing,
+    // since its marks live on the episodes here.
+    let tracked_count = detail.progress.watched.is_some();
+    let progress_text = match (movie, detail.progress.total) {
+        (true, _) if !tracked_count => tr!("series-not-tracked"),
+        (false, _) if !tracked_count => tr!("series-not-tracked-on-phone", count = on_disk),
+        (true, _) => {
+            if watched > 0 {
+                tr!("phone-watched")
+            } else {
+                tr!("phone-not-watched")
+            }
+        }
+        (false, Some(total)) if total > 0 => {
+            tr!(
+                "phone-progress",
+                watched = watched.min(total),
+                total = total,
+                count = on_disk
+            )
+        }
+        _ => tr!("phone-on-this-phone", count = on_disk),
+    };
+    // Play opens the next one up, the desktop hero's rule, when it is whole on the phone.
+    let play = detail
+        .episodes
+        .iter()
+        .find(|e| e.next_up && e.downloading.is_none());
+    let head = SeriesHead {
+        id: id(card.id),
+        title: card.title.clone().into(),
+        alt_title: alt.into(),
+        facts: facts.join("  ").into(),
+        scores: scores.into(),
+        poster,
+        has_poster,
+        initials: format::initials(&card.title).into(),
+        band: posters::band(tone),
+        ink: posters::ink(tone),
+        next: next.into(),
+        progress_text: progress_text.into(),
+        cubes: std::rc::Rc::new(slint::VecModel::from(cube_codes(&card.cubes))).into(),
+        synopsis: detail.synopsis.clone().into(),
+        play_file: play.map(|e| e.file as i32).unwrap_or(0),
+        play_remote: false,
+        play_label: play
+            .map(|e| match (movie, e.resume.is_some()) {
+                (true, true) => tr!("phone-resume-film"),
+                (true, false) => tr!("phone-play-film"),
+                (false, true) => tr!("phone-resume-episode", n = e.number),
+                (false, false) => tr!("phone-play-episode", n = e.number),
+            })
+            .unwrap_or_default()
+            .into(),
+    };
+
+    // A tracker keeps marks for any aired episode; without one only the files here take one.
+    let tracked = card
+        .match_info
+        .as_ref()
+        .is_some_and(|m| m.anilist_id.is_some() || m.mal_id.is_some());
+    // Sorted by season, then number: a show with S1 and S2 lists each season in order.
+    let mut lines: Vec<((u32, f64), EpisodeLine)> = Vec::new();
+    let downloading: HashSet<u64> = detail
+        .episodes
+        .iter()
+        .filter(|e| e.downloading.is_some())
+        .map(|e| e.file)
+        .collect();
+    for e in one_per_episode(&detail.episodes, deleting) {
+        let note = if let Some(p) = e.downloading {
+            tr!(
+                "series-note-downloading",
+                percent = (p * 100.0).round() as i64
+            )
+        } else if e.next_up {
+            tr!("series-note-next-up")
+        } else if let Some(r) = &e.resume {
+            tr!("series-note-resume-at", time = clock(r.position))
+        } else {
+            String::new()
+        };
+        let title = e.title.clone().unwrap_or_else(|| {
+            if movie {
+                card.title.clone()
+            } else {
+                tr!("common-episode-n", n = e.number)
+            }
+        });
+        lines.push((
+            (e.season.unwrap_or(1), e.number),
+            EpisodeLine {
+                code: e.code.clone().into(),
+                title: title.into(),
+                date: e
+                    .air_date
+                    .map(|t| date(secs(t), now))
+                    .unwrap_or_default()
+                    .into(),
+                note: note.into(),
+                note_kind: i32::from(e.next_up && e.downloading.is_none()),
+                cube: e.cube.chars().next().map(cube_code).unwrap_or(2),
+                // A file a torrent is still writing is on disk but not playable.
+                file: if e.downloading.is_none() {
+                    e.file as i32
+                } else {
+                    0
+                },
+                picked: false,
+                remote: false,
+                versions: version_lines(e, &downloading),
+                // On the phone, so it can be marked with a tracker or without one.
+                markable: countable(e.number, e.season),
+                watched: e.watched,
+                number: e.number as f32,
+                season: e.season.unwrap_or(1) as i32,
+            },
+        ));
+    }
+    for a in &detail.absent {
+        lines.push((
+            (a.season.unwrap_or(1), f64::from(a.number)),
+            EpisodeLine {
+                code: a.code.clone().into(),
+                title: a
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| tr!("common-episode-n", n = a.number))
+                    .into(),
+                date: a
+                    .air_date
+                    .map(|t| date(secs(t), now))
+                    .unwrap_or_default()
+                    .into(),
+                // Watched somewhere else: tracked, but no file on this phone. Missing is only
+                // a hole before an episode that is here; past the last one it is not
+                // downloaded, so a show with nothing here never reads as missing (#735).
+                note: match a.cube.as_str() {
+                    "w" | "l" => tr!("series-note-not-here"),
+                    "m" => tr!("series-note-missing"),
+                    _ => tr!("series-note-not-downloaded"),
+                }
+                .into(),
+                note_kind: if a.cube == "m" { 2 } else { 0 },
+                cube: a.cube.chars().next().map(cube_code).unwrap_or(3),
+                file: 0,
+                picked: false,
+                remote: false,
+                versions: Default::default(),
+                // Not on the phone: only a tracker keeps the mark.
+                markable: tracked && countable(f64::from(a.number), a.season),
+                watched: matches!(a.cube.as_str(), "w" | "l"),
+                number: a.number as f32,
+                season: a.season.unwrap_or(1) as i32,
+            },
+        ));
+    }
+    for u in detail.upcoming.iter().take(6) {
+        let at = secs(u.at);
+        let date = if u.predicted {
+            tr!("phone-about-date", date = format::day_month(at))
+        } else if at - now < 7 * 86_400 {
+            format::countdown(at - now)
+        } else {
+            format::day_month(at)
+        };
+        lines.push((
+            (u.season.unwrap_or(1), f64::from(u.number)),
+            EpisodeLine {
+                code: u.code.clone().into(),
+                title: u
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| tr!("common-episode-n", n = u.number))
+                    .into(),
+                date: date.into(),
+                note: Default::default(),
+                note_kind: 0,
+                cube: 5,
+                file: 0,
+                picked: false,
+                remote: false,
+                versions: Default::default(),
+                ..Default::default()
+            },
+        ));
+    }
+    lines.sort_by(|a, b| a.0.0.cmp(&b.0.0).then(a.0.1.total_cmp(&b.0.1)));
+    (head, lines.into_iter().map(|(_, l)| l).collect())
+}
+
+/// What the desktop's ledger line is made of: the format, when it started, the studio, a
+/// film's runtime, the episodes and how long each runs, and whether it airs. The season says
+/// the year too, so it stands in for the year when the record has one.
+struct Facts<'a> {
+    movie: bool,
+    film: bool,
+    format: Option<&'a str>,
+    season: Option<&'a str>,
+    year: Option<u32>,
+    studio: Option<&'a str>,
+    minutes: Option<u32>,
+    total: Option<u32>,
+    estimate: bool,
+    status: Option<AiringStatus>,
+}
+
+impl Facts<'_> {
+    fn words(&self) -> Vec<String> {
+        let mut facts = vec![if self.movie {
+            tr("show-format-film", &[])
+        } else {
+            crate::show::format_label(self.format)
+        }];
+        if let Some(s) = self.season {
+            facts.push(crate::seasons::localized(s));
+        } else if let Some(y) = self.year {
+            facts.push(y.to_string());
+        }
+        if let Some(studio) = self.studio {
+            facts.push(studio.to_string());
+        }
+        if self.film
+            && let Some(m) = self.minutes
+        {
+            facts.push(runtime(m));
+        }
+        if !self.movie
+            && let Some(total) = self.total
+        {
+            let count = tr("count-episodes", &[("count", total.into())]);
+            // A count that may still grow, as the desktop marks it.
+            facts.push(if self.estimate {
+                format!("{count}+") // i18n: none
+            } else {
+                count
+            });
+        }
+        if !self.film
+            && let Some(m) = self.minutes
+        {
+            facts.push(tr("series-runtime-each", &[("runtime", runtime(m).into())]));
+        }
+        if let Some(status) = self.status {
+            facts.push(airing_word(status));
+        }
+        facts
+    }
+}
+
+/// The quiet facts beside your own score, the desktop's row: the average score, IMDb's with
+/// its votes (the desktop's tooltip, which a phone has no hover for), and the rewatches.
+fn scores(
+    average: Option<f64>,
+    imdb: Option<f64>,
+    votes: Option<u64>,
+    rewatches: Option<u32>,
+) -> String {
+    let mut parts = Vec::new();
+    if let Some(a) = average {
+        let score = crate::listmove::score(a);
+        parts.push(tr("series-average-score", &[("score", score.into())]));
+    }
+    if let Some(i) = imdb {
+        let score = crate::listmove::score(i);
+        parts.push(match votes {
+            Some(v) => tr(
+                "series-imdb-votes",
+                &[("score", score.into()), ("votes", thousands(v).into())],
+            ),
+            None => tr("series-imdb", &[("score", score.into())]),
+        });
+    }
+    if let Some(n) = rewatches.filter(|n| *n > 0) {
+        parts.push(tr("series-rewatched", &[("count", n.into())]));
+    }
+    parts.join("  ")
+}
+
+/// A count with a comma every three digits: 12,345.
+fn thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// How long an episode or a film runs, the desktop's `Fmt.runtime`: "24 min", "1 h 52 min",
+/// "2 h" on the hour.
+fn runtime(minutes: u32) -> String {
+    tr(
+        "series-runtime",
+        &[
+            ("hours", (minutes / 60).into()),
+            ("minutes", (minutes % 60).into()),
+        ],
+    )
+}
+
+/// Whether a show airs, in the desktop's words.
+fn airing_word(status: AiringStatus) -> String {
+    tr(
+        match status {
+            AiringStatus::Releasing => "series-status-airing",
+            AiringStatus::Finished => "series-status-finished",
+            AiringStatus::NotYetReleased => "series-status-upcoming",
+            AiringStatus::Cancelled => "series-status-cancelled",
+            AiringStatus::Hiatus => "series-status-hiatus",
+        },
+        &[],
+    )
+}
+
+/// Whether a mark can count up to an episode: an episode 0 would mark nothing and clear the
+/// season, and a special (season 0) is not in any count, so neither offers one.
+fn countable(number: f64, season: Option<u32>) -> bool {
+    number >= 1.0 && season != Some(0)
+}
+
+/// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
+pub(crate) fn clock(secs: f64) -> String {
+    let t = secs.max(0.0) as u64;
+    let (h, m, s) = (t / 3600, t % 3600 / 60, t % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tv() -> Facts<'static> {
+        Facts {
+            movie: false,
+            film: false,
+            format: Some("TV"),
+            season: Some("Fall 2023"),
+            year: Some(2023),
+            studio: Some("Madhouse"),
+            minutes: Some(24),
+            total: Some(28),
+            estimate: false,
+            status: Some(AiringStatus::Finished),
+        }
+    }
+
+    #[test]
+    fn a_shows_facts_read_like_the_desktops_ledger() {
+        assert_eq!(
+            tv().words().join("  "),
+            "TV  Fall 2023  Madhouse  28 episodes  24 min each  Finished"
+        );
+        let airing = Facts {
+            season: None,
+            total: Some(1),
+            estimate: true,
+            status: Some(AiringStatus::Releasing),
+            ..tv()
+        };
+        assert_eq!(
+            airing.words().join("  "),
+            "TV  2023  Madhouse  1 episode+  24 min each  Airing"
+        );
+    }
+
+    #[test]
+    fn a_film_gives_its_runtime_and_no_episode_count() {
+        let film = Facts {
+            movie: true,
+            film: true,
+            format: Some("MOVIE"),
+            minutes: Some(112),
+            total: Some(1),
+            ..tv()
+        };
+        assert_eq!(
+            film.words().join("  "),
+            "Movie  Fall 2023  Madhouse  1 h 52 min  Finished"
+        );
+    }
+
+    #[test]
+    fn scores_and_votes_read_like_the_desktop() {
+        assert_eq!(
+            scores(Some(9.0), Some(8.65), Some(12_345), Some(2)),
+            "Average score 9.0  IMDb 8.7 from 12,345 votes  Rewatched 2 times"
+        );
+        assert_eq!(scores(None, Some(7.25), None, Some(0)), "IMDb 7.3");
+        assert_eq!(scores(None, None, None, None), "");
+        assert_eq!(thousands(1_234_567), "1,234,567");
+        assert_eq!(thousands(7), "7");
+    }
+
+    #[test]
+    fn runtimes_and_airing_read_like_the_desktop() {
+        assert_eq!(runtime(24), "24 min");
+        assert_eq!(runtime(112), "1 h 52 min");
+        assert_eq!(runtime(120), "2 h");
+        assert_eq!(airing_word(AiringStatus::Hiatus), "On hiatus");
+        assert_eq!(airing_word(AiringStatus::Releasing), "Airing");
+    }
+
+    #[test]
+    fn episode_0_and_specials_take_no_mark() {
+        assert!(countable(1.0, None));
+        assert!(countable(12.5, Some(2)));
+        assert!(!countable(0.0, Some(1)));
+        assert!(!countable(0.5, None));
+        assert!(!countable(3.0, Some(0)));
+    }
+
+    #[test]
+    fn every_core_cube_letter_has_a_colour_code() {
+        assert_eq!(cube_codes("wldmgft"), vec![0, 1, 2, 3, 4, 5, 6]);
+    }
+
+    /// A file of episode `number`, kept in the releases `versions` names.
+    fn episode(file: u64, number: f64, versions: &[u64]) -> Episode {
+        let versions: Vec<serde_json::Value> = versions
+            .iter()
+            .map(|f| serde_json::json!({ "file": f, "label": format!("release {f}") }))
+            .collect();
+        serde_json::from_value(serde_json::json!({
+            "file": file, "number": number, "season": null, "code": format!("E{number:02}"),
+            "title": null, "air_date": null, "path": format!("/a/{file}.mkv"), "sidecars": [],
+            "resume": null, "stopped_short": false, "watched": false, "next_up": false,
+            "versions": versions,
+        }))
+        .unwrap()
+    }
+
+    fn files(rows: Vec<&Episode>) -> Vec<u64> {
+        rows.iter().map(|e| e.file).collect()
+    }
+
+    #[test]
+    fn an_episode_in_two_releases_is_one_row_led_by_the_first() {
+        let list = [
+            episode(1, 1.0, &[]),
+            episode(2, 2.0, &[2, 3]),
+            episode(3, 2.0, &[2, 3]),
+            episode(4, 3.0, &[]),
+        ];
+        assert_eq!(files(one_per_episode(&list, false)), [1, 2, 4]);
+    }
+
+    #[test]
+    fn the_copy_next_up_or_with_a_resume_point_leads() {
+        let mut list = [episode(2, 2.0, &[2, 3]), episode(3, 2.0, &[2, 3])];
+        list[1].next_up = true;
+        assert_eq!(files(one_per_episode(&list, false)), [3]);
+        list[1].next_up = false;
+        list[1].resume = Some(anibeam_core::ResumePoint {
+            position: 300.0,
+            duration: 1400.0,
+        });
+        assert_eq!(files(one_per_episode(&list, false)), [3]);
+    }
+
+    #[test]
+    fn a_resume_point_on_a_copy_still_downloading_does_not_lead() {
+        let mut list = [episode(2, 2.0, &[2, 3]), episode(3, 2.0, &[2, 3])];
+        let at = anibeam_core::ResumePoint {
+            position: 300.0,
+            duration: 1400.0,
+        };
+        // Both copies share the episode's resume point; the one still downloading is first.
+        list[0].downloading = Some(0.4);
+        list[0].resume = Some(at.clone());
+        list[1].resume = Some(at);
+        assert_eq!(files(one_per_episode(&list, false)), [3]);
+    }
+
+    #[test]
+    fn a_copy_still_downloading_does_not_lead_a_whole_one() {
+        let mut list = [episode(2, 2.0, &[2, 3]), episode(3, 2.0, &[2, 3])];
+        list[0].downloading = Some(0.4);
+        assert_eq!(files(one_per_episode(&list, false)), [3]);
+    }
+
+    #[test]
+    fn deleting_keeps_every_file_on_its_own_row() {
+        let list = [episode(2, 2.0, &[2, 3]), episode(3, 2.0, &[2, 3])];
+        assert_eq!(files(one_per_episode(&list, true)), [2, 3]);
+    }
+}

@@ -1,0 +1,69 @@
+<section>
+  <h2 id="install">Install Anibeam on Android or iPhone</h2>
+  <p>Anibeam has a standalone mobile app for both Android and iPhone. Download links live on the <a href="../../download/">download page</a>.</p>
+  <div class="wiki-grid">
+    <div class="wiki-box">
+      <h3>Android (Android 8+)</h3>
+      <p>Download the <code>.apk</code> file from the download page and tap it to install. Android will ask once to allow installing apps from your browser or file manager.</p>
+    </div>
+    <div class="wiki-box">
+      <h3>iPhone (iOS 17+)</h3>
+      <p>Anibeam for iPhone is distributed as an unsigned IPA for sideloading. Add the Anibeam source to <b>AltStore</b>, <b>SideStore</b>, or <b>LiveContainer</b> from the download page so your sideloading app signs it and keeps it updated.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 id="modes">Two ways to use the phone app</h2>
+  <p>You can use the phone app completely on its own, pair it with your desktop library, or do both at the same time:</p>
+  <div class="wiki-grid">
+    <div class="wiki-box">
+      <h3>Standalone on your phone</h3>
+      <p>Keep your own library right on the phone, search sources, download episodes with the built-in torrent engine, watch offline with the built-in mpv player, and sync directly to AniList or MyAnimeList.</p>
+    </div>
+    <div class="wiki-box">
+      <h3>Stream from your computer</h3>
+      <p>Connect securely to your desktop Anibeam over <b>Tailscale</b> to browse your computer's full library from anywhere and stream episodes to your phone with automatic quality adjustment.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 id="tailscale">Stream your computer's library over Tailscale</h2>
+  <p><b>Tailscale</b> is a free app that creates a private, encrypted network between your own devices. Using it means you never have to mess with router port forwarding or expose your home computer to the public internet: only devices signed into your Tailscale network can reach Anibeam.</p>
+  <ol class="steps">
+    <li>Install <a href="https://tailscale.com">Tailscale</a> on both your computer and your phone, sign in with the same account, and make sure Tailscale is turned on.</li>
+    <li>On your computer, open <span class="where"><b>Settings</b><b>Accounts</b></span> and scroll down to <b>Phone app</b>.</li>
+    <li>Turn on <b class="ui">Share over Tailscale</b> (and make sure <b class="ui">Stream episodes</b> is turned on). One or more addresses will appear underneath (for example, <code>my-computer:8790</code> or <code>100.64.0.1:8790</code>).</li>
+    <li>On your phone, open <span class="where"><b>More</b><b>Your computer</b></span> (or the <b>Your computer</b> step during first-time setup), type or paste that address, tap <b class="ui">Test</b>, and tap <b class="ui">Save</b>.</li>
+    <li>Open the <b>Library</b> tab on your phone and use the switcher at the top to flip between <b>This phone</b> and your computer's library.</li>
+  </ol>
+  <div class="callout callout-tip">
+    <span class="callout-title">Stream even when the desktop window is closed</span>
+    <p>Normally your computer shares its library while Anibeam is open. To keep sharing in the background with no window open, run <code>anibeam serve</code> on your computer, or on Linux enable the background service listed under <b>Host service</b> in <span class="where"><b>Settings</b><b>Accounts</b></span>:</p>
+    <div class="term"><span class="prompt">$</span><code><span class="sh-cmd">systemctl</span> <span class="sh-flag">--user</span> enable <span class="sh-flag">--now</span> anibeam-host</code><button type="button" class="copy" data-copy="systemctl --user enable --now anibeam-host">Copy</button></div>
+  </div>
+  <h3>Sharing with family or multiple devices</h3>
+  <p>Under <span class="where"><b>Settings</b><b>Accounts</b></span> &gt; <b>Devices on your tailnet</b>, you can see every device on your Tailscale network and toggle access on or off for any device. If you share your tailnet with another person, Anibeam keeps each person's watch progress separate on your computer.</p>
+</section>
+
+<section>
+  <h2 id="streaming">Stream quality and mobile data</h2>
+  <p>Under <span class="where"><b>More</b><b>Streaming</b></span> on your phone, choose how episodes streamed from your computer play:</p>
+  <ul>
+    <li><b>Auto (recommended):</b> Plays the full-quality original file on Wi-Fi, and automatically converts to 720p on mobile data or when Tailscale routes through a slower relay.</li>
+    <li><b>Original:</b> Always streams the untouched video file (best on fast Wi-Fi).</li>
+    <li><b>Converted (1080p, 720p, or 480p):</b> Has your computer convert the video on the fly to save mobile data.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="phone-downloads">Downloading directly on your phone</h2>
+  <p>If you download episodes straight to your phone for offline viewing (like flights or commutes), Anibeam includes built-in safeguards so anime files don't quietly drain your data plan or fill up your storage:</p>
+  <ul>
+    <li><b>Wi-Fi only:</b> Turned on by default so downloads wait until you are on Wi-Fi (a single anime episode can be 1 to 2 GB). You can allow mobile data under <b>More</b> &gt; <b>Network</b>.</li>
+    <li><b>Storage cap:</b> Set a limit in GB (for example, 18 GB holds roughly 12 episodes) under <b>More</b> &gt; <b>Storage</b>. Anibeam pauses new downloads once you hit the cap until you delete watched episodes.</li>
+    <li><b>Rolling downloads:</b> Works just like desktop for long shows, keeping only a handful of upcoming episodes on your phone.</li>
+    <li><b>Download sources:</b> Add your source list or custom feeds under <b>More</b>. The phone app uses its own built-in torrent engine and stops seeding as soon as an episode finishes to save battery and data.</li>
+  </ul>
+</section>
