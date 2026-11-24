@@ -133,15 +133,28 @@ pub fn sample_times(duration: f64) -> Vec<f64> {
         .collect()
 }
 
+/// Whether Home puts this series in Continue at all, the same test as its
+/// `startedOf` (`HomePage.qml`): never a Completed, Dropped or Paused entry;
+/// otherwise played here, or with episodes seen on the tracker while it is
+/// being watched or rewatched there.
+pub fn started(card: &SeriesCard) -> bool {
+    match card.list_status {
+        Some(ListStatus::Completed | ListStatus::Dropped | ListStatus::Paused) => false,
+        status => {
+            card.last_viewed_at.is_some()
+                || (card.watched.is_some_and(|w| w > 0)
+                    && matches!(status, Some(ListStatus::Watching | ListStatus::Repeating)))
+        }
+    }
+}
+
 /// The episode a Continue card for this series shows, as an index into
 /// `detail.episodes`: the last one stopped short and not watched, else the
-/// next one up; None for a series not started, or when that episode is still
-/// being written. Home's own pick (`HomePage.qml`, `pickContinue`) reads the
-/// same way.
+/// next one up; None for a series Home leaves out of Continue ([`started`]),
+/// or when that episode is still being written. Home's own pick
+/// (`HomePage.qml`, `startedOf` then `pickContinue`) reads the same way.
 pub fn continue_episode(detail: &SeriesDetail) -> Option<usize> {
-    let card = &detail.card;
-    let started = card.last_viewed_at.is_some() || card.watched.is_some_and(|w| w > 0);
-    if !started {
+    if !started(&detail.card) {
         return None;
     }
     let (mut partial, mut next) = (None, None);
