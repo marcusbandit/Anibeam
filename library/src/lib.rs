@@ -16,6 +16,7 @@ pub mod classifier;
 pub mod delete;
 pub mod detail;
 pub mod fixes;
+pub mod frames;
 pub mod franchises;
 pub mod history;
 pub mod hostview;

@@ -25,6 +25,8 @@ use anibeam_foundation::watch::MARK_FRACTION;
 struct AniZipEpisodeView {
     title: Option<String>,
     still: Option<String>,
+    /// A still url is known for the episode, cached yet or not.
+    has_still_url: bool,
     synopsis: Option<String>,
     aired_at: Option<i64>,
 }
@@ -120,6 +122,17 @@ impl Snapshot {
     /// and the recommendations are one query each, and neither belongs in a
     /// whole-library snapshot.
     pub fn detail(&self, conn: &Connection, id: u64) -> Result<Option<SeriesDetail>, CoreError> {
+        Ok(self.detail_and_stills(conn, id)?.map(|(d, _)| d))
+    }
+
+    /// [`Self::detail`], and the files whose episode has a still url the
+    /// image cache has not fetched yet: a still is on its way for those, so
+    /// nothing stands in for it (#1469).
+    pub fn detail_and_stills(
+        &self,
+        conn: &Connection,
+        id: u64,
+    ) -> Result<Option<(SeriesDetail, HashSet<u64>)>, CoreError> {
         let Some(row) = self.row(id) else {
             return Ok(None);
         };
@@ -206,6 +219,7 @@ impl Snapshot {
                 fixed: f.fixed,
                 versions: versions.get(&version_key(f)).cloned().unwrap_or_default(),
                 still: detail.and_then(|d| d.still.clone()),
+                frame: None,
                 synopsis: detail.and_then(|d| d.synopsis.clone()),
             }
         };
@@ -305,7 +319,16 @@ impl Snapshot {
                 .then_with(|| a.path.cmp(&b.path))
         });
 
-        Ok(Some(SeriesDetail {
+        let stills_coming: HashSet<u64> = episodes
+            .iter()
+            .filter(|f| {
+                zip.episode(f.number)
+                    .is_some_and(|d| d.has_still_url && d.still.is_none())
+            })
+            .map(|f| f.id)
+            .collect();
+
+        let detail = SeriesDetail {
             banner: row.banner_path.clone(),
             // Plain text in paragraphs for every shell. AniList's description is HTML;
             // TVmaze's summary was made plain when it was stored, and a second pass would
@@ -393,7 +416,8 @@ impl Snapshot {
                 .flatten()
                 .map(|v| v != 0),
             card,
-        }))
+        };
+        Ok(Some((detail, stills_coming)))
     }
 
     /// What ani.zip keeps for an AniList series (#1036): each regular
@@ -418,7 +442,8 @@ impl Snapshot {
             })
         };
         let mut stmt = conn.prepare(
-            "SELECT z.number, z.title, i.path, z.aired_at, z.air_date, z.synopsis
+            "SELECT z.number, z.title, i.path, z.aired_at, z.air_date, z.synopsis,
+                    z.still_url IS NOT NULL
              FROM anizip_episodes z LEFT JOIN images i ON i.url = z.still_url
              WHERE z.anilist_id = ?1 AND z.number IS NOT NULL",
         )?;
@@ -430,16 +455,18 @@ impl Snapshot {
                 r.get::<_, Option<i64>>(3)?,
                 r.get::<_, Option<String>>(4)?,
                 r.get::<_, Option<String>>(5)?,
+                r.get::<_, bool>(6)?,
             ))
         })?;
         for row in rows {
-            let (number, title, still, aired_at, air_date, synopsis) = row?;
+            let (number, title, still, aired_at, air_date, synopsis, has_still_url) = row?;
             let aired_at = aired_at.or_else(|| air_date.as_deref().and_then(day_start));
             view.episodes.insert(
                 number,
                 AniZipEpisodeView {
                     title,
                     still: local(still),
+                    has_still_url,
                     synopsis,
                     aired_at,
                 },
@@ -449,7 +476,8 @@ impl Snapshot {
         // episodes for the series, and only then (#1461): once ani.zip maps
         // the season, another source's guesses never fill its gaps.
         let mut stmt = conn.prepare(
-            "SELECT e.number, e.title, i.path, e.aired_at, e.synopsis
+            "SELECT e.number, e.title, i.path, e.aired_at, e.synopsis,
+                    e.still_url IS NOT NULL
              FROM fallback_episodes e LEFT JOIN images i ON i.url = e.still_url
              WHERE e.anilist_id = ?1
                AND NOT EXISTS (SELECT 1 FROM anizip_episodes z WHERE z.anilist_id = ?1 AND z.number IS NOT NULL)",
@@ -461,13 +489,15 @@ impl Snapshot {
                 r.get::<_, Option<String>>(2)?,
                 r.get::<_, Option<i64>>(3)?,
                 r.get::<_, Option<String>>(4)?,
+                r.get::<_, bool>(5)?,
             ))
         })?;
         for row in rows {
-            let (number, title, still, aired_at, synopsis) = row?;
+            let (number, title, still, aired_at, synopsis, has_still_url) = row?;
             let e = view.episodes.entry(number).or_default();
             e.title = e.title.take().or(title);
             e.still = e.still.take().or_else(|| local(still));
+            e.has_still_url |= has_still_url;
             e.synopsis = e.synopsis.take().or(synopsis);
             e.aired_at = e.aired_at.or(aired_at);
         }

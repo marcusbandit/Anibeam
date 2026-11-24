@@ -9,6 +9,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::Library;
 use crate::cards;
+use crate::frames;
 use crate::snapshot::Snapshot;
 use crate::sort;
 use anibeam_contract::*;
@@ -249,18 +250,34 @@ pub fn list_library(
 pub fn get_series(library: &Library, series: u64) -> Result<Reply, CoreError> {
     let images_dir = library.services.paths.images_dir();
     let now = time::now();
-    let (detail, gaps, poster) = library.services.store.read(|c| {
+    let (detail, gaps, poster, stamps) = library.services.store.read(|c| {
         let snap = Snapshot::load(c, &images_dir, now, Some(&[series]))?;
         let poster = snap
             .row(series)
             .filter(|r| r.poster_path.is_some())
             .and_then(|r| r.media.as_ref()?.cover_url.clone());
-        Ok((snap.detail(c, series)?, snap.gaps.clone(), poster))
+        let stamps: HashMap<u64, (u64, i64)> = snap
+            .files_of(series)
+            .iter()
+            .map(|f| (f.id, (f.size, f.mtime)))
+            .collect();
+        Ok((
+            snap.detail_and_stills(c, series)?,
+            snap.gaps.clone(),
+            poster,
+            stamps,
+        ))
     })?;
     match detail {
-        Some(mut detail) => {
+        Some((mut detail, stills_coming)) => {
             if let Some(incoming) = library.incoming.get() {
                 incoming.overlay_detail(&mut detail);
+            }
+            // After the overlay, so an episode a torrent is still writing is
+            // never framed
+            let frames_dir = frames::dir(&library.services.paths);
+            if let Some(want) = frames::lay_on(&mut detail, &stamps, &stills_coming, &frames_dir) {
+                library.frames.want(want);
             }
             // The first background (#1475): marked used when it is on
             // disk, so the cap keeps the ones people open, and asked for

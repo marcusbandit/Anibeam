@@ -1023,8 +1023,9 @@ pub fn storage_call(net: &Net) -> Result<Reply, CoreError> {
     })
 }
 
-/// Clear images: every row and every file, and a card for every matched
-/// series so a shell showing posters drops them at once.
+/// Clear images: every row and every file, the episode frames too, and a
+/// card for every matched series so a shell showing posters drops them at
+/// once.
 pub fn start_clear(net: &Net) -> u64 {
     let owner = net.services.clone();
     let cards_for = net.cards_for;
@@ -1053,6 +1054,15 @@ pub fn start_clear(net: &Net) -> u64 {
             tokio::fs::create_dir_all(&dir)
                 .await
                 .map_err(|e| CoreError::io_at(dir.to_string_lossy(), e))?;
+            // The episode frames and their misses go too: they are images
+            // of the library the same as the rest, kept apart only so the
+            // image cache's sweep leaves them be
+            let frames = owner.paths.frames_dir();
+            match tokio::fs::remove_dir_all(&frames).await {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(CoreError::io_at(frames.to_string_lossy(), e)),
+            }
 
             let ids = owner.store.write_async(|c| matched_series(c)).await?;
             if !ids.is_empty() {

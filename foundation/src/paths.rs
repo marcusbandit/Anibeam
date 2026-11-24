@@ -69,6 +69,12 @@ impl CorePaths {
     pub fn images_dir(&self) -> PathBuf {
         Path::new(&self.cache_dir).join("images")
     }
+
+    /// The episode frames (#1469): beside the image cache and outside it, so
+    /// its sweep of stray files never takes them. Clear images empties both.
+    pub fn frames_dir(&self) -> PathBuf {
+        Path::new(&self.cache_dir).join("frames")
+    }
 }
 
 /// The person's own Downloads folder: the desktop's download directory (XDG
