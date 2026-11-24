@@ -1156,13 +1156,14 @@ Item {
                     visible: row.loops
                     z: 2
                     anchors.right: parent.right
-                    width: scroll.gutter + Math.round(row.cardWidth * 0.75)
+                    width: scroll.gutter + row.cardWidth
                     height: parent.height
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
                         GradientStop { position: 0; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0) }
-                        GradientStop { position: 0.3; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.6) }
-                        GradientStop { position: 0.6; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.92) }
+                        GradientStop { position: 0.25; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.55) }
+                        GradientStop { position: 0.55; color: Qt.rgba(theme.bg.r, theme.bg.g, theme.bg.b, 0.9) }
+                        GradientStop { position: 0.8; color: theme.bg }
                         GradientStop { position: 1; color: theme.bg }
                     }
                 }
