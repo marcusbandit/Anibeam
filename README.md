@@ -107,6 +107,8 @@ On Windows and Android, download the right build for your device from **[anibeam
 <details>
 <summary><b>Arch Linux</b></summary>
 
+<br>
+
 ```sh
 yay -S anibeam-bin
 ```
@@ -118,8 +120,11 @@ yay -S anibeam-bin
 <details>
 <summary><b>Ubuntu 24.04+ and Debian 13+</b></summary>
 
+<br>
+
 ```sh
-sudo curl -fsSLo /etc/apt/sources.list.d/anibeam.sources https://anibeam.app/apt/anibeam.sources &&
+sudo curl -fsSLo /etc/apt/sources.list.d/anibeam.sources \
+  https://anibeam.app/apt/anibeam.sources &&
 sudo apt update && sudo apt install anibeam
 ```
 
@@ -130,8 +135,11 @@ Run `apt upgrade` for updates.
 <details>
 <summary><b>Fedora 41+</b></summary>
 
+<br>
+
 ```sh
-sudo dnf config-manager addrepo --from-repofile=https://anibeam.app/rpm/anibeam.repo &&
+sudo dnf config-manager addrepo \
+  --from-repofile=https://anibeam.app/rpm/anibeam.repo &&
 sudo dnf install anibeam
 ```
 
@@ -141,6 +149,8 @@ Run `dnf upgrade` for updates.
 
 <details>
 <summary><b>Other Linux</b>: AppImage, .deb or .rpm</summary>
+
+<br>
 
 The install script above puts the AppImage in `~/.local/bin` and adds a menu entry. To install it manually, download `Anibeam-<version>-x86_64.AppImage` from [Releases](https://github.com/marcusbandit/Anibeam/releases/latest) and run it:
 
@@ -154,6 +164,8 @@ The AppImage requires glibc 2.39 or newer, which means Ubuntu 24.04, Debian 13, 
 
 <details>
 <summary><b>macOS 15+</b> on Apple silicon</summary>
+
+<br>
 
 Install with Homebrew:
 
@@ -175,6 +187,8 @@ xattr -dr com.apple.quarantine /Applications/Anibeam.app
 <details>
 <summary><b>Windows 10 and 11</b></summary>
 
+<br>
+
 Download `Anibeam-<version>-windows-x64-setup.exe` from [anibeam.app/download](https://anibeam.app/download/) or [Releases](https://github.com/marcusbandit/Anibeam/releases/latest). It installs for your user account only and needs no admin prompt. A portable `.zip` is available alongside it.
 
 The installer is unsigned, so Windows SmartScreen may block it. Click **More info**, then **Run anyway**.
@@ -184,12 +198,16 @@ The installer is unsigned, so Windows SmartScreen may block it. Click **More inf
 <details>
 <summary><b>Android 8+</b></summary>
 
+<br>
+
 Download `Anibeam-<version>.apk` from the latest [Android release](https://github.com/marcusbandit/Anibeam/releases?q=android&expanded=true) and open it on your phone. Android will ask once for permission to install apps from your browser or file manager.
 
 </details>
 
 <details>
 <summary><b>iPhone</b>: early preview, sideloaded</summary>
+
+<br>
 
 Add the Anibeam source to your sideloading app. You get Anibeam and Anibeam Nightly side by side, and both stay updated from there:
 [AltStore](https://anibeam.app/install/?to=altstore&source=1) · [SideStore](https://anibeam.app/install/?to=sidestore&source=1) · [LiveContainer](https://anibeam.app/install/?to=livecontainer&source=1)
@@ -205,6 +223,8 @@ Requires iOS 17 or newer. The IPA is unsigned, and your sideloading app signs it
 
 <details>
 <summary><b>Nightly builds</b></summary>
+
+<br>
 
 Install the latest nightly on Linux or macOS:
 
@@ -224,10 +244,10 @@ Want to inspect the code or have an AI agent review it before installing? [docs/
 
 On first launch, Anibeam walks you through a short setup (every step is optional, and you can re-run it anytime under **Settings > About > Run setup again**):
 
-1. **Add your library folder:** Pick the parent folder that holds your shows. One folder per show works best (`Anime/Sousou no Frieren/Frieren - 01.mkv`), and movies go in a `Movies` folder. Manage folders anytime in **Settings > Library**.
-2. **Connect a tracker (optional):** Go to **Settings > Accounts** to sign in to AniList or MyAnimeList in your browser.
-3. **Watch:** Click any show, then an episode. Press `?` in the player to see all keyboard shortcuts.
-4. **Set up downloads (optional):** Anibeam ships with no download sources. Paste a signed source list URL in **Settings > Downloads > Source lists** (or directly on the **Downloads** page) to enable its sources, then click **Get episodes** on any show or search in **Downloads** to download or subscribe.
+1. **Add your library folder.** Pick the parent folder that holds your shows. One folder per show works best (`Anime/Sousou no Frieren/Frieren - 01.mkv`), and movies go in a `Movies` folder. Manage folders anytime in **Settings > Library**.
+2. **Connect a tracker (optional).** Go to **Settings > Accounts** to sign in to AniList or MyAnimeList in your browser.
+3. **Watch.** Click any show, then an episode. Press `?` in the player to see all keyboard shortcuts.
+4. **Set up downloads (optional).** Anibeam ships with no download sources. Paste a signed source list URL in **Settings > Downloads > Source lists** (or directly on the **Downloads** page) to enable its sources, then click **Get episodes** on any show or search in **Downloads** to download or subscribe.
 
 If a show isn't recognized or matched wrong, open it and click **Fixes > Match** (or review unmatched shows in **Library > Fix matches**). Misread episode files can be corrected under **Fixes > Files**.
 
