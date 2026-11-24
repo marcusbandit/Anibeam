@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anibeam_contract::*;
 use anibeam_foundation::process::command;
@@ -41,6 +41,9 @@ const SPREAD: (f64, f64) = (0.30, 0.70);
 const SAMPLE_WIDTH: usize = 160;
 /// The widest frame written, never wider than the video itself.
 const FRAME_WIDTH: u32 = 1280;
+/// The longest frames that landed wait to be announced while the queue is
+/// still going.
+const ANNOUNCE_EVERY: Duration = Duration::from_secs(20);
 /// How long one ffprobe or ffmpeg run may take.
 const RUN_LIMIT: Duration = Duration::from_secs(30);
 /// Mean luma outside this is a black or a white frame.
@@ -279,9 +282,15 @@ impl Frames {
         self.services.handle.spawn(async move { me.work().await });
     }
 
+    /// Takes the queue one frame at a time. The series whose frames landed
+    /// are announced together: when the queue runs dry, or every
+    /// [`ANNOUNCE_EVERY`] while it is long, so a launch with many bare
+    /// Continue episodes reloads Home a few times rather than once a frame.
     async fn work(self: Arc<Self>) {
+        let mut landed: Vec<u64> = Vec::new();
+        let mut since = Instant::now();
         loop {
-            let next = {
+            let (next, more) = {
                 let mut state = recover(&self.state);
                 let next = if self.closed.load(Ordering::SeqCst) {
                     None
@@ -291,21 +300,32 @@ impl Frames {
                 if next.is_none() {
                     state.running = false;
                 }
-                next
+                (next, !state.queue.is_empty())
             };
-            let Some(want) = next else { return };
-            match extract(&want.source, &want.out).await {
-                Ok(Some(_)) => self.announce(want.series).await,
+            let Some(want) = next else {
+                self.announce(std::mem::take(&mut landed)).await;
+                return;
+            };
+            let outcome = extract(&want.source, &want.out).await;
+            match outcome {
+                Ok(Some(_)) => {
+                    if !landed.contains(&want.series) {
+                        landed.push(want.series);
+                    }
+                }
                 Ok(None) => {
                     tracing::debug!("no frame of {} was worth keeping", want.source.display());
                     remember_miss(&want.out);
                 }
                 Err(Failed::Missing) => {
-                    let mut state = recover(&self.state);
-                    state.missing = true;
-                    state.queue.clear();
-                    state.running = false;
+                    {
+                        let mut state = recover(&self.state);
+                        state.missing = true;
+                        state.queue.clear();
+                        state.running = false;
+                    }
                     tracing::info!("episode frames are off: ffmpeg or ffprobe is not installed");
+                    self.announce(landed).await;
                     return;
                 }
                 Err(Failed::Other(e)) => {
@@ -313,20 +333,28 @@ impl Frames {
                     remember_miss(&want.out);
                 }
             }
+            if !landed.is_empty() && (!more || since.elapsed() >= ANNOUNCE_EVERY) {
+                self.announce(std::mem::take(&mut landed)).await;
+                since = Instant::now();
+            }
         }
     }
 
-    /// The series' card again, so the shells read it once more and find the
-    /// frame. Debug: a frame landing is not a change of state the activity
-    /// log keeps.
-    async fn announce(&self, series: u64) {
+    /// The series' cards again, one event for all of them, so the shells
+    /// read them once more and find the frames. Debug: a frame landing is
+    /// not a change of state the activity log keeps.
+    async fn announce(&self, series: Vec<u64>) {
+        if series.is_empty() {
+            return;
+        }
         let images_dir = self.services.paths.images_dir();
         let services = self.services.clone();
+        let ids = series.clone();
         // Only a read, so off the writer thread: it never waits behind a scan
         let cards = tokio::task::spawn_blocking(move || {
             services
                 .store
-                .read(|c| cards::cards_for(c, &images_dir, &[series]))
+                .read(|c| cards::cards_for(c, &images_dir, &ids))
         })
         .await
         .unwrap_or_else(|e| Err(CoreError::internal(format!("card read failed: {e}"))));
@@ -334,11 +362,11 @@ impl Frames {
             Ok(cards) => {
                 self.services.bus.debug(
                     Stage::Library,
-                    format!("frame taken for series {series}"),
+                    format!("frames taken for {} series", series.len()),
                     EventBody::SeriesChanged { series: cards },
                 );
             }
-            Err(e) => tracing::warn!("frame for series {series} not announced: {e}"),
+            Err(e) => tracing::warn!("frames for series {series:?} not announced: {e}"),
         }
     }
 }
