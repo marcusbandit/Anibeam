@@ -1286,6 +1286,11 @@ series-page-rewatched =
        *[other] Genset { $count } gange
     }
 series-your-notes = Dine noter
+series-studio = Studie
+series-open-anilist = Åbn på AniList
+series-open-mal = Åbn på MyAnimeList
+series-more = Mere
+series-more-tip = Noter, rettelser og skjul
 series-add-notes = Tilføj noter
 series-notes-tip = Noter på din listepost, gemt på { $sites }
 series-unhide = Vis igen

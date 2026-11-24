@@ -415,6 +415,9 @@ pub struct SeriesDetail {
     pub banner: Option<String>,
     pub synopsis: String,
     pub year: Option<u32>,
+    /// AniList's season word (WINTER, SPRING, SUMMER, FALL); None for TVmaze.
+    #[serde(default)]
+    pub season: Option<String>,
     pub studio: Option<String>,
     /// How many minutes an episode runs, a film's runtime for a film: the
     /// AniList record's duration, or the TVmaze show's average runtime.

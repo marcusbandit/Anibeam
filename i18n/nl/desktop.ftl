@@ -1286,6 +1286,11 @@ series-page-rewatched =
        *[other] { $count } keer herkeken
     }
 series-your-notes = Je notities
+series-studio = Studio
+series-open-anilist = Openen op AniList
+series-open-mal = Openen op MyAnimeList
+series-more = Meer
+series-more-tip = Notities, correcties en verbergen
 series-add-notes = Notitie maken
 series-notes-tip = Notities bij je lijstitem, bewaard op { $sites }
 series-unhide = Tonen

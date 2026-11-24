@@ -1139,6 +1139,11 @@ series-page-rewatched =
        *[other] { $count }회 다시 봄
     }
 series-your-notes = 내 메모
+series-studio = 스튜디오
+series-open-anilist = AniList에서 열기
+series-open-mal = MyAnimeList에서 열기
+series-more = 더보기
+series-more-tip = 메모, 수정, 숨기기
 series-add-notes = 메모 추가
 series-notes-tip = 목록 항목에 붙는 메모, { $sites }에 저장돼요
 series-unhide = 숨김 해제

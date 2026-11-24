@@ -1007,6 +1007,11 @@ series-page-imdb-votes = { $votes }票
 series-add-to-list = リストに追加
 series-page-rewatched = { $count }回再視聴
 series-your-notes = メモ
+series-studio = スタジオ
+series-open-anilist = AniListで開く
+series-open-mal = MyAnimeListで開く
+series-more = その他
+series-more-tip = メモ、修正、非表示
 series-add-notes = メモを追加
 # $sites is AniList, MyAnimeList, or both
 series-notes-tip = リストのエントリーに付けるメモ。{ $sites }に保存されます

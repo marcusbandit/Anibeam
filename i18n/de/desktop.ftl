@@ -1286,6 +1286,11 @@ series-page-rewatched =
        *[other] { $count }-mal erneut geschaut
     }
 series-your-notes = Deine Notizen
+series-studio = Studio
+series-open-anilist = Auf AniList öffnen
+series-open-mal = Auf MyAnimeList öffnen
+series-more = Mehr
+series-more-tip = Notizen, Korrekturen und Ausblenden
 series-add-notes = Notiz anlegen
 series-notes-tip = Notizen zu deinem Listeneintrag, gespeichert bei { $sites }
 series-unhide = Einblenden
