@@ -221,6 +221,37 @@ fn asked(conn: &Connection, id: u64) -> Result<bool, CoreError> {
     )?)
 }
 
+/// What asking ani.zip about one franchise season came to.
+enum Asked {
+    /// Its rows are in the tables, from now or from an earlier ask.
+    Known,
+    /// It did not answer, and ani.zip is not down: the next season is tried.
+    Skip,
+    /// ani.zip is down: the walk writes nothing.
+    Down,
+}
+
+/// Asks ani.zip about `id` unless an earlier ask already wrote its rows.
+async fn ask(metadata: &Metadata, id: u64, now: i64) -> Result<Asked, CoreError> {
+    if read(metadata, move |c| asked(c, id)) {
+        return Ok(Asked::Known);
+    }
+    let answer = metadata.anizip_show(id).await;
+    if answer == AniZipRead::Failed {
+        return Ok(if metadata.anizip_down() {
+            Asked::Down
+        } else {
+            Asked::Skip
+        });
+    }
+    metadata
+        .services
+        .store
+        .tx_async(move |tx| anizip::write(tx, id, &answer, now))
+        .await?;
+    Ok(Asked::Known)
+}
+
 /// The TheTVDB season `place` seasons away from a neighbour holding
 /// `seasons`: past its last for a season after it, before its first for a
 /// season before it.
@@ -257,36 +288,41 @@ pub async fn run(metadata: &Metadata, anilist_id: u64, now: i64) -> Result<bool,
     let Ok(neighbours) = chain(metadata, anilist_id, now).await else {
         return Ok(false);
     };
+    // The logo walks back the sequel chain first, the season before this
+    // one and on back, then forward (#1463): an earlier season's logo is
+    // the show's name, where a later one may carry its own season's.
     let mut logo: Option<String> = None;
-    let mut target: Option<(u64, u64, u32)> = None;
-    for (id, place) in neighbours {
-        if (!want_logo || logo.is_some()) && (!want_episodes || target.is_some()) {
-            break;
-        }
-        if !read(metadata, move |c| asked(c, id)) {
-            let answer = metadata.anizip_show(id).await;
-            if answer == AniZipRead::Failed {
-                if metadata.anizip_down() {
-                    return Ok(false);
-                }
-                continue;
+    if want_logo {
+        let back = neighbours.iter().filter(|(_, place)| *place < 0);
+        let forward = neighbours.iter().filter(|(_, place)| *place > 0);
+        for &(id, _) in back.chain(forward) {
+            match ask(metadata, id, now).await? {
+                Asked::Down => return Ok(false),
+                Asked::Skip => continue,
+                Asked::Known => {}
             }
-            metadata
-                .services
-                .store
-                .tx_async(move |tx| anizip::write(tx, id, &answer, now))
-                .await?;
+            logo = read(metadata, move |c| neighbour(c, id)).logo;
+            if logo.is_some() {
+                break;
+            }
         }
-        let n = read(metadata, move |c| neighbour(c, id));
-        if want_logo && logo.is_none() {
-            logo = n.logo.clone();
-        }
-        if want_episodes
-            && target.is_none()
-            && let (Some(tvdb), Some(seasons)) = (n.tvdb_id, n.seasons)
-            && let Some(season) = season_for(seasons, place)
-        {
-            target = Some((id, tvdb, season));
+    }
+    // The episodes take the nearest season that names a TheTVDB id.
+    let mut target: Option<(u64, u64, u32)> = None;
+    if want_episodes {
+        for &(id, place) in &neighbours {
+            match ask(metadata, id, now).await? {
+                Asked::Down => return Ok(false),
+                Asked::Skip => continue,
+                Asked::Known => {}
+            }
+            let n = read(metadata, move |c| neighbour(c, id));
+            if let (Some(tvdb), Some(seasons)) = (n.tvdb_id, n.seasons)
+                && let Some(season) = season_for(seasons, place)
+            {
+                target = Some((id, tvdb, season));
+                break;
+            }
         }
     }
     let mut found: Option<Found> = None;
@@ -394,12 +430,17 @@ pub fn fingerprint(conn: &Connection, anilist_id: u64) -> Result<String, CoreErr
     )?)
 }
 
-/// Whether the airing refresh should run the fallback again: ani.zip still
-/// has no episodes for the show, and the last walk is older than the airing
-/// window or there was none.
+/// Whether the fallback should walk again: ani.zip still has no episodes
+/// for the show, or no logo and the fallback has none either (#1463), and
+/// the last walk is older than the airing window or there was none.
 pub fn due(conn: &Connection, anilist_id: u64, now: i64) -> Result<bool, CoreError> {
-    let (want_episodes, _) = missing(conn, anilist_id)?;
-    if !want_episodes {
+    let (want_episodes, want_logo) = missing(conn, anilist_id)?;
+    let borrowed: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM fallback_shows WHERE anilist_id = ?1 AND logo_url IS NOT NULL)",
+        params![as_i64(anilist_id)],
+        |r| r.get(0),
+    )?;
+    if !want_episodes && !(want_logo && !borrowed) {
         return Ok(false);
     }
     let fetched_at: Option<i64> = conn
@@ -411,6 +452,97 @@ pub fn due(conn: &Connection, anilist_id: u64, now: i64) -> Result<bool, CoreErr
         .optional()?;
     let window = i64::try_from(crate::airing::TTL.as_secs()).unwrap_or(i64::MAX);
     Ok(fetched_at.is_none_or(|at| now.saturating_sub(at) >= window))
+}
+
+/// Starts the launch's pass over every AniList match the fallback is due
+/// for: a season still without episodes or without any logo, its last walk
+/// older than the airing window (#1463). Returns the job's id, or `None`
+/// when nothing is due.
+pub fn start(metadata: &std::sync::Arc<Metadata>) -> Option<u64> {
+    use anibeam_contract::*;
+    use anibeam_foundation::jobs::Finished;
+    let now = anibeam_foundation::time::now_secs();
+    let work = metadata
+        .services
+        .store
+        .read(move |c| due_ids(c, now))
+        .ok()?;
+    if work.is_empty() {
+        return None;
+    }
+    let owner = metadata.clone();
+    Some(
+        metadata
+            .services
+            .jobs
+            .clone()
+            .start(JobKind::RefreshAiring, move |ctx| async move {
+                let total = work.len() as u64;
+                let mut filled = 0u64;
+                for (done, (anilist_id, series)) in work.into_iter().enumerate() {
+                    ctx.checkpoint()?;
+                    ctx.progress(done as u64, Some(total), &anilist_id.to_string());
+                    let now = anibeam_foundation::time::now_secs();
+                    if !run(&owner, anilist_id, now).await? {
+                        continue;
+                    }
+                    filled += 1;
+                    let urls = owner
+                        .services
+                        .store
+                        .write_async(move |c| anizip::image_urls(c, anilist_id))
+                        .await?;
+                    owner.net.images.ensure(&urls).await;
+                    for id in series {
+                        if let Some(card) = crate::apply::card_for(&owner.services, id).await? {
+                            ctx.changed(card);
+                        }
+                    }
+                }
+                Ok(Finished {
+                    plain: None,
+                    level: if filled == 0 {
+                        Level::Debug
+                    } else {
+                        Level::Info
+                    },
+                    message: format!(
+                        "Franchise episode details and logos filled for {filled} series"
+                    ),
+                    body: EventBody::Notice,
+                })
+            }),
+    )
+}
+
+/// The AniList ids `due` says yes to, each with the series matched to it.
+/// Ids ani.zip was never asked about are the ani.zip walk's, which runs the
+/// fallback itself.
+fn due_ids(conn: &Connection, now: i64) -> Result<Vec<(u64, Vec<u64>)>, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT s.anilist_id, s.id FROM series s
+         WHERE s.provider = 'anilist' AND s.anilist_id IS NOT NULL
+           AND EXISTS (SELECT 1 FROM anizip_shows z WHERE z.anilist_id = s.anilist_id)
+         ORDER BY s.anilist_id, s.id",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u64))
+    })?;
+    let mut out: Vec<(u64, Vec<u64>)> = Vec::new();
+    for row in rows {
+        let (anilist_id, series) = row?;
+        match out.last_mut() {
+            Some((id, list)) if *id == anilist_id => list.push(series),
+            _ => out.push((anilist_id, vec![series])),
+        }
+    }
+    let mut due_now = Vec::new();
+    for (anilist_id, series) in out {
+        if due(conn, anilist_id, now)? {
+            due_now.push((anilist_id, series));
+        }
+    }
+    Ok(due_now)
 }
 
 #[cfg(test)]

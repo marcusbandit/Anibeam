@@ -23,7 +23,7 @@ use crate::events::Subscription;
 use crate::franchise::crawl;
 use crate::images;
 use crate::library::scan::{self, ScanScope};
-use crate::metadata::{Metadata, airing, anizip, apply, automatch, imdb, owed};
+use crate::metadata::{Metadata, airing, anizip, apply, automatch, fallback, imdb, owed};
 use crate::sync::recover;
 use crate::trackers::{Trackers, cache};
 
@@ -153,6 +153,8 @@ fn after_scan(metadata: &Arc<Metadata>, trackers: &Arc<Trackers>, downloads: &Ar
     owed::start(metadata);
     // ani.zip's episode details for the series matched before it was asked (#1036).
     anizip::start(metadata);
+    // The franchise fallback for the seasons still without episodes or a logo (#1461, #1463).
+    fallback::start(metadata);
     imdb::start_refresh(&metadata.services);
     cache::start_refresh(trackers, None, false);
     images::start_fill(&metadata.net);

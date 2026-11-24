@@ -222,6 +222,13 @@ fn episode_of(key: &str, raw: RawEpisode) -> AniZipEpisode {
     }
 }
 
+/// Whether a `Clearlogo` url is TheTVDB's clear logo art, a transparent
+/// name wider than it is tall, rather than the square icon ani.zip also
+/// files under that kind.
+pub fn is_clear_logo(url: &str) -> bool {
+    url.contains("/clearlogo/")
+}
+
 fn show_of(reply: Reply) -> AniZipShow {
     let mut episodes: Vec<AniZipEpisode> = reply
         .episodes
@@ -249,6 +256,11 @@ fn show_of(reply: Reply) -> AniZipShow {
             continue;
         };
         if !url.starts_with("https://") || images.iter().any(|i| i.kind == *kind && i.url == url) {
+            continue;
+        }
+        // ani.zip labels TheTVDB's square icons Clearlogo too (#1463). Only
+        // TheTVDB's own clear logo art is the show's name drawn as a logo.
+        if *kind == "Clearlogo" && !is_clear_logo(&url) {
             continue;
         }
         images.push(AniZipImage {
@@ -367,6 +379,7 @@ mod tests {
         assert_eq!(second.air_date.as_deref(), Some("2031-04-13"));
         assert_eq!(second.still_url, None);
         // A placeholder comes through as written; the metadata team drops it.
+        // The icon filed as a Clearlogo is not one, and is gone.
         assert_eq!(show.episodes[2].title_en.as_deref(), Some("Episode 3"));
         let special = &show.episodes[3];
         assert_eq!(special.number, None);

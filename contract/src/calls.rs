@@ -85,6 +85,14 @@ pub enum Call {
         series: u64,
         hidden: bool,
     },
+    /// This show's page draws its logo (true) or its title in text (false)
+    /// whatever `Preferences::series_logos` says; None follows the setting
+    /// again (#1463). Answers `Ok`.
+    SetSeriesLogo {
+        series: u64,
+        #[serde(default)]
+        logo: Option<bool>,
+    },
     /// One action over several series at once, the library's picking
     /// (#208), with one line in the activity log however many it names.
     /// Hide answers `Ok`; the rest `Started` with their one job. A pick a
