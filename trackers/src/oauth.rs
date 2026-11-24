@@ -704,9 +704,9 @@ fn query_pairs(query: &str) -> Vec<(String, String)> {
 /// The look every page shares: an eyecatch, the card an anime cuts to
 /// between its halves. The logo's ア with its speed lines runs off the edge
 /// of the tab, and the outcome is set huge in Archivo, the site's face.
-/// A finished sign-in gets the whole tab in Anibeam's yellow; every other
-/// outcome sits on the app's own ground, Anibeam Dark or Light after the
-/// browser. One motion: the ア cuts in once, like a smear frame.
+/// Every page sits on the app's own ground, Anibeam Dark or Light after the
+/// browser; a finished sign-in paints the ア in Anibeam's yellow, never the
+/// whole tab. One motion: the ア cuts in once, like a smear frame.
 ///
 /// Nothing is fetched. The icon is inline and Archivo rides along as a data
 /// url, so the type is the same on every machine whether or not Archivo is
@@ -715,9 +715,9 @@ fn query_pairs(query: &str) -> Vec<(String, String)> {
 const PAGE_STYLE: &str = r#"
 :root{--ground:#07090f;--fg:#f2f5fa;--fg-2:#a3aec5;--art:#161c28;--state:#fdc901;color-scheme:dark}
 @media (prefers-color-scheme:light){:root{--ground:#f4f6fb;--fg:#0e1220;--fg-2:#4a536a;--art:#e3e8f1;color-scheme:light}}
-.ok{--ground:#fdc901;--fg:#0d0e11;--fg-2:#3d3510;--art:#0d0e11;--state:#0d0e11;color-scheme:light}
+.ok{--state:#fdc901;--art:#fdc901}
 .bad{--state:#f0718a}.off{--state:var(--fg-2)}
-@media (prefers-color-scheme:light){.bad{--state:#c8405e}.wait,.go{--state:var(--fg)}}
+@media (prefers-color-scheme:light){.bad{--state:#c8405e}.ok,.wait,.go{--state:var(--fg)}}
 *{box-sizing:border-box}
 html{background:var(--ground);overflow-x:clip}
 body{margin:0;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;justify-content:space-between;
@@ -729,7 +729,6 @@ transform:translateY(-55%) rotate(-6deg);animation:cut .42s cubic-bezier(.2,.9,.
 header,main{position:relative;z-index:1}
 header{display:flex;align-items:center;gap:.6rem;font-weight:700;font-size:1.05rem;letter-spacing:-.01em}
 header svg{width:30px;height:30px}
-.ok header svg rect{fill:#0d0e11}.ok header svg path{fill:#fdc901}
 main{max-width:min(100%,62rem)}
 .word{display:block;margin:0 0 .12em -.04em;color:var(--state);font-weight:900;font-stretch:125%;
 font-size:clamp(2.4rem,11.5vw,11rem);line-height:.86;letter-spacing:-.045em;text-wrap:balance;
