@@ -351,7 +351,7 @@ jobs:
           start=()
           if [ -n "$PREVIOUS" ]; then start=(--notes-start-tag "$PREVIOUS"); fi
           gh release create "$tag" dist/* --draft --prerelease --latest=false --target "$SHA" \
-            --title "$(.github/release-name.sh "$VERSION")" --notes-file notes.md --generate-notes "${start[@]}"
+            --title "$(scripts/ci/release-name.sh "$VERSION")" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --prerelease --latest=false
 
       - name: Keep the ten newest nightlies
@@ -424,7 +424,7 @@ jobs:
           shopt -s nullglob
           files=(dist/*.apk dist/*.aab dist/*.ipa)
           gh release create "$tag" "${files[@]}" --draft --prerelease --latest=false --target "$SHA" \
-            --title "$(.github/release-name.sh "$VERSION" phone)" --notes-file notes.md --generate-notes "${start[@]}"
+            --title "$(scripts/ci/release-name.sh "$VERSION" phone)" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --prerelease --latest=false
 
       - name: Keep the ten newest phone nightlies

@@ -19,11 +19,17 @@ anibeam/
 ├── i18n/                    # Fluent (.ftl) catalog for all 13 languages
 ├── assets/                  # Canonical brand logos & icon generators
 ├── site/                    # anibeam.app website, wiki, and installer scripts
+├── scripts/                 # Developer & CI scripts (`local-ci.sh`, `ci/*`)
 ├── docs/                    # Living guides, ADRs, safety audit, and README media
 ├── Casks/                   # Homebrew cask (pinned at root for `brew tap`)
 ├── build.sh                 # One-command desktop build script
 └── Cargo.toml               # Root Rust workspace manifest
 ```
+
+### UI directory layout
+
+- **Desktop QML (`apps/desktop/qml/`):** `Main.qml` at root, organized into `shell/` (frame, nav, rail, drawers, onboarding), `ui/` (tokens, i18n, shared primitives), `pages/` (top-level rail pages), `series/`, `player/`, `room/`, `downloads/`, `settings/`, and `dev/` (drive/ctl/HUD tools).
+- **Phone Slint (`apps/phone/ui/`):** `app.slint` at root, organized into `core/` (theme, i18n, data, widgets, sheets), `pages/` (main tabs & player), `show/` (series/show detail sheets & sections), `more/` (settings/stats/backup sub-views), plus `fonts/` and `icons/`.
 
 ## Crate layers
 
@@ -103,6 +109,6 @@ Every contributor (human or AI) should preserve these rules:
 - **One window, play on when hidden:** Never open a second window or external mpv process, and never auto-pause when the window is hidden.
 - **Self-contained desktop behavior:** No compositor-specific coupling (e.g., no `hyprctl` or Hyprland window rules).
 - **Native desktop scrolling:** Every `Flickable` uses `WheelStep.qml`'s wheel handling (100 px per notch glided to one target).
-- **No shipped download sources:** Nothing in this repo names or points at a download site—not in code, defaults, tests, fixtures, or docs. The core defines generic endpoint *kinds* (RSS, Torznab, JSON) only; users add signed endpoint repos themselves. Enforced by `.github/no-site-names.sh`.
-- **All UI copy lives in `i18n/`:** Shells never hardcode user-facing English strings; code looks up Fluent message IDs. Enforced by `.github/strings-check.py`.
+- **No shipped download sources:** Nothing in this repo names or points at a download site—not in code, defaults, tests, fixtures, or docs. The core defines generic endpoint *kinds* (RSS, Torznab, JSON) only; users add signed endpoint repos themselves. Enforced by `scripts/ci/no-site-names.sh`.
+- **All UI copy lives in `i18n/`:** Shells never hardcode user-facing English strings; code looks up Fluent message IDs. Enforced by `scripts/ci/strings-check.py`.
 - **Curated patch notes:** Regular PRs do not edit `CHANGELOG.md`. Curate `apps/desktop/CHANGELOG.md` and `apps/phone/CHANGELOG.md` before releases; `site/whats-new.py` builds `anibeam.app/whats-new/` directly from them.

@@ -226,7 +226,7 @@ jobs:
           where=(--target "$SHA")
           if [ "$KIND" = hotfix ]; then where=(--verify-tag); fi
           gh release create "$tag" dist/* --draft "${where[@]}" \
-            --title "$(.github/release-name.sh "$VERSION")" --notes-file notes.md --generate-notes "${start[@]}"
+            --title "$(scripts/ci/release-name.sh "$VERSION")" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --latest="$latest"
 
   # The phone's release: the APK on a release of its own, never the Latest one. Its notes start
@@ -276,7 +276,7 @@ jobs:
           start=()
           if [ -n "$previous" ]; then start=(--notes-start-tag "$previous"); fi
           gh release create "$tag" dist/* --draft --latest=false --target "$SHA" \
-            --title "$(.github/release-name.sh "$VERSION" phone)" --notes-file notes.md --generate-notes "${start[@]}"
+            --title "$(scripts/ci/release-name.sh "$VERSION" phone)" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --latest=false
 
   # The apt and dnf repos on anibeam.app are signed from the newest stable release's

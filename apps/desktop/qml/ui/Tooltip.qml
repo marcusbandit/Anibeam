@@ -1,0 +1,93 @@
+// Hover text for one item. The tip itself is drawn by the frame in its overlay after a
+// 600 ms hover intent, so it is never clipped by the item's own parent. Once a tip has
+// shown, the next item's comes at once (the frame's tipWarm), the way desktop tips do, and
+// moving straight to a neighbour hands the tip over without it blinking off in between.
+//
+// A HoverHandler on the item it describes, not a MouseArea over it. A hovering MouseArea
+// takes the hover from every sibling under it, so a button's own MouseArea declared before
+// its Tooltip never saw containsMouse and its hover fill never showed. A HoverHandler laid
+// over it as a sibling still did (measured: an overlapping Item with a HoverHandler kept the
+// MouseArea under it at containsMouse false), so this item covers nothing at all and its
+// handler sits on the parent: hover reaches every ancestor of what is under the pointer, so
+// the parent's handler sees it whichever child takes it.
+//
+// No tip while a popover is up (a dropdown's list, a picker, the menu): the click that
+// opened it would otherwise bring the tip up over it 600 ms later.
+import QtQuick
+import com.marcusrosado.Anibeam
+
+Item {
+    id: root
+    // The words by message ID (#792), `msgArgs` filled in; `text` set directly wins
+    property string msg: ""
+    property var msgArgs: ({})
+    property string text: msg ? words.t(msg, msgArgs) : ""
+    // Read by theme.tipOf, so the item this tip describes can name itself to a screen reader
+    readonly property bool isTooltip: true
+    readonly property bool hovered: hh.hovered
+    readonly property Item target: parent
+    // Manual mode: the owner tracks the pointer itself and says when it is on the target
+    // with `held` and `show()`, as EpisodeCubes does for one tip over a whole grid. `area`
+    // is what the pointer has to stay inside for the tip to stand, the target by default.
+    property bool manual: false
+    property bool held: false
+    property Item area: null
+    readonly property bool over: manual ? held : hh.hovered
+    // The frame that draws the tip. Under Main's tokens page `frame` is Main's Loader, not
+    // the Frame, so the Frame is its item there.
+    readonly property var host: typeof frame === "undefined" || !frame ? null
+        : frame.showTip ? frame : (frame.item && frame.item.showTip ? frame.item : null)
+    width: 0; height: 0
+
+    function popoverUp() {
+        if (!host || !host.escapeStack) return false
+        var e = host.escapeStack.entries
+        for (var i = 0; i < e.length; i++) if (e[i].kind === "popover") return true
+        return false
+    }
+    function hide() { intent.stop(); if (host) host.hideTip() }
+    // The pointer left: let the frame keep the tip through the gap to a neighbour
+    function release() { intent.stop(); if (host) { if (host.releaseTip) host.releaseTip(root.area || root.target); else host.hideTip() } }
+    // The pointer reached the target (again): the tip comes after the hover intent, or at
+    // once while another tip is up or has just gone
+    function show() {
+        if (root.text === "") return
+        if (root.host && root.host.tipWarm && root.host.tipWarm()) intent.trigger()
+        else intent.restart()
+    }
+
+    HoverHandler {
+        id: hh
+        parent: root.target
+        enabled: !root.manual
+        onHoveredChanged: {
+            if (!hovered) { root.release(); return }
+            root.show()
+        }
+    }
+    onTextChanged: if (root.over && text === "") hide()
+    // Keyboard focus shows the tip too, after the same pause, and losing it takes it away
+    Connections {
+        target: root.target
+        function onActiveFocusChanged() {
+            if (root.target.activeFocus && root.text !== "" && !root.over) focusIntent.restart()
+            else if (!root.target.activeFocus) { focusIntent.stop(); if (!root.over) root.hide() }
+        }
+    }
+    Timer {
+        id: focusIntent
+        interval: 600
+        onTriggered: if (root.target.activeFocus && root.host && root.text !== "" && !root.popoverUp()) root.host.showTip(root.target, root.text, root.target, true, true)
+    }
+    // A tip already up when a popover opens (a click on the hovered button) goes
+    Connections {
+        target: root.over && root.host ? root.host.escapeStack : null
+        function onEntriesChanged() { if (root.popoverUp()) root.hide() }
+    }
+    Timer {
+        id: intent
+        interval: 600
+        function trigger() { stop(); triggered() }
+        onTriggered: if (root.over && root.host && root.text !== "" && !root.popoverUp()) root.host.showTip(root.target, root.text, root.area || undefined)
+    }
+}

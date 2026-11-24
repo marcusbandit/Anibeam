@@ -11,7 +11,7 @@ Instructions for AI coding agents working in this repository. Start by reading t
 ## Git workflow
 
 - **Never commit directly on `main`.** Work on a focused branch named `<type>/<issue>-<slug>` and squash-merge via PR (`Closes #<issue>`).
-- **Check before opening a PR:** Run `.github/local-ci.sh` locally (or `--no-build` / `--quick` while iterating). Never leave `main` broken.
+- **Check before opening a PR:** Run `scripts/local-ci.sh` locally (or `--no-build` / `--quick` while iterating). Never leave `main` broken.
 - **Never create releases or `android-v*` pre-releases by hand** for test builds; see [docs/releasing.md](docs/releasing.md).
 
 ## Build and test commands
@@ -24,7 +24,7 @@ cargo test -p anibeam-library
 cargo clippy -p anibeam-library --all-targets -- -D warnings
 
 # Full workspace checks (run before opening a PR):
-.github/local-ci.sh --no-build
+scripts/local-ci.sh --no-build
 cargo fmt --all --check
 
 # Desktop shell (needs Qt 6.11+, qmake6, MpvQt, libmpv, lld):

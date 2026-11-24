@@ -1,6 +1,6 @@
 name: Automerge
 
-# Merges PRs on their own: .github/ios-automerge.sh holds the rules.
+# Merges PRs on their own: scripts/ci/ios-automerge.sh holds the rules.
 #
 # - The owner's PR labelled `automerge` and `full ci` (#1414) squash merges once every check on
 #   its head has passed and Full CI has built that head and passed. A Full CI run whose jobs
@@ -83,7 +83,7 @@ jobs:
         if: steps.look.outputs.go == 'true'
         with:
           ref: ${{ github.event.repository.default_branch }}
-          sparse-checkout: .github/ios-automerge.sh
+          sparse-checkout: scripts/ci/ios-automerge.sh
           sparse-checkout-cone-mode: false
 
       - name: Merge what is ready
@@ -92,4 +92,4 @@ jobs:
           MERGE_TOKEN: ${{ secrets.NIGHTLY_TOKEN }}
           OWNER: ${{ github.repository_owner }}
           DRY_RUN: '0'
-        run: .github/ios-automerge.sh
+        run: scripts/ci/ios-automerge.sh

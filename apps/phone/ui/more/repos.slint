@@ -1,0 +1,656 @@
+// Endpoint repos (#143): the address of a repo pasted in, its fingerprint shown before it is
+// trusted, and the endpoints it offers installed one at a time. More and the first run both
+// use these pieces.
+
+import { Theme } from "../core/theme.slint";
+import { Button, ButtonRow, Field, GlassTag, Lit, Switch, TextButton } from "../core/widgets.slint";
+import { Tr } from "../core/tr.slint";
+
+// A trusted repo.
+export struct RepoRow {
+    name: string,
+    url: string,
+    fingerprint: string,
+    nsfw: bool,
+    // Why the last refresh kept the older index, or empty.
+    error: string,
+}
+
+// An endpoint a repo offers, or one installed from it.
+export struct EndpointRow {
+    name: string,
+    // "tracker.example  rss  en".
+    line: string,
+    installed: bool,
+    enabled: bool,
+    nsfw: bool,
+    // "Needs an RSS token", "No longer offered", or empty.
+    note: string,
+    // "Update to version 2", or empty.
+    update: string,
+    // Installed with values of its own, or added by hand, so a tap opens it.
+    editable: bool,
+    // The note is something to fix, not a hint.
+    warn: bool,
+    // How the last check of the sites found it: "Answered in 240 ms", or why it did not.
+    health: string,
+    health-ok: bool,
+}
+
+// One value an install asks for.
+export struct AuthRow {
+    label: string,
+    help: string,
+    help-url: string,
+    secret: bool,
+}
+
+export global RepoData {
+    in-out property <string> url;
+    in property <bool> busy;
+    in property <string> error;
+    // A repo fetched and checked, waiting for the person to trust it.
+    in property <bool> previewing;
+    in property <string> preview-name;
+    in property <string> preview-url;
+    in property <string> preview-fingerprint;
+    in property <string> preview-line;
+    in property <bool> preview-nsfw;
+    in property <[RepoRow]> repos;
+    // Installed first, in search order, then what the repos offer.
+    in property <[EndpointRow]> endpoints;
+    // Installed and switched on: the sites a search asks.
+    in property <int> on-count;
+    // The sites are being asked whether they answer.
+    in property <bool> checking;
+    callback check();
+    // An install or update asking for values, in the row of `asking-index`.
+    in property <bool> asking;
+    in property <int> asking-index: -1;
+    in property <string> asking-note;
+    in property <[AuthRow]> fields;
+    // What went wrong with the form's own call, shown inside it.
+    in property <string> asking-error;
+    // What the form's button does: 0 Install, 1 Update, 2 Save.
+    in property <int> asking-kind: 0;
+    // An endpoint added by hand.
+    in-out property <string> custom-name;
+    in-out property <string> custom-url;
+    in property <string> custom-error;
+    // A source added by hand, open for editing in the row of `editing-index`.
+    in property <int> editing-index: -1;
+    in-out property <string> edit-name;
+    in-out property <string> edit-url;
+    in property <string> edit-error;
+    // The labels of its keys, "API key", or empty when it has none.
+    in property <string> edit-keys;
+    callback save-edit();
+    callback change-values();
+    callback close-edit();
+
+    callback add(string);
+    callback trust();
+    callback cancel();
+    callback remove-repo(int);
+    callback refresh();
+    // Install, or Update when it has one.
+    callback act(int);
+    callback remove-endpoint(int);
+    callback toggle(int);
+    // A tap on an installed endpoint: its values, to add or change.
+    callback open(int);
+    callback set-value(int, string);
+    callback confirm();
+    callback dismiss();
+    callback open-link(string);
+    callback add-custom(string, string);
+}
+
+// An endpoint no repo carries, added by hand beside them: a name and an address.
+export component CustomAdd inherits Rectangle {
+    height: column.preferred-height + 7 * Theme.unit;
+    column := VerticalLayout {
+        x: Theme.pad;
+        y: 3.5 * Theme.unit;
+        width: parent.width - 2 * Theme.pad;
+        height: self.preferred-height;
+        spacing: Theme.unit * 3;
+        Text {
+            text: Tr.t("repos-by-hand-title");
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Text {
+            text: Tr.t("repos-by-hand-note");
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        Field { text <=> RepoData.custom-name; placeholder: Tr.t("repos-name-placeholder"); }
+        Field { text <=> RepoData.custom-url; placeholder: Tr.t("repos-url-placeholder"); }
+        if RepoData.custom-error != "": Text {
+            text: RepoData.custom-error;
+            color: Theme.bad;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: start;
+            Button {
+                text: Tr.t("repos-add-site");
+                small: true;
+                enabled: RepoData.custom-name != "" && RepoData.custom-url != "";
+                clicked => { RepoData.add-custom(RepoData.custom-name, RepoData.custom-url); }
+            }
+        }
+    }
+}
+
+// A block of a card: its height is its own layout's, and that layout's width is set
+// outright. That is ListRow's shape, the one that measures wrapped text right inside an `if`
+// or a `for`; a bare layout there measures it as one line and the card comes out short.
+component RepoForm inherits Rectangle {
+    height: col.preferred-height;
+    col := VerticalLayout {
+        width: parent.width;
+        spacing: Theme.unit * 3;
+        Text {
+            text: Tr.t("repos-add-title");
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Text {
+            text: Tr.t("repos-add-note");
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        Field {
+            text <=> RepoData.url;
+            placeholder: Tr.t("repos-index-placeholder");
+            accepted(t) => { RepoData.add(t); }
+        }
+        HorizontalLayout {
+            alignment: start;
+            Button {
+                text: RepoData.busy ? Tr.t("common-checking") : Tr.t("repos-add-repo");
+                small: true;
+                enabled: !RepoData.busy && RepoData.url != "";
+                clicked => { RepoData.add(RepoData.url); }
+            }
+        }
+    }
+}
+
+component RepoPreview inherits Rectangle {
+    height: col.preferred-height;
+    col := VerticalLayout {
+        width: parent.width;
+        spacing: Theme.unit * 2;
+        Text {
+            text: Tr.t("repos-trust-title");
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        HorizontalLayout {
+            spacing: Theme.unit * 2;
+            alignment: start;
+            Text {
+                text: RepoData.preview-name;
+                color: Theme.text;
+                font-size: Theme.large;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
+            }
+            if RepoData.preview-nsfw: GlassTag {
+                y: (parent.height - self.height) / 2;
+                text: "18+";
+                ink: Theme.bad;
+            }
+        }
+        Text {
+            text: RepoData.preview-url;
+            color: Theme.faint;
+            font-size: Theme.small - 1px;
+            font-family: Theme.ledger-face;
+            wrap: word-wrap;
+        }
+        Text {
+            text: RepoData.preview-line;
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        Text {
+            text: Tr.t("repos-fingerprint");
+            color: Theme.dim;
+            font-size: Theme.small;
+        }
+        Text {
+            text: RepoData.preview-fingerprint;
+            color: Theme.text;
+            font-family: Theme.figure;
+            wrap: word-wrap;
+        }
+        Text {
+            text: Tr.t("repos-trust-warning");
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        ButtonRow {
+            Button {
+                widest: parent.width;
+                text: Tr.t("repos-trust");
+                small: true;
+                primary: true;
+                enabled: !RepoData.busy;
+                clicked => { RepoData.trust(); }
+            }
+            Button {
+                widest: parent.width;
+                text: Tr.t("common-cancel");
+                small: true;
+                clicked => { RepoData.cancel(); }
+            }
+        }
+    }
+}
+
+// The address field, Add, and the preview to trust.
+export component RepoAdd inherits Rectangle {
+    height: column.preferred-height + 7 * Theme.unit;
+    column := VerticalLayout {
+        x: Theme.pad;
+        y: 3.5 * Theme.unit;
+        width: parent.width - 2 * Theme.pad;
+        height: self.preferred-height;
+        spacing: Theme.unit * 3;
+        if !RepoData.previewing: RepoForm { }
+        if RepoData.previewing: RepoPreview { }
+        if RepoData.error != "": Text {
+            text: RepoData.error;
+            color: Theme.bad;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// A trusted repo: its name, its fingerprint in the ledger cut, what went wrong last, Remove.
+export component RepoItem inherits Rectangle {
+    in property <RepoRow> repo;
+    callback remove();
+    height: column.preferred-height + 7 * Theme.unit;
+    column := VerticalLayout {
+        x: Theme.pad;
+        y: 3.5 * Theme.unit;
+        // Its own height, not the row's, which already holds the padding around it.
+        height: self.preferred-height;
+        width: parent.width - 2 * Theme.pad - 24 * Theme.unit;
+        spacing: Theme.unit;
+        HorizontalLayout {
+            spacing: Theme.unit * 2;
+            alignment: start;
+            Text {
+                text: root.repo.name;
+                color: Theme.text;
+                font-size: Theme.large;
+                font-family: Theme.display-face;
+                overflow: elide;
+            }
+            if root.repo.nsfw: GlassTag {
+                y: (parent.height - self.height) / 2;
+                text: "18+";
+                ink: Theme.bad;
+            }
+        }
+        Text {
+            text: root.repo.fingerprint;
+            color: Theme.faint;
+            font-size: Theme.small - 1px;
+            font-family: Theme.ledger-face;
+            overflow: elide;
+        }
+        if root.repo.error != "": Text {
+            text: root.repo.error;
+            color: Theme.bad;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+    }
+    Button {
+        x: parent.width - self.width - Theme.pad;
+        y: (parent.height - self.height) / 2;
+        width: self.min-width;
+        text: Tr.t("common-remove");
+        small: true;
+        danger: true;
+        clicked => { root.remove(); }
+    }
+    Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// What an install needs from the person, inside the endpoint's own row: one field per value,
+// with where to find it, and the row's buttons.
+component AskField inherits Rectangle {
+    in property <AuthRow> field;
+    in property <int> index;
+    height: col.preferred-height;
+    col := VerticalLayout {
+        width: parent.width;
+        spacing: Theme.unit * 2;
+        Text {
+            text: root.field.label;
+            color: Theme.text;
+        }
+        if root.field.help != "": Text {
+            text: root.field.help;
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        if root.field.help-url != "": HorizontalLayout {
+            alignment: start;
+            TextButton {
+                text: Tr.s("repos-open-link", "url", root.field.help-url);
+                // A long address is cut short rather than running off the pane.
+                widest: root.width;
+                ink: Theme.accent;
+                clicked => { RepoData.open-link(root.field.help-url); }
+            }
+        }
+        Field {
+            secret: root.field.secret;
+            placeholder: root.field.label;
+            edited(t) => { RepoData.set-value(root.index, t); }
+        }
+    }
+}
+
+component AskValues inherits Rectangle {
+    height: col.preferred-height;
+    col := VerticalLayout {
+        width: parent.width;
+        spacing: Theme.unit * 3;
+        if RepoData.asking-note != "": Text {
+            text: RepoData.asking-note;
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        for f[i] in RepoData.fields: AskField {
+            field: f;
+            index: i;
+        }
+        if RepoData.asking-error != "": Text {
+            text: RepoData.asking-error;
+            color: Theme.bad;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        ButtonRow {
+            Button {
+                widest: parent.width;
+                text: RepoData.busy ? Tr.t("repos-saving") : RepoData.asking-kind == 0 ? Tr.t("repos-install") : RepoData.asking-kind == 1 ? Tr.t("repos-update") : Tr.t("common-save");
+                small: true;
+                primary: true;
+                enabled: !RepoData.busy;
+                clicked => { RepoData.confirm(); }
+            }
+            Button {
+                widest: parent.width;
+                text: Tr.t("common-cancel");
+                small: true;
+                clicked => { RepoData.dismiss(); }
+            }
+        }
+    }
+}
+
+// An endpoint: installed ones carry their switch and Remove, offered ones Install.
+export component EndpointItem inherits Rectangle {
+    in property <EndpointRow> endpoint;
+    // This row is asking for its values.
+    in property <bool> asking;
+    in property <bool> editing;
+    callback act();
+    callback remove();
+    callback toggle();
+    callback open();
+    height: column.preferred-height + 7 * Theme.unit;
+    background: tap.pressed && root.endpoint.editable ? Theme.pressed : transparent;
+    // Under the buttons and the switch, which take their own taps.
+    tap := TouchArea {
+        enabled: root.endpoint.editable && !root.asking && !root.editing;
+        clicked => { root.open(); }
+    }
+    column := VerticalLayout {
+        x: Theme.pad;
+        y: 3.5 * Theme.unit;
+        // Its own height, not the row's, which already holds the padding around it.
+        height: self.preferred-height;
+        width: parent.width - 2 * Theme.pad;
+        spacing: Theme.unit * 1.5;
+        HorizontalLayout {
+            spacing: Theme.unit * 2;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: Theme.unit;
+                HorizontalLayout {
+                    spacing: Theme.unit * 2;
+                    alignment: start;
+                    Text {
+                        text: root.endpoint.name;
+                        color: root.endpoint.installed && !root.endpoint.enabled ? Theme.dim : Theme.text;
+                        font-size: Theme.large;
+                        font-family: Theme.display-face;
+                        overflow: elide;
+                    }
+                    if root.endpoint.nsfw: GlassTag {
+                        y: (parent.height - self.height) / 2;
+                        text: "18+";
+                        ink: Theme.bad;
+                    }
+                }
+                Text {
+                    text: root.endpoint.line;
+                    color: Theme.faint;
+                    font-size: Theme.small - 1px;
+                    font-family: Theme.ledger-face;
+                    overflow: elide;
+                }
+                if root.endpoint.health != "": HorizontalLayout {
+                    spacing: Theme.unit * 2;
+                    Rectangle {
+                        y: (parent.height - self.height) / 2;
+                        width: 2 * Theme.unit;
+                        height: self.width;
+                        border-radius: self.width / 2;
+                        background: root.endpoint.health-ok ? Theme.ok : Theme.bad;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.endpoint.health;
+                        color: Theme.dim;
+                        font-size: Theme.small - 0.5px;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+            if root.endpoint.installed: Switch {
+                y: (parent.height - self.height) / 2;
+                label: root.endpoint.name;
+                on: root.endpoint.enabled;
+                toggled => { root.toggle(); }
+            }
+            if !root.endpoint.installed && !root.asking: Button {
+                y: (parent.height - self.height) / 2;
+                text: Tr.t("repos-install");
+                small: true;
+                primary: true;
+                clicked => { root.act(); }
+            }
+        }
+        if root.endpoint.note != "" && !root.asking: Text {
+            text: root.endpoint.note;
+            color: root.endpoint.warn ? Theme.warn : Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        if root.asking: AskValues { }
+        if root.editing: VerticalLayout {
+            spacing: Theme.unit * 2;
+            padding-top: Theme.unit;
+            Field {
+                text <=> RepoData.edit-name;
+                placeholder: Tr.t("repos-name-placeholder");
+            }
+            Field {
+                text <=> RepoData.edit-url;
+                figure: true;
+                placeholder: Tr.t("repos-url-placeholder");
+            }
+            Text {
+                text: RepoData.edit-keys == "" ? Tr.t("repos-edit-note") : Tr.t("repos-edit-note-keys");
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+            if RepoData.edit-error != "": Text {
+                text: RepoData.edit-error;
+                color: Theme.bad;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+            ButtonRow {
+                Button {
+                    widest: parent.width;
+                    text: Tr.t("common-save");
+                    small: true;
+                    primary: true;
+                    clicked => { RepoData.save-edit(); }
+                }
+                Button {
+                    widest: parent.width;
+                    text: Tr.t("common-cancel");
+                    small: true;
+                    clicked => { RepoData.close-edit(); }
+                }
+                if RepoData.edit-keys != "": Button {
+                    widest: parent.width;
+                    text: Tr.s("repos-change-its", "keys", RepoData.edit-keys);
+                    small: true;
+                    clicked => { RepoData.change-values(); }
+                }
+            }
+        }
+        if root.endpoint.installed && !root.asking && !root.editing: ButtonRow {
+            if root.endpoint.update != "": Button {
+                widest: parent.width;
+                text: root.endpoint.update;
+                small: true;
+                primary: true;
+                clicked => { root.act(); }
+            }
+            Button {
+                widest: parent.width;
+                text: Tr.t("common-remove");
+                small: true;
+                danger: true;
+                clicked => { root.remove(); }
+            }
+        }
+    }
+    Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// The repos, then what they offer: More shows all of it, the first run the same list.
+export component RepoPanes inherits VerticalLayout {
+    // The setting More's search landed on, by its label, and where to scroll for it.
+    // It holds the translated label of the setting, found by its message ID: the ones this
+    // file compares with are repos-check-repos, repos-check-sites, repos-add-title and
+    // repos-add-site-label.
+    in property <string> lit;
+    callback reveal(length);
+    spacing: Theme.unit * 4;
+    // Each repo's list is read again, for sites it added or changed.
+    if RepoData.repos.length > 0 || RepoData.on-count > 0: Lit {
+        on: root.lit == Tr.t("repos-check-repos") || root.lit == Tr.t("repos-check-sites");
+        reveal(y) => { root.reveal(y); }
+        ButtonRow {
+            if RepoData.repos.length > 0: Button {
+                widest: parent.width;
+                text: Tr.t("repos-check-repos");
+                icon: @image-url("../icons/refresh-cw.svg");
+                has-icon: true;
+                small: true;
+                clicked => { RepoData.refresh(); }
+            }
+            if RepoData.on-count > 0: Button {
+                widest: parent.width;
+                text: RepoData.checking ? Tr.t("common-checking") : Tr.t("repos-check-sites");
+                icon: @image-url("../icons/wifi.svg");
+                has-icon: true;
+                small: true;
+                enabled: !RepoData.checking;
+                clicked => { RepoData.check(); }
+            }
+        }
+    }
+    Rectangle {
+        background: Theme.surface;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.line;
+        clip: true;
+        height: repos.preferred-height;
+        repos := VerticalLayout {
+            for r[i] in RepoData.repos: RepoItem {
+                repo: r;
+                remove => { RepoData.remove-repo(i); }
+            }
+            Lit {
+                on: root.lit == Tr.t("repos-add-title");
+                reveal(y) => { root.reveal(y); }
+                RepoAdd { }
+            }
+        }
+    }
+    Rectangle {
+        background: Theme.surface;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.line;
+        clip: true;
+        height: list.preferred-height;
+        list := VerticalLayout {
+            for e[i] in RepoData.endpoints: EndpointItem {
+                endpoint: e;
+                asking: RepoData.asking && RepoData.asking-index == i;
+                editing: RepoData.editing-index == i;
+                act => { RepoData.act(i); }
+                remove => { RepoData.remove-endpoint(i); }
+                toggle => { RepoData.toggle(i); }
+                open => { RepoData.open(i); }
+            }
+            Lit {
+                on: root.lit == Tr.t("repos-add-site-label");
+                reveal(y) => { root.reveal(y); }
+                CustomAdd { }
+            }
+        }
+    }
+}

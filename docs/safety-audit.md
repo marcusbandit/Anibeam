@@ -8,7 +8,7 @@ This guide is a map for people and AI agents checking whether Anibeam is safe to
 
 - **License and scope:** GPL-3.0 local anime library, player, and tracker for Linux, macOS, Windows, Android, and iOS.
 - **No accounts or telemetry:** Anibeam has no user accounts, analytics, ads, telemetry, or crash-reporting server. See `site/privacy/index.html` for the user-facing summary.
-- **No bundled download sites:** Nothing in this repository names or ships a download source (enforced on every PR by `.github/no-site-names.sh`). Download sources are added only by the user.
+- **No bundled download sites:** Nothing in this repository names or ships a download source (enforced on every PR by `scripts/ci/no-site-names.sh`). Download sources are added only by the user.
 - **Unsigned desktop / sideloaded mobile releases:** Windows and macOS releases are currently unsigned/unnotarized (triggering SmartScreen and Gatekeeper), and mobile releases ship as a sideloaded Android APK and unsigned iOS IPA. All releases are built in public GitHub Actions workflows from tagged commits, and every third-party native binary fetched during packaging is pinned by SHA-256 or git commit hash.
 - **Behaviors that often trigger automated flags, explained up front:**
   1. `crates/core/src/update/install.rs` uses a short `/bin/sh` or hidden `powershell.exe` helper on exit during user-triggered updates (after verifying the file size and GitHub SHA-256 digest).
@@ -49,7 +49,7 @@ Every hardcoded external host in non-test source code belongs to one of these ca
 | Discord Rich Presence (off by default) | Local Discord IPC socket; `cdn.discordapp.com` for avatars | `crates/playback/src/presence/discord.rs` |
 | Phone DoH & endpoint domain fronting | `1.1.1.1/dns-query`, `8.8.8.8/resolve` (phone builds only); user-defined `front` hosts only | `crates/net/src/doh.rs` (`is_home_name` keeps local/LAN/`.ts.net` lookups off public resolvers), `crates/net/src/front.rs` (applies only to user-installed endpoint requests, disables redirects). |
 | Pre-filled bug reports (browser only, user submits) | `github.com/marcusbandit/Anibeam/issues/new` | `crates/library/src/report.rs` |
-| No built-in download sites | None | `.github/no-site-names.sh`, `.github/workflows/no-sites.yml` |
+| No built-in download sites | None | `scripts/ci/no-site-names.sh`, `.github/workflows/no-sites.yml` |
 
 ## 4. Credentials, secrets, and log redaction
 
@@ -137,7 +137,7 @@ git grep -n 'unsafe ' -- '*.rs' ':!*tests*'
 git ls-files | grep -iE '\.(so|dll|dylib|exe|apk|ipa|jar|bin|o|a|qsb|wasm|pyc|zip|tar|gz|7z|deb|rpm|dmg|AppImage)$'
 
 # 6. Confirm zero download sites are named anywhere in the repo
-.github/no-site-names.sh
+scripts/ci/no-site-names.sh
 ```
 
 If you find a real security issue during an audit, please report it privately as described in [SECURITY.md](../SECURITY.md).

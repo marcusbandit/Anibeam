@@ -54,7 +54,7 @@ What an agent does, on top of what the workflow does:
   the branch, named for the issue, before or with the first commit, so `in progress` goes on, and
   move the card to In progress.
 - **Opens the PR**, in this order:
-  1. Run `.github/local-ci.sh` and go on only once it passes.
+  1. Run `scripts/local-ci.sh` and go on only once it passes.
   2. Open the PR ready for review with its category label (`bug`, `enhancement`,
      `documentation` or `question`) and nothing else: `gh pr create --label enhancement ...`.
   3. Run the code review pass on it, `code-review --comment`, so its findings land as review

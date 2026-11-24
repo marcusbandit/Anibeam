@@ -85,10 +85,10 @@ Every PR closes an open issue (`Closes`, `Fixes`, or `Resolves`), enforced by th
 Each app maintains its own curated `CHANGELOG.md` (`apps/desktop/CHANGELOG.md` for desktop, `apps/phone/CHANGELOG.md` for phone). Both apps embed it for "What's new", and `anibeam.app/whats-new/` builds from the same files.
 
 - **Regular PRs do not touch `CHANGELOG.md`.** Per-PR edits cause merge conflicts and noisy dumps; GitHub Releases already lists every PR via `--generate-notes`.
-- **Maintainers curate entries before shipping** using `.github/changelog-draft.sh desktop|phone`: a short, warm 1–2 sentence intro, 3–8 user-focused highlight bullets (`- **Feature.** Description.`), an optional `### Heads up`, and a concise `### Fixes & polish` summary. Use plain English, no issue numbers, and no em/en dashes.
+- **Maintainers curate entries before shipping** using `scripts/changelog-draft.sh desktop|phone`: a short, warm 1–2 sentence intro, 3–8 user-focused highlight bullets (`- **Feature.** Description.`), an optional `### Heads up`, and a concise `### Fixes & polish` summary. Use plain English, no issue numbers, and no em/en dashes.
 - **Headings match the version:** `## 2.5.0 · 2026-11-21` or `## 2.5.0 · Short title · 2026-11-21` (title max 40 chars).
 
-CI checks both changelogs via `cargo test -p anibeam-core --test changelog` and `.github/changelog-newest.sh`.
+CI checks both changelogs via `cargo test -p anibeam-core --test changelog` and `scripts/ci/changelog-newest.sh`.
 
 ## Words (i18n)
 
@@ -99,11 +99,11 @@ Every user-visible string lives in the Fluent catalog under `i18n/`: `i18n/<lang
 - Add new English IDs in the same PR; translations may land in the same PR or follow later.
 - Check layout overflow across languages after copy/layout changes with `apps/desktop/scripts/layout-check.py --root <sandbox>`.
 
-CI runs `.github/strings-check.py` to reject raw user-facing UI strings and missing English IDs. Add `// i18n: none` to non-text literals (format strings, etc.). If your PR removes legacy strings listed in `.github/strings-baseline.txt`, update the baseline with `.github/strings-check.py --update`.
+CI runs `scripts/ci/strings-check.py` to reject raw user-facing UI strings and missing English IDs. Add `// i18n: none` to non-text literals (format strings, etc.). If your PR removes legacy strings listed in `scripts/ci/strings-baseline.txt`, update the baseline with `scripts/ci/strings-check.py --update`.
 
 ## Sources
 
-Anibeam ships **no download sources** and accepts **no PR or issue that names or links a download site or source list**. CI enforces this across file contents and filenames via `.github/no-site-names.sh`.
+Anibeam ships **no download sources** and accepts **no PR or issue that names or links a download site or source list**. CI enforces this across file contents and filenames via `scripts/ci/no-site-names.sh`.
 
 - The core implements generic **endpoint kinds** (RSS, Torznab, JSON feeds) named for their input shape, never for a site. PRs adding a new generic kind are welcome (open an issue first).
 - Actual sources live in user-attached signed endpoint repos; see [anibeam-endpoints-template](https://github.com/marcusbandit/anibeam-endpoints-template) for the schema and signing workflow.
@@ -111,7 +111,7 @@ Anibeam ships **no download sources** and accepts **no PR or issue that names or
 
 ## Before you open a PR
 
-- `.github/local-ci.sh` passes (fmt, changelog heading, strings, no-site-names, spelling, clippy, tests, and tester build).
+- `scripts/local-ci.sh` passes (fmt, changelog heading, strings, no-site-names, spelling, clippy, tests, and tester build).
 - Visible UI changes include a capture taken against a `--root` sandbox.
 - New domain concepts are defined in [CONTEXT.md](CONTEXT.md).
 - No download site names appear anywhere in the diff.
@@ -119,6 +119,6 @@ Anibeam ships **no download sources** and accepts **no PR or issue that names or
 
 ## Checks on GitHub
 
-Pull requests run fast affected-crate checks (`.github/affected-crates.py`), fmt, strings, no-sites, PR checks, and mobile checks when phone or core code changes. Installing [cargo-nextest](https://nexte.st) (`cargo install --locked cargo-nextest`) speeds up `.github/local-ci.sh` to match CI.
+Pull requests run fast affected-crate checks (`scripts/ci/affected-crates.py`), fmt, strings, no-sites, PR checks, and mobile checks when phone or core code changes. Installing [cargo-nextest](https://nexte.st) (`cargo install --locked cargo-nextest`) speeds up `scripts/local-ci.sh` to match CI.
 
 When a PR is ready for full cross-platform verification (Linux AppImage/distro smoke tests, Windows, macOS, Arch tarball, iOS IPA), maintainers apply the `full ci` label. For release promotion, hotfixes, and automerge details, see [docs/releasing.md](docs/releasing.md).

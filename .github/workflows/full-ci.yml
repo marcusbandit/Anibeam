@@ -2,7 +2,7 @@ name: Full CI
 
 # Every platform's build and tests for a pull request, run once it works on Linux (#986). A push
 # to a PR runs only the fast checks (ci.yml and the small ones); the Linux checks run locally
-# with .github/local-ci.sh. When the PR is ready, put the `full ci` label on it: this builds
+# with scripts/local-ci.sh. When the PR is ready, put the `full ci` label on it: this builds
 # its head on Linux (AppImage and distro smoke tests), Windows, macOS, the Arch tarball and the
 # iPhone IPA. A push while the label is on builds the new head again; take it off to push
 # without a rebuild. The Android check runs on a push already (android.yml), and the signed
@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 jobs:
-  # The one job that always runs. .github/ios-automerge.sh counts a Full CI run as one that
+  # The one job that always runs. scripts/ci/ios-automerge.sh counts a Full CI run as one that
   # built its commit when any job besides this one ran, so keep its name and keep every
   # other job behind it.
   gate:

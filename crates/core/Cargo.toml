@@ -10,7 +10,7 @@ build = "build.rs"
 
 # Files outside this folder that only tests/changelog.rs reads: the apps' patch notes and their
 # versions. A change to one runs that test alone, not the core's clippy, its other tests or what
-# builds on it (.github/affected-crates.py, #1086). The anirss pins in the packaging are the
+# builds on it (scripts/ci/affected-crates.py, #1086). The anirss pins in the packaging are the
 # downloads crate's.
 [package.metadata.ci.test-reads]
 changelog = [

@@ -1,0 +1,388 @@
+import { Theme } from "../core/theme.slint";
+import { AppData, EpisodeLine, Nav } from "../core/data.slint";
+import { FindData } from "find.slint";
+import { Button, Chip, ClampedText, Cubes, PageTitle, Poster, SectionHead } from "../core/widgets.slint";
+import { Ask } from "more.slint";
+import { ShowActions, ShowData } from "../show/show.slint";
+import { ShowSections } from "../show/show-sections.slint";
+import { UndoBar } from "airing.slint";
+import { Tr } from "../core/tr.slint";
+
+// An episode code's type, shared by the rows and the probe that sizes their column.
+component CodeText inherits Text {
+    font-size: Theme.small;
+    font-family: Theme.figure;
+}
+
+// One episode, the desktop's row: its cube, the code, the title and a state word, and when
+// it aired or airs at the right. The next one up sits on a lit row.
+component EpisodeItem inherits Rectangle {
+    in property <EpisodeLine> data;
+    // The code column, the same on every row so the titles line up.
+    in property <length> code-width: Theme.unit * 10;
+    // Episodes still to air are quieter.
+    property <bool> later: root.data.cube == 5;
+    property <bool> next: root.data.note-kind == 1;
+    // Kept in more than one release: the row plays one, and its chip offers the rest.
+    property <bool> versioned: root.data.versions.length > 1 && !AppData.deleting;
+    height: Math.max(Theme.unit * 13, texts.preferred-height + 4 * Theme.unit);
+    border-radius: Theme.radius-row + 4px;
+    background: touch.pressed && (root.data.file != 0 || root.holdable) ? Theme.pressed : root.data.picked ? Theme.bad-soft : root.next && !AppData.deleting ? Theme.raised : transparent;
+    border-width: root.next ? 1px : 0;
+    border-color: Theme.line-strong;
+    if !AppData.deleting || root.data.file == 0: Rectangle {
+        x: Theme.unit * 3;
+        y: (parent.height - self.height) / 2;
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        background: root.later ? transparent : Theme.cube(root.data.cube);
+        border-width: root.later ? 1px : 0;
+        border-color: Theme.line-strong;
+        opacity: AppData.deleting ? 0.4 : 1;
+    }
+    // While deleting, an episode on the phone shows whether it is picked.
+    if AppData.deleting && root.data.file != 0: Rectangle {
+        x: Theme.unit * 2;
+        y: (parent.height - self.height) / 2;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: root.data.picked ? Theme.bad : transparent;
+        border-width: root.data.picked ? 0 : 1.5px;
+        border-color: Theme.line-strong;
+    }
+    code := CodeText {
+        x: Theme.unit * 8;
+        width: root.code-width;
+        height: parent.height;
+        text: root.data.code;
+        color: root.later ? Theme.faint : Theme.dim;
+        vertical-alignment: center;
+    }
+    texts := VerticalLayout {
+        x: code.x + code.width;
+        width: parent.width - self.x - date.width - Theme.unit * 6 - (root.versioned ? chip.width + Theme.unit * 2 : 0);
+        alignment: center;
+        spacing: 2px;
+        Text {
+            text: root.data.title;
+            color: root.later ? Theme.faint : Theme.text;
+            font-family: root.next ? Theme.strong-face : Theme.face;
+            overflow: elide;
+        }
+        if root.data.note != "": Text {
+            text: root.data.note;
+            color: root.next ? Theme.accent : root.data.note-kind == 2 ? Theme.yellow : Theme.purple;
+            font-size: Theme.small - 0.5px;
+        }
+    }
+    date := Text {
+        x: parent.width - self.width - Theme.unit * 3;
+        height: parent.height;
+        text: root.data.date;
+        color: root.later ? Theme.dim : Theme.faint;
+        font-size: Theme.small - 1px;
+        font-family: Theme.figure;
+        vertical-alignment: center;
+    }
+    // A whole episode plays at a tap, streamed when it is the other device's, or is
+    // picked while deleting.
+    // An aired episode this phone's show lacks opens Downloads on the show. Upcoming ones
+    // carry no note, and the other device's show is got on that device.
+    property <bool> gettable: root.data.file == 0 && root.data.note != "" && !AppData.series-remote;
+    // Held, an episode offers its mark, as the desktop's cube does at a click.
+    property <bool> holdable: root.data.markable && !AppData.deleting;
+    property <bool> was-held;
+    hold := Timer {
+        interval: 500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.was-held = true;
+            Ask.mark-title = root.data.code + "  " + root.data.title;
+            Ask.mark-number = root.data.number;
+            Ask.mark-season = root.data.season;
+            Ask.mark-watched = root.data.watched;
+            Ask.mark-open = true;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.data.file != 0 || (root.gettable && !AppData.deleting) || root.holdable;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.was-held = false;
+                hold.running = root.holdable;
+            } else if (e.kind != PointerEventKind.move) {
+                hold.running = false;
+            }
+        }
+        // A finger that moves is a scroll, not a hold.
+        moved => {
+            if (Math.abs(self.mouse-x - self.pressed-x) > 3 * Theme.unit || Math.abs(self.mouse-y - self.pressed-y) > 3 * Theme.unit) {
+                hold.running = false;
+            }
+        }
+        clicked => {
+            if (root.was-held) {
+                // The hold opened the mark; the lift is not a tap.
+            } else if (root.data.file == 0) {
+                if (root.gettable && !AppData.deleting) {
+                    FindData.find-series(AppData.series.id);
+                    AppData.close-series();
+                    Nav.page = 2;
+                }
+            } else if (root.data.remote) {
+                AppData.play-remote(root.data.file);
+            } else if (AppData.deleting) {
+                AppData.toggle-delete(root.data.file);
+            } else {
+                AppData.play(root.data.file);
+            }
+        }
+    }
+    chip := Chip {
+        visible: root.versioned;
+        x: date.x - self.width - Theme.unit * 2;
+        y: (parent.height - self.height) / 2;
+        small: true;
+        tappable: root.versioned;
+        ink: Theme.dim;
+        text: Tr.n("series-versions", "count", root.data.versions.length);
+        clicked => {
+            Ask.versions = root.data.versions;
+            Ask.versions-title = root.data.code + "  " + root.data.title;
+            Ask.versions-remote = root.data.remote;
+            Ask.versions-current = root.data.file;
+            Ask.versions-open = true;
+        }
+    }
+}
+
+// While deleting: how many are picked, what deleting does, and Delete or Cancel.
+component DeleteBar inherits Rectangle {
+    height: col.preferred-height + 7 * Theme.unit;
+    background: Theme.surface;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.line;
+    col := VerticalLayout {
+        x: Theme.pad;
+        y: 3.5 * Theme.unit;
+        width: parent.width - 2 * Theme.pad;
+        height: self.preferred-height;
+        spacing: Theme.unit * 3;
+        Text {
+            text: AppData.delete-count == 0 ? Tr.t("series-delete-tap")
+                : Tr.n("phone-series-delete-picked", "count", AppData.delete-count);
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Text {
+            text: Tr.t("series-delete-note");
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        if AppData.delete-error != "": Text {
+            text: AppData.delete-error;
+            color: Theme.bad;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: Theme.gap;
+            alignment: start;
+            Button {
+                text: Tr.n("series-delete-button", "count", AppData.delete-count);
+                small: true;
+                danger: true;
+                enabled: AppData.delete-count > 0 && !AppData.delete-busy;
+                clicked => { AppData.confirm-delete(); }
+            }
+            Button {
+                text: Tr.t("common-cancel");
+                small: true;
+                clicked => { AppData.cancel-delete(); }
+            }
+        }
+    }
+}
+
+// The head of a series, the desktop show view's: the poster, the title in the display cut,
+// its other name, the facts, when the next one airs, and the cubes with the progress.
+component SeriesHeadView inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    HorizontalLayout {
+        spacing: Theme.unit * 4;
+        Poster {
+            width: 30 * Theme.unit;
+            height: self.width * Theme.poster-ratio;
+            source: AppData.series.poster;
+            has-image: AppData.series.has-poster;
+            initials: AppData.series.initials;
+        }
+        VerticalLayout {
+            alignment: end;
+            spacing: Theme.unit * 2;
+            ClampedText {
+                text: AppData.series.title;
+                font-size: Theme.page - 8px;
+                face: Theme.display-face;
+                lines: 4;
+                leading: 1.05;
+            }
+            if AppData.series.alt-title != "": ClampedText {
+                text: AppData.series.alt-title;
+                font-size: Theme.small;
+                ink: Theme.dim;
+            }
+            Text {
+                text: AppData.series.facts;
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+            // The desktop's quiet row: the average score, IMDb's, the rewatches. It wraps,
+            // so a folded phone keeps all of it.
+            if AppData.series.scores != "": Text {
+                text: AppData.series.scores;
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+        }
+    }
+    if AppData.series.next != "": Text {
+        text: AppData.series.next;
+        color: AppData.series.ink;
+        font-size: Theme.normal;
+        font-family: Theme.figure;
+        wrap: word-wrap;
+    }
+    if AppData.series.cubes.length > 0: Cubes {
+        codes: AppData.series.cubes;
+        size: 11px;
+        spacing: 3px;
+    }
+    if AppData.series.progress-text != "": Text {
+        text: AppData.series.progress-text;
+        color: Theme.text;
+        font-size: Theme.small + 0.5px;
+    }
+}
+
+export component SeriesPage inherits Rectangle {
+    background: Theme.ground;
+
+    // Swallow touches so nothing under the page reacts.
+    TouchArea { }
+    // Measures every episode code, one per line, outside the layout: its width is the widest
+    // code's, which sizes the rows' code column.
+    code-probe := CodeText {
+        visible: false;
+        text: AppData.episode-codes;
+    }
+    // Only ever as wide as the pane: the page scrolls up and down, never sideways.
+    Flickable {
+        content-width: self.width;
+        content-height: column.preferred-height;
+        column := VerticalLayout {
+            width: parent.width;
+            alignment: start;
+            padding-left: Theme.grout + Theme.unit;
+            padding-right: Theme.grout + Theme.unit;
+            padding-top: Theme.unit * 4;
+            // Room under the last rows while the mark's line covers the foot of the page.
+            padding-bottom: Theme.pad * 2 + (AppData.mark-line != "" ? 20 * Theme.unit : 0);
+            spacing: Theme.unit * 4;
+            PageTitle {
+                back: Nav.page == 0 ? Tr.t("series-back-home") : Nav.page == 1 ? Tr.t("series-back-library") : Nav.page == 2 ? Tr.t("series-back-downloads") : Nav.page == 4 ? Tr.t("series-back-calendar") : Tr.t("common-back");
+                title: "";
+                go-back => { AppData.close-series(); }
+            }
+            SeriesHeadView { }
+            // Another device's series plays from there, streamed.
+            if AppData.series-remote && AppData.series.play-file != 0: HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: AppData.series.play-label;
+                    icon: @image-url("../icons/play.svg");
+                    has-icon: true;
+                    primary: true;
+                    clicked => { AppData.play-remote(AppData.series.play-file); }
+                }
+            }
+            // A series of this phone's goes straight to who has it.
+            if !AppData.series-remote: HorizontalLayout {
+                alignment: start;
+                spacing: Theme.unit * 2;
+                if AppData.series.play-file != 0: Button {
+                    text: AppData.series.play-label;
+                    icon: @image-url("../icons/play.svg");
+                    has-icon: true;
+                    primary: true;
+                    clicked => { AppData.play(AppData.series.play-file); }
+                }
+                Button {
+                    text: Tr.t("phone-series-get-episodes");
+                    icon: @image-url("../icons/download.svg");
+                    has-icon: true;
+                    primary: AppData.series.play-file == 0;
+                    clicked => {
+                        FindData.find-series(AppData.series.id);
+                        AppData.close-series();
+                        Nav.page = 2;
+                    }
+                }
+            }
+            // This phone's own show: its score and the list it is on.
+            if ShowData.series-id >= 0: ShowActions { }
+            if AppData.series.synopsis != "": ClampedText {
+                text: AppData.series.synopsis;
+                font-size: Theme.small + 1px;
+                ink: Theme.dim;
+                lines: 6;
+                leading: 1.4;
+            }
+            SectionHead {
+                title: Tr.t("phone-series-episodes");
+                note: AppData.episodes.length > 0 ? "" + AppData.episodes.length : "";
+            }
+            // Deleting: off, a button to start; on, what it will do and the two ways out.
+            if !AppData.series-remote && !AppData.deleting && AppData.series-has-files: HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: Tr.t("series-delete-episodes");
+                    small: true;
+                    danger: true;
+                    clicked => { AppData.start-delete(); }
+                }
+            }
+            if AppData.deleting: DeleteBar { }
+            VerticalLayout {
+                spacing: Theme.unit;
+                for line in AppData.episodes: EpisodeItem {
+                    data: line;
+                    code-width: Math.max(Theme.unit * 10, code-probe.preferred-width + Theme.unit * 2);
+                }
+            }
+            if AppData.episodes.length == 0: Text {
+                text: Tr.t("series-no-episodes");
+                color: Theme.dim;
+                font-size: Theme.small;
+            }
+            // The characters, related entries and recommendations of a show of this phone's.
+            if ShowData.series-id >= 0: ShowSections { }
+        }
+    }
+    // What the last mark did, with Undo when it moved more than one episode.
+    if AppData.mark-line != "": UndoBar {
+        text: AppData.mark-line;
+        can-undo: AppData.mark-undo;
+        undo => { AppData.mark-take-back(); }
+        x: Theme.grout + Theme.unit;
+        width: parent.width - 2 * self.x;
+        y: parent.height - self.height - Theme.grout - Theme.unit;
+    }
+}

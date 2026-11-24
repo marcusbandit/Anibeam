@@ -2,10 +2,10 @@ name: CI
 
 # Fast checks on every pull request: formatting for the whole workspace, then clippy and
 # the tests for the crates the pull request changed and every crate that builds on them
-# (.github/affected-crates.py, #1075). A file only one test target reads, such as a patch
+# (scripts/ci/affected-crates.py, #1075). A file only one test target reads, such as a patch
 # note, runs that target alone (#1086). The Qt shell (apps/desktop, package
 # anibeam) needs Qt 6.11, MpvQt, libmpv and lld, which an ubuntu runner lacks, so its
-# tests and clippy run in .github/local-ci.sh, and in linux.yml under the `full ci` label
+# tests and clippy run in scripts/local-ci.sh, and in linux.yml under the `full ci` label
 # (#986), which sets those up for the AppImage. Runs on main
 # too, so rust-cache keeps a cache every pull request can restore. The toolchain comes from
 # rust-toolchain.toml, which every workflow reads (#526).
@@ -97,7 +97,7 @@ jobs:
         with:
           fetch-depth: 2
 
-      - run: .github/changelog-newest.sh HEAD^1
+      - run: scripts/ci/changelog-newest.sh HEAD^1
 
   check:
     needs: changes
@@ -129,10 +129,10 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
         run: |
-          python3 .github/affected-crates.py --self-test
+          python3 scripts/ci/affected-crates.py --self-test
           if [ "$EVENT" = pull_request ]; then pick="--base HEAD^1"; else pick=--all; fi
           echo "pick=$pick" >> "$GITHUB_OUTPUT"
-          python3 .github/affected-crates.py $pick --skip "$SKIP" --github-output
+          python3 scripts/ci/affected-crates.py $pick --skip "$SKIP" --github-output
 
       - uses: Swatinem/rust-cache@v2
         if: steps.affected.outputs.crates != '' || steps.affected.outputs.tests != ''
@@ -156,7 +156,7 @@ jobs:
         if: steps.affected.outputs.crates != '' || steps.affected.outputs.tests != '' || steps.affected.outputs.lock == 'true'
         env:
           PICK: ${{ steps.affected.outputs.pick }}
-        run: .github/local-ci.sh --cargo --no-build --skip "$SKIP" $PICK
+        run: scripts/local-ci.sh --cargo --no-build --skip "$SKIP" $PICK
 
   # The one check main's ruleset requires. It passes when every job above passed or was
   # skipped as docs-only, and fails when any failed or was cancelled.

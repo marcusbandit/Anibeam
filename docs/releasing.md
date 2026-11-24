@@ -36,7 +36,7 @@ Add the `test build` label to a PR to publish installers on the `pr-builds` pre-
 
 ### Desktop
 
-1. Curate the user-facing notes under the newest heading in `apps/desktop/CHANGELOG.md` (use `.github/changelog-draft.sh desktop` to review commits since the last stable tag).
+1. Curate the user-facing notes under the newest heading in `apps/desktop/CHANGELOG.md` (use `scripts/changelog-draft.sh desktop` to review commits since the last stable tag).
 2. Run the **Release** workflow (`release.yml`) on `main` from the Actions tab. It promotes the newest nightly commit (so what ships has already been tested), waits for approval in the `release` environment, builds all desktop targets, publishes the release, and commits the next minor version + changelog heading to `main`.
    - If a workflow file changed on `main` since the last nightly, trigger a forced Nightly first so the commit can be tagged.
 3. Update the AUR packages and Homebrew cask:
@@ -47,7 +47,7 @@ Add the `test build` label to a PR to publish installers on the `pr-builds` pre-
 
 ### Phone
 
-1. Curate notes under the newest heading in `apps/phone/CHANGELOG.md` (`.github/changelog-draft.sh phone`).
+1. Curate notes under the newest heading in `apps/phone/CHANGELOG.md` (`scripts/changelog-draft.sh phone`).
 2. Run **Release** (`release.yml`) with `app=phone`. It promotes the newest phone nightly to `android-v<version>` (never marking it as `Latest`, which stays desktop's for the site and `install.sh`) and bumps `apps/phone/Cargo.toml` + `apps/phone/CHANGELOG.md`.
 
 Every released Android APK is signed with `ANIBEAM_ANDROID_KEYSTORE` (base64 keystore secret) so updates install cleanly over prior builds. Never publish phone builds by hand.
@@ -65,7 +65,7 @@ When a shipped desktop release needs a patch:
 
 ## Automerge workflow
 
-Maintainer PRs carrying both `full ci` and `automerge` labels are squash-merged by `.github/workflows/ios-automerge.yml` (`.github/ios-automerge.sh`) once:
+Maintainer PRs carrying both `full ci` and `automerge` labels are squash-merged by `.github/workflows/ios-automerge.yml` (`scripts/ci/ios-automerge.sh`) once:
 
 - the PR is ready for review and targets `main`;
 - the latest run of every workflow on the head commit passed or skipped;

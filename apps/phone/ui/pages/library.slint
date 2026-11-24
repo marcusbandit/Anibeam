@@ -1,0 +1,149 @@
+import { Theme } from "../core/theme.slint";
+import { Ask } from "more.slint";
+import { FindData } from "find.slint";
+import { AppData, Nav } from "../core/data.slint";
+import { Button, EmptyNote, Figure, PageTitle, SearchField, Segmented, TileGrid } from "../core/widgets.slint";
+import { Area, Fold } from "../core/fold.slint";
+import { Leaf, Scroll } from "../core/panes.slint";
+import { Tr } from "../core/tr.slint";
+
+// The head, the device switch and the search.
+component LibraryControls inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    PageTitle {
+        title: Tr.t("lib-title");
+        note: AppData.library-note;
+    }
+    if AppData.devices.length > 1: Segmented {
+        options: AppData.devices;
+        picked: AppData.device;
+        pick(i) => { AppData.pick-device(i); }
+    }
+    // The other device's library comes once a minute; this asks for it now.
+    if AppData.device != 0: HorizontalLayout {
+        alignment: start;
+        Button {
+            text: Tr.t("lib-refresh");
+            icon: @image-url("../icons/refresh-cw.svg");
+            has-icon: true;
+            small: true;
+            clicked => { AppData.refresh(); }
+        }
+    }
+    SearchField {
+        placeholder: AppData.device == 0 ? Tr.t("lib-search-phone") : Tr.s("lib-search-device", "device", AppData.devices[AppData.device]);
+        text <=> AppData.query;
+        edited(text) => { AppData.search(text); }
+    }
+    // Not here: the same words in Downloads, which looks for the show itself.
+    if AppData.device == 0 && AppData.query != "": HorizontalLayout {
+        alignment: start;
+        Button {
+            text: Tr.s("lib-find-in-downloads", "query", AppData.query);
+            widest: root.width;
+            icon: @image-url("../icons/download.svg");
+            has-icon: true;
+            small: true;
+            clicked => {
+                FindData.open("");
+                FindData.text = AppData.query;
+                FindData.suggest(AppData.query);
+                Nav.page = 2;
+            }
+        }
+    }
+}
+
+// The posters, or why there are none.
+component LibraryGrid inherits VerticalLayout {
+    in property <length> fit-width: self.width;
+    spacing: Theme.unit * 4;
+    if AppData.library.length > 0: TileGrid {
+        fit-width: root.fit-width;
+        tiles: AppData.library;
+        holdable: AppData.device == 0;
+        // The menu's Get and Delete are for this phone's shows.
+        held(id, title) => {
+            if (AppData.device == 0) {
+                Ask.menu-id = id;
+                Ask.menu-title = title;
+            }
+        }
+        open(id) => {
+            if (AppData.device == 0) {
+                AppData.open-series(id);
+            } else {
+                AppData.open-remote(id);
+            }
+        }
+    }
+    if AppData.ready && AppData.library.length == 0: EmptyNote {
+        title: AppData.library-empty;
+        body: AppData.device == 0 && AppData.query == ""
+            ? Tr.t("lib-empty-body")
+            : "";
+    }
+}
+
+// Half folded as a book with no show open, the right page says what the phone holds and how
+// to open one, rather than standing empty.
+component Glance inherits VerticalLayout {
+    alignment: center;
+    padding: Theme.pad;
+    spacing: Theme.unit * 6;
+    Text {
+        text: Tr.t("lib-pick-show");
+        color: Theme.text;
+        font-size: Theme.section - 3px;
+        font-family: Theme.display-face;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        alignment: start;
+        spacing: Theme.unit * 8;
+        Figure {
+            value: AppData.library.length + "";
+            caption: Tr.n("lib-shows-caption", "count", AppData.library.length);
+        }
+        if AppData.device == 0: Figure {
+            value: AppData.used-figure;
+            caption: Tr.t("lib-on-phone");
+        }
+        if AppData.device == 0: Figure {
+            value: AppData.free-figure;
+            caption: Tr.t("lib-free");
+        }
+    }
+    if AppData.device == 0: Text {
+        text: Tr.t("lib-hold-poster");
+        color: Theme.dim;
+        font-size: Theme.small + 1px;
+        wrap: word-wrap;
+    }
+}
+
+// Everything on this phone, or, picked above, what another Anibeam on the tailnet has.
+// Open, the grid fills the page and gives up its right side to a show while one is open; as a
+// book the grid is the left page and the right says how to open one. The grid slides between
+// the two when the phone bends.
+export component LibraryPage inherits Rectangle {
+    if !Fold.split: Scroll {
+        LibraryControls { }
+        LibraryGrid { }
+    }
+    property <Area> grid-area: AppData.series-open || Fold.posture == 2 ? Fold.pick(0.56) : Fold.pick(1);
+    if Fold.split: Leaf {
+        area: root.grid-area;
+        Scroll {
+            LibraryControls { }
+            LibraryGrid { fit-width: Fold.inner(root.grid-area); }
+        }
+    }
+    if Fold.split: Leaf {
+        area: Fold.show(0.56);
+        opacity: Fold.posture == 2 && !AppData.series-open ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: Fold.settle; }
+        Glance { }
+    }
+}

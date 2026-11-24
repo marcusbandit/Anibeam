@@ -1,4 +1,4 @@
-# cargo-nextest, which CI and .github/local-ci.sh run the tests with (#1086). It runs every
+# cargo-nextest, which CI and scripts/local-ci.sh run the tests with (#1086). It runs every
 # test binary at once, where cargo test runs them one after another. It skips doctests, so
 # those run after it with cargo test --doc.
 [profile.ci]
