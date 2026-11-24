@@ -30,6 +30,9 @@ struct Fake {
     /// Every connect finds a Discord that refuses the handshake.
     refuse: bool,
     reject_posters: bool,
+    /// Refuses an activity whose payload has buttons, as a Discord that
+    /// predates them might.
+    reject_links: bool,
     /// Set by a test: Discord has quit, so every send finds it gone.
     gone: Arc<std::sync::atomic::AtomicBool>,
     reject_all: bool,
@@ -114,6 +117,9 @@ impl Transport for Fake {
         }
         if self.reject_posters && activity.is_some_and(|a| a.poster.is_some()) {
             return Err(SendError::Rejected("large_image".to_string()));
+        }
+        if self.reject_links && activity.is_some_and(|a| a.to_json().get("buttons").is_some()) {
+            return Err(SendError::Rejected("buttons".to_string()));
         }
         if let Some(a) = activity {
             self.parties.lock().unwrap().push(a.party.clone());
@@ -446,10 +452,13 @@ fn switching_on_mid_episode_shows_it_and_off_lets_go() {
     tick(&core, s, 1.0, false);
     switch(&core, true);
     core.presence_flush();
-    // One set, and it already carries the party: the switch hands the
-    // worker what plays and its party together, never one before the other.
-    assert_eq!(sets(&fake.sent()).len(), 1, "{:#?}", fake.sent());
-    assert!(fake.parties.lock().unwrap()[0].is_some());
+    // One set: the switch hands the worker what plays and its party
+    // together, here none outside a room, so the one set has the buttons.
+    // room.rs checks the same with a room's party.
+    let sent = fake.sent();
+    assert_eq!(sets(&sent).len(), 1, "{sent:#?}");
+    assert!(fake.parties.lock().unwrap()[0].is_none());
+    assert!(sets(&sent)[0].to_json().get("buttons").is_some());
 
     switch(&core, false);
     tick(&core, s, 2.0, false);
@@ -831,12 +840,44 @@ fn playing() -> (
 }
 
 #[test]
-fn what_plays_outside_a_room_can_be_asked_to_join() {
+fn what_plays_outside_a_room_links_the_site_and_the_repo() {
     let (_dir, _core, _c, fake) = playing();
-    let party = fake.last_party().expect("a party");
-    assert_eq!(party.secret, presence::ASK_SECRET);
-    assert_eq!((party.size, party.open), (1, false));
-    assert!(party.max >= 2);
+    // No party: Discord refuses buttons beside a join secret (#1450).
+    assert_eq!(fake.last_party(), None);
+    let sent = fake.sent();
+    let v = sets(&sent).last().expect("a set").to_json();
+    let urls: Vec<_> = v["buttons"]
+        .as_array()
+        .expect("buttons")
+        .iter()
+        .map(|b| b["url"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(urls, [presence::SITE_URL, presence::REPO_URL]);
+    assert_eq!(v["assets"]["small_text"], presence::BADGE_TEXT);
+}
+
+#[test]
+fn refused_buttons_fall_back_to_the_activity_without_them() {
+    let (_dir, core, _c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        reject_links: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    tick(&core, s, 2.0, true);
+    core.presence_flush();
+    let sent = fake.sent();
+    let all = sets(&sent);
+    // Both reach Discord, and the second never tries the buttons again. The
+    // poster is tried without first, so only the second carries it.
+    assert_eq!(all.len(), 2);
+    assert!(all.iter().all(|a| !a.links));
+    assert!(all[1].poster.is_some());
 }
 
 #[test]

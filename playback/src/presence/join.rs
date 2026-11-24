@@ -1,9 +1,10 @@
-//! Joining through Discord (#966). Every activity carries a party with a join
-//! secret, so Discord offers Ask to Join, Join and invites on it:
+//! Joining through Discord (#966). An activity in a room carries a party with
+//! a join secret, so Discord offers Ask to Join, Join and invites on it:
 //!
-//! - Outside a room the secret is `ask`. A friend's Ask to Join comes here as
-//!   an event; the shell asks this person once, and a yes starts a room and
-//!   sends the invite, which hands over the room's secret by then.
+//! - Outside a room there is no party: the activity carries the buttons to the
+//!   website and the repo instead, since Discord refuses buttons beside a
+//!   secret (#1450). An ask that still comes, from an activity shown before,
+//!   reaches the shell as below, and a yes starts a room and sends the invite.
 //! - In a room the secret is `room:<code>`. An invite room asks as above, and
 //!   a second ask from someone let in once goes through without a question.
 //!   An open room lets anyone join with no ask at all.
@@ -20,8 +21,7 @@ use std::time::Instant;
 use anibeam_room::proto::MAX_MEMBERS;
 
 use super::{
-    ASK_SECRET, ASK_STANDS, Activity, Ask, Incoming, Inner, LISTEN, Party, Post, ROOM_SECRET,
-    RoomShow, field,
+    ASK_STANDS, Activity, Ask, Incoming, Inner, LISTEN, Party, Post, ROOM_SECRET, RoomShow, field,
 };
 use crate::Playback;
 use anibeam_contract::*;
@@ -45,7 +45,7 @@ pub(super) fn post_party(inner: &Inner) {
 pub(super) fn party_post(inner: &Inner) -> Post {
     let (party, idle) = party_of(inner);
     Box::new(move |d| {
-        d.party = Some(party);
+        d.party = party;
         d.idle = idle;
     })
 }
@@ -55,7 +55,7 @@ pub(super) fn listen_post(until: Instant) -> Post {
     Box::new(move |d| d.listen = Some(until))
 }
 
-fn party_of(inner: &Inner) -> (Party, Option<Activity>) {
+fn party_of(inner: &Inner) -> (Option<Party>, Option<Activity>) {
     match &inner.room {
         Some(room) => {
             let title = room
@@ -73,6 +73,7 @@ fn party_of(inner: &Inner) -> (Party, Option<Activity>) {
                 large_text: field(&title),
                 start: None,
                 party: None,
+                links: true,
             };
             let party = Party {
                 id: inner.room_party.clone(),
@@ -81,18 +82,9 @@ fn party_of(inner: &Inner) -> (Party, Option<Activity>) {
                 secret: format!("{ROOM_SECRET}{}", room.code),
                 open: inner.room_open,
             };
-            (party, Some(idle))
+            (Some(party), Some(idle))
         }
-        None => (
-            Party {
-                id: inner.solo.clone(),
-                size: 1,
-                max: MAX_MEMBERS,
-                secret: ASK_SECRET.to_string(),
-                open: false,
-            },
-            None,
-        ),
+        None => (None, None),
     }
 }
 

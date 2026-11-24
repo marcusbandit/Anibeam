@@ -526,6 +526,8 @@ core-presence-extra = 번외
 core-presence-room = 함께 보는 중
 core-presence-in-room = 방에 있음
 core-presence-no-room = 이 Discord 초대에는 아직 방이 없습니다. 방을 열어 달라고 하세요.
+core-presence-button-site = Anibeam 받기
+core-presence-button-github = GitHub에서 보기
 
 ## trackers/src/accounts.rs
 

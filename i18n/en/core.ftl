@@ -617,6 +617,8 @@ core-presence-extra = Extra
 core-presence-room = Watching together
 core-presence-in-room = In a room
 core-presence-no-room = That Discord invite has no room yet. Ask them to start one.
+core-presence-button-site = Get Anibeam
+core-presence-button-github = View on GitHub
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).

@@ -554,6 +554,8 @@ core-presence-extra = 特典映像
 core-presence-room = 一緒に視聴中
 core-presence-in-room = ルームにいます
 core-presence-no-room = この Discord の招待にはまだルームがありません。ルームを始めてもらってください。
+core-presence-button-site = Anibeamを入手
+core-presence-button-github = GitHubで見る
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
