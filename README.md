@@ -28,7 +28,7 @@
 <br>
 
 <div align="center">
-<img src="docs/readme/home.webp" alt="Anibeam Home page with a resume hero banner, Continue shelf, and Recently downloaded shows" width="100%">
+<img src="docs/readme/home.webp" alt="Anibeam Home page with a full-bleed hero backdrop, show logo, Continue episode carousel, and Recently downloaded shelf" width="100%">
 </div>
 
 <br>
@@ -70,7 +70,7 @@ downloads. The Android app runs on its own. An iPhone app is in the works as an 
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/readme/series.webp" alt="A series page showing banner art, episode progress, episode list, synopsis, and characters"></td>
+    <td width="50%"><img src="docs/readme/series.webp" alt="A series page showing a full-bleed backdrop, show logo, episode progress, episode thumbnails, synopsis, and Seasons & relations tab"></td>
     <td width="50%"><img src="docs/readme/library.webp" alt="The Library grid with poster cards, episode progress cubes, and library tabs"></td>
   </tr>
   <tr>
