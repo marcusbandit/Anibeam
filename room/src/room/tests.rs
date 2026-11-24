@@ -802,6 +802,34 @@ fn a_room_survives_a_trip_through_json() {
     assert_eq!(back.state().position, 3.0);
 }
 
+/// A room as the Worker stored it before #1220, written by that code: Ann
+/// joined at 0 and sent 20 pings at 1500.
+const STORED_BEFORE: &str = r#"{"code":"K7QM2X","host_key":"0123456789abcdef0123456789abcdef","secret":[9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9],"keys_made":1,"episode":{"anilist_id":1,"episode_key":"e1","number":1.0,"series_title":"Cowboy Bebop"},"state":{"playing":false,"position":0.0,"rate":1.0,"at_ms":0,"rev":0},"max":10,"slots":[{"id":1,"name":"Ann","ready":"loading","joined_ms":0,"conn":1,"left_ms":null,"rejoin_key":"33ff6dd9a414ccdf67d02cef08a6f0ad","window_ms":1500,"window_count":20,"key":null,"progress":null}],"next_id":2,"host":1,"handover_ms":null,"empty_ms":null,"closed":false}"#;
+
+/// The Worker keeps rooms in storage between messages, so a slot keeps its
+/// rate window under the keys it was stored with.
+#[test]
+fn a_slot_stores_its_rate_window_under_the_keys_it_always_had() {
+    let mut r = room();
+    join(&mut r, 1, "Ann", Some(KEY), 0);
+    for _ in 0..3 {
+        r.handle(ConnId(1), ClientMsg::Ping { c: 0 }, 1_500);
+    }
+    let v = serde_json::to_value(&r).unwrap();
+    let slot = &v["slots"][0];
+    assert_eq!(slot["window_ms"].as_u64(), Some(1_500));
+    assert_eq!(slot["window_count"].as_u64(), Some(3));
+}
+
+#[test]
+fn a_room_stored_before_reads_back_and_keeps_counting() {
+    let mut back: Room = serde_json::from_str(STORED_BEFORE).unwrap();
+    let outs = back.handle(ConnId(1), ClientMsg::Ping { c: 0 }, 1_600);
+    assert_eq!(error_code(&outs), Some(ErrorCode::RateLimited));
+    let outs = back.handle(ConnId(1), ClientMsg::Ping { c: 0 }, 2_500);
+    assert_eq!(error_code(&outs), None, "a new second");
+}
+
 #[test]
 fn the_view_shows_connected_members_only() {
     let mut r = room();

@@ -1108,8 +1108,9 @@ use anibeam_core::presence::{self, Incoming, Party};
 
 #[derive(Clone, Debug, PartialEq)]
 enum Wire {
-    /// An activity set, by the party it carried.
-    Set(Option<Party>),
+    /// An activity set, by the party it carried and whether its payload has
+    /// the link buttons.
+    Set(Option<Party>, bool),
     Clear,
     Answer(String, bool),
 }
@@ -1126,7 +1127,7 @@ impl presence::Transport for Discord {
     }
     fn send(&mut self, activity: Option<&presence::Activity>) -> Result<(), presence::SendError> {
         self.wire.lock().unwrap().push(match activity {
-            Some(a) => Wire::Set(a.party.clone()),
+            Some(a) => Wire::Set(a.party.clone(), a.to_json().get("buttons").is_some()),
             None => Wire::Clear,
         });
         Ok(())
@@ -1168,7 +1169,7 @@ impl Discord {
     }
     fn last_party(&self) -> Option<Party> {
         self.wire().iter().rev().find_map(|w| match w {
-            Wire::Set(p) => Some(p.clone()),
+            Wire::Set(p, _) => Some(p.clone()),
             _ => None,
         })?
     }
@@ -1209,9 +1210,9 @@ fn a_yes_on_discord_starts_a_room_and_the_invite_hands_over_its_code() {
             paused: false,
         })
         .unwrap();
+    // Outside a room the episode shows with the buttons and no party (#1450).
     discord.wait("the episode shows", |w| {
-        w.iter()
-            .any(|x| matches!(x, Wire::Set(Some(p)) if p.secret == presence::ASK_SECRET))
+        w.iter().any(|x| matches!(x, Wire::Set(None, true)))
     });
 
     discord.ask("777");
@@ -1237,7 +1238,7 @@ fn a_yes_on_discord_starts_a_room_and_the_invite_hands_over_its_code() {
     assert!(
         wire[..invite]
             .iter()
-            .any(|x| matches!(x, Wire::Set(Some(p)) if p.secret == secret && !p.open)),
+            .any(|x| matches!(x, Wire::Set(Some(p), false) if p.secret == secret && !p.open)),
         "{wire:#?}"
     );
 
@@ -1307,12 +1308,12 @@ fn switching_discord_on_in_a_room_shows_the_room_in_one_set() {
     let discord = on_discord(&ann);
     ann.core.presence_flush();
     // Switched on mid episode in a room: the room is known before the first
-    // set, so no set with the ask party goes out ahead of it.
+    // set, so no set without the party goes out ahead of it.
     let sets: Vec<_> = discord
         .wire()
         .into_iter()
         .filter_map(|w| match w {
-            Wire::Set(p) => Some(p),
+            Wire::Set(p, _) => Some(p),
             _ => None,
         })
         .collect();

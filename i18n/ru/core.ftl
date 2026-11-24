@@ -575,6 +575,7 @@ core-presence-extra = Доп. материал
 core-presence-room = Смотрим вместе
 core-presence-in-room = В комнате
 core-presence-no-room = У этого приглашения из Discord ещё нет комнаты. Попросите её создать.
+core-presence-button-site = Скачать Anibeam
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
@@ -642,17 +643,26 @@ core-trackers-oauth-port-busy = порт { $port } на этом компьют�
 core-trackers-oauth-provider-error = { $site } вернул ошибку: { $error }
 # The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
-core-trackers-page-connected = { $site } подключён к { $app }
-core-trackers-page-close-tab = Эту вкладку можно закрыть.
+core-trackers-page-connected = { $site } и { $app } теперь на связи
+core-trackers-page-signed-in = Вы вошли как { $username }
+core-trackers-page-close-tab = Всё готово. Вкладка скоро закроется сама, но её можно закрыть и сейчас.
 core-trackers-page-failed-title = { $app }, вход не удался
-core-trackers-page-failed = Вход не завершился
+core-trackers-page-failed = Что-то помешало войти
 core-trackers-page-go-back = Вернитесь в { $app } и попробуйте снова.
-core-trackers-page-finishing-title = { $app }, вход завершается
-core-trackers-page-finishing = Вход завершается
-core-trackers-page-finishing-body = { $site } ответил, и Anibeam завершает вход. Вернитесь в { $app }, чтобы продолжить.
+core-trackers-page-finishing-title = { $app }, почти готово
+core-trackers-page-finishing = Завершаем последние шаги
+core-trackers-page-finishing-body = { $site } ответил, и вход ещё завершается. Вернитесь в { $app }, чтобы увидеть результат.
 core-trackers-page-cancelled-title = { $app }, вход отменён
 core-trackers-page-cancelled = Вход отменён
-core-trackers-page-cancelled-body = Эту вкладку можно закрыть. Если всё ещё хотите войти, начните заново из { $app }.
+core-trackers-page-cancelled-body = Эту вкладку можно закрыть. Когда захотите попробовать снова, начните из { $app }.
+core-trackers-page-status-connected = Подключено
+core-trackers-page-status-failed = Не подключено
+core-trackers-page-status-finishing = Почти готово
+core-trackers-page-status-cancelled = Отменено
+core-trackers-page-status-connecting = Подключение
+core-trackers-page-connecting-title = { $app }, подключение
+core-trackers-page-connecting = Принимаем эстафету от { $site }
+core-trackers-page-no-token = В этом адресе не оказалось токена входа. Вернитесь в { $app } и попробуйте снова.
 
 ## trackers/src/on_hold.rs
 

@@ -532,6 +532,7 @@ core-presence-extra = Extra
 core-presence-room = Viendo juntos
 core-presence-in-room = En una sala
 core-presence-no-room = Esa invitación de Discord aún no tiene sala. Pídele que abra una.
+core-presence-button-site = Obtener Anibeam
 
 ## trackers/src/accounts.rs
 
@@ -580,17 +581,26 @@ core-trackers-oauth-could-not-start = No se pudo abrir el inicio de sesión
 core-trackers-oauth-port-failed = no se pudo abrir el puerto { $port } de este ordenador: { $error }
 core-trackers-oauth-port-busy = otro programa está usando el puerto { $port } de este ordenador. Espera un momento y reinténtalo, o cierra el programa que lo usa si sigue ocupado.
 core-trackers-oauth-provider-error = { $site } devolvió un error: { $error }
-core-trackers-page-connected = { $site } está conectado a { $app }
-core-trackers-page-close-tab = Puedes cerrar esta pestaña.
+core-trackers-page-connected = { $site } y { $app } ya están enlazados
+core-trackers-page-signed-in = Sesión iniciada como { $username }
+core-trackers-page-close-tab = Todo listo. Esta pestaña se cerrará enseguida, o puedes cerrarla ya.
 core-trackers-page-failed-title = { $app }, falló el inicio de sesión
-core-trackers-page-failed = El inicio de sesión no terminó
+core-trackers-page-failed = El inicio de sesión se atascó
 core-trackers-page-go-back = Vuelve a { $app } e inténtalo de nuevo.
-core-trackers-page-finishing-title = { $app }, terminando
-core-trackers-page-finishing = Terminando
-core-trackers-page-finishing-body = { $site } respondió y Anibeam está terminando de iniciar sesión. Vuelve a { $app } para continuar.
+core-trackers-page-finishing-title = { $app }, casi listo
+core-trackers-page-finishing = Ultimando detalles
+core-trackers-page-finishing-body = { $site } respondió y el inicio de sesión aún está terminando. Vuelve a { $app } para ver el resultado.
 core-trackers-page-cancelled-title = { $app }, inicio de sesión cancelado
 core-trackers-page-cancelled = Se canceló el inicio de sesión
-core-trackers-page-cancelled-body = Puedes cerrar esta pestaña. Empieza de nuevo desde { $app } si aún quieres iniciar sesión.
+core-trackers-page-cancelled-body = Puedes cerrar esta pestaña. Empieza de nuevo desde { $app } cuando quieras.
+core-trackers-page-status-connected = Conectado
+core-trackers-page-status-failed = Sin conectar
+core-trackers-page-status-finishing = Casi listo
+core-trackers-page-status-cancelled = Cancelado
+core-trackers-page-status-connecting = Conectando
+core-trackers-page-connecting-title = { $app }, conectando
+core-trackers-page-connecting = Trayéndote desde { $site }
+core-trackers-page-no-token = Esta dirección no traía ningún token de inicio de sesión. Vuelve a { $app } e inténtalo de nuevo.
 
 ## trackers/src/on_hold.rs
 

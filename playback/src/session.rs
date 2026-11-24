@@ -545,11 +545,14 @@ pub fn open_for(
                     )
                     .optional()?
                     .flatten(),
-                // ani.zip's title first, then AniList's own row (#1036).
+                // ani.zip's title first, then the franchise fallback's
+                // (#1461), then AniList's own row (#1036).
                 (None, Some(id), false) => c
                     .query_row(
                         "SELECT coalesce(
                             (SELECT title FROM anizip_episodes WHERE anilist_id = ?1 AND number = ?2 AND title IS NOT NULL),
+                            (SELECT title FROM fallback_episodes WHERE anilist_id = ?1 AND number = ?2 AND title IS NOT NULL
+                                AND NOT EXISTS (SELECT 1 FROM anizip_episodes WHERE anilist_id = ?1 AND number IS NOT NULL)),
                             (SELECT title FROM anilist_episodes WHERE anilist_id = ?1 AND number = ?2))",
                         params![id as i64, f.number],
                         |r| r.get(0),

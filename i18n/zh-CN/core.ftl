@@ -520,6 +520,7 @@ core-presence-extra = 附加内容
 core-presence-room = 一起观看
 core-presence-in-room = 在房间中
 core-presence-no-room = 这个 Discord 邀请还没有房间。请对方先开一个房间。
+core-presence-button-site = 获取 Anibeam
 
 ## trackers/src/accounts.rs
 
@@ -557,17 +558,26 @@ core-trackers-oauth-could-not-start = 无法开始登录
 core-trackers-oauth-port-failed = 无法打开这台电脑上的端口 { $port }：{ $error }
 core-trackers-oauth-port-busy = 这台电脑上的端口 { $port } 被其他程序占用。请稍等后重试，如果一直被占用，请关闭占用它的程序。
 core-trackers-oauth-provider-error = { $site } 返回错误：{ $error }
-core-trackers-page-connected = { $site } 已连接到 { $app }
-core-trackers-page-close-tab = 你可以关闭此标签页了。
+core-trackers-page-connected = { $site } 和 { $app } 已连上线
+core-trackers-page-signed-in = 已登录为 { $username }
+core-trackers-page-close-tab = 一切就绪。此标签页稍后会自动关闭，你也可以现在关掉。
 core-trackers-page-failed-title = { $app }，登录失败
-core-trackers-page-failed = 登录没有完成
-core-trackers-page-go-back = 请回到 { $app } 重试。
-core-trackers-page-finishing-title = { $app }，仍在完成中
-core-trackers-page-finishing = 仍在完成中
-core-trackers-page-finishing-body = { $site } 已响应，Anibeam 正在完成登录。请回到 { $app } 继续。
+core-trackers-page-failed = 登录出了点小状况
+core-trackers-page-go-back = 请回到 { $app } 再试一次。
+core-trackers-page-finishing-title = { $app }，快好了
+core-trackers-page-finishing = 正在收尾
+core-trackers-page-finishing-body = { $site } 已响应，登录还在最后一步。请回到 { $app } 查看结果。
 core-trackers-page-cancelled-title = { $app }，登录已取消
 core-trackers-page-cancelled = 登录已取消
-core-trackers-page-cancelled-body = 你可以关闭此标签页。如果仍想登录，请从 { $app } 重新开始。
+core-trackers-page-cancelled-body = 你可以关闭此标签页。想再登录时，随时从 { $app } 重新开始。
+core-trackers-page-status-connected = 已连接
+core-trackers-page-status-failed = 未连接
+core-trackers-page-status-finishing = 快好了
+core-trackers-page-status-cancelled = 已取消
+core-trackers-page-status-connecting = 连接中
+core-trackers-page-connecting-title = { $app }，连接中
+core-trackers-page-connecting = 正在从 { $site } 交接过来
+core-trackers-page-no-token = 这个地址里没有登录令牌。请回到 { $app } 重试。
 
 ## trackers/src/on_hold.rs
 

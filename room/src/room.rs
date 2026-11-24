@@ -12,7 +12,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::code::hex;
-use crate::limit::{self, Verdict};
+use crate::limit::{self, Verdict, Window};
 use crate::proto::{
     Action, ClientMsg, EpisodeRef, ErrorCode, MAX_KEY, MAX_MEMBERS, MAX_POSITION, MAX_SEALED,
     Member, MemberId, PROTO, PlayState, Progress, Ready, RoomView, SEAL_NOBODY, ServerMsg,
@@ -68,6 +68,8 @@ struct Slot {
     conn: Option<ConnId>,
     left_ms: Option<u64>,
     rejoin_key: String,
+    /// The member's rate window, kept as its two numbers so the stored
+    /// layout stays the room's own.
     window_ms: u64,
     window_count: u32,
     /// The public key the member's hello carried. A room stored before keys
@@ -123,13 +125,7 @@ impl Room {
             secret,
             keys_made: 0,
             episode,
-            state: PlayState {
-                playing: false,
-                position: 0.0,
-                rate: 1.0,
-                at_ms: now_ms,
-                rev: 0,
-            },
+            state: paused(now_ms, 0),
             max: MAX_MEMBERS,
             slots: Vec::new(),
             next_id: 1,
@@ -165,9 +161,7 @@ impl Room {
 
     /// The members connected now, in the order they first joined.
     pub fn members(&self) -> Vec<Member> {
-        self.slots
-            .iter()
-            .filter(|s| s.conn.is_some())
+        self.present()
             .map(|s| Member {
                 id: s.id,
                 name: s.name.clone(),
@@ -202,13 +196,8 @@ impl Room {
     pub fn targets(&self, to: &To) -> Vec<ConnId> {
         match *to {
             To::One(conn) => vec![conn],
-            To::All => self.slots.iter().filter_map(|s| s.conn).collect(),
-            To::AllBut(but) => self
-                .slots
-                .iter()
-                .filter_map(|s| s.conn)
-                .filter(|c| *c != but)
-                .collect(),
+            To::All => self.conns().collect(),
+            To::AllBut(but) => self.conns().filter(|c| *c != but).collect(),
         }
     }
 
@@ -234,29 +223,7 @@ impl Room {
             return vec![error(conn, ErrorCode::NotFound, "the room has closed")];
         }
         let Some(i) = self.slot_of(conn) else {
-            return match msg {
-                ClientMsg::Hello {
-                    name,
-                    proto,
-                    client: _,
-                    host_key,
-                    rejoin_key,
-                    key,
-                    unpicked,
-                } => self.hello(
-                    conn,
-                    Hello {
-                        name,
-                        proto,
-                        host_key,
-                        rejoin_key,
-                        key,
-                        unpicked,
-                    },
-                    now_ms,
-                ),
-                _ => vec![error(conn, ErrorCode::Proto, "hello must come first")],
-            };
+            return self.hello(conn, msg, now_ms);
         };
         // Leaving is never dropped: a lost bye would hold the seat, and the
         // host role, for the whole grace.
@@ -301,13 +268,7 @@ impl Room {
                     )];
                 }
                 self.episode = Some(episode.clone());
-                self.state = PlayState {
-                    playing: false,
-                    position: 0.0,
-                    rate: 1.0,
-                    at_ms: now_ms,
-                    rev: self.state.rev + 1,
-                };
+                self.state = paused(now_ms, self.state.rev + 1);
                 for slot in &mut self.slots {
                     slot.ready = Ready::Loading;
                     slot.progress = None;
@@ -369,15 +330,20 @@ impl Room {
         outs
     }
 
-    fn hello(&mut self, conn: ConnId, hello: Hello, now_ms: u64) -> Vec<Out> {
-        let Hello {
+    /// The first message from `conn`, which has to be a hello.
+    fn hello(&mut self, conn: ConnId, msg: ClientMsg, now_ms: u64) -> Vec<Out> {
+        let ClientMsg::Hello {
             name,
             proto,
             host_key,
+            client: _,
             rejoin_key,
             key,
             unpicked,
-        } = hello;
+        } = msg
+        else {
+            return vec![error(conn, ErrorCode::Proto, "hello must come first")];
+        };
         if proto != PROTO {
             return vec![error(
                 conn,
@@ -492,8 +458,7 @@ impl Room {
             )];
         }
         let target = self
-            .slots
-            .iter()
+            .present()
             .find(|s| s.id == to && s.id != from)
             .and_then(|s| s.conn);
         match target {
@@ -531,9 +496,7 @@ impl Room {
             return false;
         }
         let Some(next) = self
-            .slots
-            .iter()
-            .filter(|s| s.conn.is_some())
+            .present()
             .min_by_key(|s| (s.joined_ms, s.id))
             .map(|s| s.id)
         else {
@@ -549,7 +512,10 @@ impl Room {
     /// `rate_limited` per second at most).
     fn over_limit(&mut self, i: usize, conn: ConnId, now_ms: u64) -> Option<Vec<Out>> {
         let slot = &mut self.slots[i];
-        match limit::count(&mut slot.window_ms, &mut slot.window_count, now_ms) {
+        let mut window = Window::from_parts(slot.window_ms, slot.window_count);
+        let verdict = window.hit(now_ms);
+        (slot.window_ms, slot.window_count) = window.parts();
+        match verdict {
             Verdict::Pass => None,
             Verdict::Refuse => Some(vec![one(conn, limit::refusal())]),
             Verdict::Drop => Some(Vec::new()),
@@ -597,12 +563,22 @@ impl Room {
         self.slots.iter().position(|s| s.conn == Some(conn))
     }
 
+    /// The slots with a socket, the one place that decides who is present.
+    fn present(&self) -> impl Iterator<Item = &Slot> {
+        self.slots.iter().filter(|s| s.conn.is_some())
+    }
+
+    /// The sockets of the members present.
+    fn conns(&self) -> impl Iterator<Item = ConnId> {
+        self.slots.iter().filter_map(|s| s.conn)
+    }
+
     fn is_connected(&self, id: MemberId) -> bool {
-        self.slots.iter().any(|s| s.id == id && s.conn.is_some())
+        self.present().any(|s| s.id == id)
     }
 
     fn connected(&self) -> usize {
-        self.slots.iter().filter(|s| s.conn.is_some()).count()
+        self.conns().count()
     }
 }
 
@@ -615,16 +591,6 @@ pub fn clean_name(name: &str) -> Option<String> {
         return None;
     }
     Some(name.to_owned())
-}
-
-/// What a hello says, as the room reads it.
-struct Hello {
-    name: String,
-    proto: u32,
-    host_key: Option<String>,
-    rejoin_key: Option<String>,
-    key: Option<String>,
-    unpicked: bool,
 }
 
 /// A public key as the room keeps it: base64 characters, at most [`MAX_KEY`].
@@ -642,6 +608,17 @@ fn clean_key(key: Option<String>) -> Option<String> {
 fn same(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// The room paused at 0, as a new room or a new episode starts.
+fn paused(at_ms: u64, rev: u64) -> PlayState {
+    PlayState {
+        playing: false,
+        position: 0.0,
+        rate: 1.0,
+        at_ms,
+        rev,
+    }
 }
 
 fn one(conn: ConnId, msg: ServerMsg) -> Out {

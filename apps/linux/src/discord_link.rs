@@ -4,6 +4,14 @@
 //! does, and becomes the handler when nothing else is. The join itself then comes over
 //! Discord's socket once the app is up.
 //!
+//! A package (the AUR's anibeam and anibeam-bin, the deb, the rpm) ships its own hidden
+//! entry under `/usr/share/applications` instead (#1167), so a Join works before the first
+//! launch and the entry goes away with the package. A run with no live launcher entry of the
+//! user's writes no entry: it removes a hidden entry an AppImage left in the user's folder
+//! once that AppImage is gone, since the user's copy would hide the package's, and names the
+//! package's entry the handler when nothing is. That name stays in the user's mimeapps.list
+//! after the package goes, as any default does, and points at nothing until one is back.
+//!
 //! Only the user's own files are touched, never with a sandbox root, a drive or a shot, and
 //! nothing when the build has no Discord application.
 
@@ -57,32 +65,52 @@ fn main_exec(entry: &str) -> Option<String> {
 
 #[cfg(target_os = "linux")]
 mod linux {
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
 
-    use crate::scheme::linux::{launcher_entry, quiet};
+    use crate::scheme::linux::{applications, launcher_entry, quiet};
 
     pub fn ensure(id: &str) {
-        let Some(own) = launcher_entry() else { return };
-        let Some(dir) = own.parent().map(|d| d.to_path_buf()) else {
-            return;
-        };
-        let Some(exec) = std::fs::read_to_string(&own)
-            .ok()
-            .and_then(|t| super::main_exec(&t))
-        else {
-            return;
-        };
         let name = format!("discord-{id}.desktop");
-        let path = dir.join(&name);
-        let want = super::entry(id, &exec);
-        if std::fs::read_to_string(&path).ok().as_deref() != Some(want.as_str()) {
-            let tmp = dir.join(format!(".{name}.anibeam-tmp"));
-            if std::fs::write(&tmp, &want).is_err() || std::fs::rename(&tmp, &path).is_err() {
-                let _ = std::fs::remove_file(&tmp);
+        // The user's own launcher entry, while what it runs is still there
+        let own = launcher_entry().and_then(|own| {
+            let exec = std::fs::read_to_string(&own)
+                .ok()
+                .and_then(|t| super::main_exec(&t))?;
+            live(&exec).then_some((own, exec))
+        });
+        if let Some((own, exec)) = own {
+            let Some(dir) = own.parent().map(|d| d.to_path_buf()) else {
+                return;
+            };
+            let path = dir.join(&name);
+            let want = super::entry(id, &exec);
+            if std::fs::read_to_string(&path).ok().as_deref() != Some(want.as_str()) {
+                let tmp = dir.join(format!(".{name}.anibeam-tmp"));
+                if std::fs::write(&tmp, &want).is_err() || std::fs::rename(&tmp, &path).is_err() {
+                    let _ = std::fs::remove_file(&tmp);
+                    return;
+                }
+                quiet(Command::new("update-desktop-database").arg(&dir));
+            }
+        } else {
+            // A package's run: its own hidden entry handles the scheme, unless a dead copy
+            // in the user's folder hides it
+            if let Some(dir) = applications()
+                && drop_dead(&dir.join(&name))
+            {
+                quiet(Command::new("update-desktop-database").arg(&dir));
+            }
+            if !data_dirs()
+                .iter()
+                .any(|d| d.join("applications").join(&name).is_file())
+            {
                 return;
             }
-            quiet(Command::new("update-desktop-database").arg(&dir));
         }
+        // Named as the default too: a desktop without desktop-file-utils never lists the
+        // package's entry in mimeinfo.cache, and xdg-open then finds nothing
         let mime = format!("x-scheme-handler/discord-{id}");
         let current = Command::new("xdg-mime")
             .args(["query", "default", &mime])
@@ -94,6 +122,53 @@ mod linux {
         {
             quiet(Command::new("xdg-mime").args(["default", &name, &mime]));
         }
+    }
+
+    /// `$XDG_DATA_DIRS`, absolute paths only, else its default.
+    fn data_dirs() -> Vec<PathBuf> {
+        let dirs: Vec<PathBuf> = std::env::var_os("XDG_DATA_DIRS")
+            .map(|v| {
+                std::env::split_paths(&v)
+                    .filter(|p| p.is_absolute())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if dirs.is_empty() {
+            vec!["/usr/local/share".into(), "/usr/share".into()]
+        } else {
+            dirs
+        }
+    }
+
+    /// Whether `exec` may start something. Only a program named by an absolute path that is no
+    /// longer an executable file counts as gone, as a deleted AppImage's does. A bare name is
+    /// looked up on the PATH of whoever opens the link, which this run cannot see, so it stays,
+    /// and so does an `env` with options, since those can take the place of the program.
+    pub(super) fn live(exec: &str) -> bool {
+        let mut words = exec.split_whitespace();
+        if words
+            .next()
+            .is_some_and(|w| w == "env" || w.ends_with("/env"))
+            && words.next().is_some_and(|w| w.starts_with('-'))
+        {
+            return true;
+        }
+        let Some(program) = crate::scheme::program(exec) else {
+            return false;
+        };
+        let path = Path::new(&program);
+        !path.is_absolute()
+            || std::fs::metadata(path)
+                .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+    }
+
+    /// Removes the hidden entry at `path` when what it runs is gone. True when it went.
+    pub(super) fn drop_dead(path: &Path) -> bool {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return false;
+        };
+        let starts = super::main_exec(&text).is_some_and(|e| live(&e));
+        !starts && std::fs::remove_file(path).is_ok()
     }
 }
 
@@ -108,6 +183,36 @@ mod tests {
         assert!(e.contains("MimeType=x-scheme-handler/discord-123;"));
         assert!(e.contains("NoDisplay=true"));
         assert!(entry("9", "/opt/anibeam").contains("\nExec=/opt/anibeam %u\n"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_hidden_entry_goes_only_once_what_it_runs_is_gone() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let app = root.path().join("anibeam");
+        std::fs::write(&app, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&app, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let at = |exec: &str| {
+            let path = root.path().join("discord-1.desktop");
+            std::fs::write(&path, entry("1", exec)).unwrap();
+            let gone = linux::drop_dead(&path);
+            assert_eq!(gone, !path.exists());
+            gone
+        };
+        // A program that is there stays, and so does a bare name: the PATH that counts is
+        // the one of whoever opens the link
+        assert!(!at(&format!("{} %U", app.display())));
+        assert!(!at(&format!("env A=1 {}", app.display())));
+        assert!(!at("anibeam-dev %U"));
+        // env's options can stand where the program would, so those stay
+        assert!(!at("env -u FOO /nowhere/anibeam %U"));
+        // An AppImage that was deleted, or a file that cannot run
+        assert!(at("/nowhere/Anibeam.AppImage %U"));
+        std::fs::set_permissions(&app, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(at(&format!("{} %U", app.display())));
+        // No entry at all is nothing to remove
+        assert!(!linux::drop_dead(&root.path().join("none.desktop")));
     }
 
     #[test]

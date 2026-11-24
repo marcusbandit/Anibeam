@@ -52,6 +52,12 @@ const FIELD_PAD: char = '\u{200B}';
 /// The art uploaded to the Discord application, shown when there is no
 /// poster or Discord will not take a poster's URL.
 pub const FALLBACK_ART: &str = "anibeam";
+/// What the small badge on the poster says: the app's name, never translated.
+pub const BADGE_TEXT: &str = "Anibeam";
+/// Where the activity's one button goes.
+pub const SITE_URL: &str = "https://anibeam.app";
+/// Discord's limit on a button's label, in UTF-16 code units.
+pub const LABEL_MAX: usize = 32;
 /// How far, in seconds, the position may move off the wall clock between two
 /// ticks before Discord's clock is sent again. Past it is a seek; under it
 /// is tick jitter, or a speed other than 1x, which never adds up to a jump.
@@ -82,6 +88,11 @@ pub struct Activity {
     /// Who can join and how: the worker puts it on from what the core says
     /// last, so the rule over playback never sees it.
     pub party: Option<Party>,
+    /// Whether the activity carries the Get Anibeam button to the website. It
+    /// shows only without a party: Discord refuses buttons beside a join
+    /// secret ("secrets cannot currently be sent with buttons"), so in a room
+    /// Join wins. Off once a Discord refuses it.
+    pub links: bool,
 }
 
 /// The party an activity carries, which is what makes Discord offer Ask to
@@ -114,7 +125,8 @@ pub enum Incoming {
     Join { secret: String },
 }
 
-/// The secret outside a room.
+/// The secret activities carried outside a room before #1450, which a Join
+/// from one of them still hands back.
 pub const ASK_SECRET: &str = "ask";
 /// What a room's join secret starts with, before its code.
 pub const ROOM_SECRET: &str = "room:";
@@ -154,6 +166,7 @@ impl Activity {
             large_text: field(series_title),
             start: None,
             party: None,
+            links: true,
         }
     }
 
@@ -168,6 +181,12 @@ impl Activity {
                 "large_text": self.large_text,
             },
         });
+        // The badge on the poster; without a poster the large image is the
+        // app's art already, and the same art again in its corner says nothing.
+        if self.poster.is_some() {
+            v["assets"]["small_image"] = json!(FALLBACK_ART);
+            v["assets"]["small_text"] = json!(BADGE_TEXT);
+        }
         if let Some(state) = &self.state {
             v["state"] = json!(state);
         }
@@ -181,9 +200,25 @@ impl Activity {
             }
             v["secrets"] = json!({"join": p.secret});
             v["instance"] = json!(false);
+        } else if self.links {
+            let words = anibeam_contract::i18n::tr("core-presence-button-site", &[]);
+            v["buttons"] = json!([{"label": label(&words), "url": SITE_URL}]);
         }
         v
     }
+}
+
+/// A button's label as Discord takes it: trimmed and cut to `LABEL_MAX`
+/// UTF-16 code units, which only a translation run long could reach.
+fn label(s: &str) -> String {
+    let mut units = 0;
+    s.trim()
+        .chars()
+        .take_while(|c| {
+            units += c.len_utf16();
+            units <= LABEL_MAX
+        })
+        .collect()
 }
 
 /// A field as Discord takes it: trimmed, cut to its limit with "..." where
@@ -209,11 +244,6 @@ fn field(s: &str) -> String {
     let short = FIELD_MIN.saturating_sub(out.encode_utf16().count());
     out.extend(std::iter::repeat_n(FIELD_PAD, short));
     out
-}
-
-/// A party id for this run outside any room, so two runs never share one.
-fn solo_party_id() -> String {
-    format!("solo-{:032x}", rand::random::<u128>())
 }
 
 /// A lock's guard back from a condvar wait, poisoned or not, as `recover`.
@@ -509,8 +539,6 @@ struct Inner {
     room: Option<RoomShow>,
     /// Anyone on Discord may join this person's room without asking.
     room_open: bool,
-    /// The party id outside a room, fixed for the run.
-    solo: String,
     /// The party id of the room this person is in, new with each room.
     room_party: String,
     /// Asks waiting on an answer, by Discord user id.
@@ -553,7 +581,8 @@ type Handler = Arc<dyn Fn(Incoming) + Send + Sync>;
 struct Desired {
     /// What Discord should show; `None` clears it.
     want: Option<Activity>,
-    /// The party every activity carries, and what shows when nothing plays.
+    /// The room's party, which every activity in it carries, and what shows
+    /// when nothing plays.
     party: Option<Party>,
     idle: Option<Activity>,
     /// Stay connected with nothing to show until then, so a Discord that
@@ -607,10 +636,7 @@ impl Presence {
             problem: Arc::default(),
             pause_clear_ms: AtomicU64::new(PAUSE_CLEAR.as_millis() as u64),
             check_ms: Arc::new(AtomicU64::new(CHECK.as_millis() as u64)),
-            inner: Mutex::new(Inner {
-                solo: solo_party_id(),
-                ..Inner::default()
-            }),
+            inner: Mutex::new(Inner::default()),
             bus,
             rooms: Above::default(),
         }
@@ -940,6 +966,7 @@ fn spawn(
         posters: true,
         privacy: true,
         parties: true,
+        links: true,
     };
     let theirs = mailbox.clone();
     let spawned = std::thread::Builder::new()
@@ -985,6 +1012,8 @@ struct Worker {
     privacy: bool,
     /// Whether this connection takes a party at all.
     parties: bool,
+    /// Whether this connection takes the buttons.
+    links: bool,
 }
 
 /// A new desired state, as the worker takes it. Every field here is named where `next`
@@ -1270,6 +1299,7 @@ impl Worker {
                     self.posters = true;
                     self.privacy = true;
                     self.parties = true;
+                    self.links = true;
                 }
                 // Not debug: either leaves the profile empty, and Settings
                 // and these lines are the only trace of why. Said once per
@@ -1309,6 +1339,9 @@ impl Worker {
             if !self.parties {
                 a.party = None;
             }
+            if !self.links {
+                a.links = false;
+            }
         }
         self.last_sent = Some(Instant::now());
         let mut result = self.transport.send(activity.as_ref());
@@ -1319,12 +1352,14 @@ impl Worker {
         {
             tracing::debug!("discord refused the poster, using the app's art: {e}");
             self.posters = false;
-            a.poster = None;
+            let poster = a.poster.take();
             result = self.transport.send(Some(a));
             // Refused without the poster as well: the poster was not the
-            // reason, so the next series tries its own again.
+            // reason, so it goes back on for the fallbacks below and the
+            // next series tries its own again.
             if matches!(result, Err(SendError::Rejected(_))) {
                 self.posters = true;
+                a.poster = poster;
             }
         }
         // Nor an open party, which an older Discord may not know: shown as
@@ -1342,15 +1377,33 @@ impl Worker {
             }
         }
         // Nor a party at all, which a client without joins may not take: what plays
-        // still shows, and the next connection tries the party again.
+        // still shows, and the next connection tries the party again. Without
+        // the party the activity takes the button, which the block below drops
+        // in turn if that is refused too.
+        let mut dropped_party = false;
         if let (Err(SendError::Rejected(e)), Some(a)) = (&result, activity.as_mut())
             && a.party.is_some()
         {
             tracing::debug!("discord refused the party, showing the activity without it: {e}");
             a.party = None;
+            dropped_party = true;
             result = self.transport.send(Some(a));
             if result.is_ok() {
                 self.parties = false;
+            }
+        }
+        // Nor the button, which a client that predates buttons may not take:
+        // what plays shows without it, and the next connection tries it again.
+        if let (Err(SendError::Rejected(e)), Some(a)) = (&result, activity.as_mut())
+            && a.links
+            && a.party.is_none()
+        {
+            tracing::debug!("discord refused the button, showing the activity without it: {e}");
+            a.links = false;
+            result = self.transport.send(Some(a));
+            if result.is_ok() {
+                self.links = false;
+                self.parties &= !dropped_party;
             }
         }
         match result {
@@ -1815,5 +1868,81 @@ mod tests {
         assert_eq!(v["state"], "EP 2 - Stray Dog Strut");
         assert_eq!(v["timestamps"]["start"], 42);
         assert!(bebop().to_json().get("timestamps").is_none());
+    }
+
+    #[test]
+    fn the_badge_says_anibeam_on_every_poster() {
+        for a in [
+            bebop(),
+            Activity {
+                party: Some(room()),
+                ..bebop()
+            },
+        ] {
+            let v = a.to_json();
+            assert_eq!(v["assets"]["small_image"], FALLBACK_ART);
+            assert_eq!(v["assets"]["small_text"], "Anibeam");
+        }
+        // Without a poster the large image is the app's art, so no badge.
+        let bare = Activity {
+            poster: None,
+            ..bebop()
+        }
+        .to_json();
+        assert_eq!(bare["assets"]["large_image"], FALLBACK_ART);
+        assert!(bare["assets"].get("small_image").is_none());
+    }
+
+    fn room() -> Party {
+        Party {
+            id: "room-1".into(),
+            size: 2,
+            max: 8,
+            secret: "room:k7qm2x".into(),
+            open: false,
+        }
+    }
+
+    #[test]
+    fn outside_a_room_one_button_links_the_site() {
+        let v = bebop().to_json();
+        let buttons = v["buttons"].as_array().expect("buttons");
+        assert_eq!(buttons.len(), 1);
+        assert_eq!(buttons[0]["url"], SITE_URL);
+        let words = buttons[0]["label"].as_str().unwrap();
+        assert!(!words.is_empty() && words.encode_utf16().count() <= LABEL_MAX);
+        assert!(v.get("party").is_none() && v.get("secrets").is_none());
+    }
+
+    #[test]
+    fn in_a_room_join_wins_and_the_buttons_go() {
+        // Discord refuses both at once: "secrets cannot currently be sent with buttons".
+        let v = Activity {
+            party: Some(room()),
+            ..bebop()
+        }
+        .to_json();
+        assert_eq!(v["secrets"]["join"], "room:k7qm2x");
+        assert!(v.get("buttons").is_none());
+    }
+
+    #[test]
+    fn a_button_a_discord_refused_stays_off() {
+        let v = Activity {
+            links: false,
+            ..bebop()
+        }
+        .to_json();
+        assert!(v.get("buttons").is_none());
+        assert_eq!(v["assets"]["small_text"], "Anibeam");
+    }
+
+    #[test]
+    fn a_label_is_cut_to_discords_limit() {
+        assert_eq!(label("  Get Anibeam "), "Get Anibeam");
+        let long = "\u{1F600}".repeat(20);
+        let cut = label(&long);
+        assert_eq!(cut.encode_utf16().count(), LABEL_MAX);
+        assert_eq!(label(&"a".repeat(40)).len(), LABEL_MAX);
     }
 }

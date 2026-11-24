@@ -179,7 +179,7 @@ SettingsTab {
     }
 
     // The source lists first: nothing searches without one (#1003)
-    EndpointReposPanel { grows: false; helper: tab.status }
+    EndpointReposPanel { grows: false; helper: tab.status; warns: frame.wantsSourceList(tab.status) }
     Panel {
         title: words.t("settings-downloads-torrent-title")
         SettingRow { label: words.t("settings-downloads-which-client")

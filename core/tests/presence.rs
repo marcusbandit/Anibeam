@@ -30,6 +30,9 @@ struct Fake {
     /// Every connect finds a Discord that refuses the handshake.
     refuse: bool,
     reject_posters: bool,
+    /// Refuses an activity whose payload has buttons, as a Discord that
+    /// predates them might.
+    reject_links: bool,
     /// Set by a test: Discord has quit, so every send finds it gone.
     gone: Arc<std::sync::atomic::AtomicBool>,
     reject_all: bool,
@@ -38,6 +41,8 @@ struct Fake {
     said: Arc<Mutex<Vec<Incoming>>>,
     /// The party on each activity set, which `Sent::Set` leaves off.
     parties: Arc<Mutex<Vec<Option<Party>>>>,
+    /// The payload of each activity set, as Discord gets it, party and all.
+    payloads: Arc<Mutex<Vec<serde_json::Value>>>,
     /// Answers to Ask to Join: the user and whether they were invited.
     answers: Answers,
 }
@@ -115,8 +120,12 @@ impl Transport for Fake {
         if self.reject_posters && activity.is_some_and(|a| a.poster.is_some()) {
             return Err(SendError::Rejected("large_image".to_string()));
         }
+        if self.reject_links && activity.is_some_and(|a| a.to_json().get("buttons").is_some()) {
+            return Err(SendError::Rejected("buttons".to_string()));
+        }
         if let Some(a) = activity {
             self.parties.lock().unwrap().push(a.party.clone());
+            self.payloads.lock().unwrap().push(a.to_json());
         }
         self.push(match activity {
             Some(a) => Sent::Set(Activity {
@@ -446,10 +455,13 @@ fn switching_on_mid_episode_shows_it_and_off_lets_go() {
     tick(&core, s, 1.0, false);
     switch(&core, true);
     core.presence_flush();
-    // One set, and it already carries the party: the switch hands the
-    // worker what plays and its party together, never one before the other.
-    assert_eq!(sets(&fake.sent()).len(), 1, "{:#?}", fake.sent());
-    assert!(fake.parties.lock().unwrap()[0].is_some());
+    // One set: the switch hands the worker what plays and its party
+    // together, here none outside a room, so the one set has the buttons.
+    // room.rs checks the same with a room's party.
+    let sent = fake.sent();
+    assert_eq!(sets(&sent).len(), 1, "{sent:#?}");
+    assert!(fake.parties.lock().unwrap()[0].is_none());
+    assert!(fake.payloads.lock().unwrap()[0].get("buttons").is_some());
 
     switch(&core, false);
     tick(&core, s, 2.0, false);
@@ -754,8 +766,9 @@ fn a_refusal_that_is_not_the_posters_keeps_posters_for_the_next_activity() {
             _ => None,
         })
         .collect();
-    // Each activity is tried with its poster, then without, then without its party too.
-    assert_eq!(posters, vec![true, false, false, true, false, false]);
+    // Each activity is tried with its poster, then without, then with its
+    // poster back and without the button, since the poster was not the reason.
+    assert_eq!(posters, vec![true, false, true, true, false, true]);
 }
 
 // ---------------------------------------------------------------------------
@@ -831,12 +844,48 @@ fn playing() -> (
 }
 
 #[test]
-fn what_plays_outside_a_room_can_be_asked_to_join() {
+fn what_plays_outside_a_room_links_the_site() {
     let (_dir, _core, _c, fake) = playing();
-    let party = fake.last_party().expect("a party");
-    assert_eq!(party.secret, presence::ASK_SECRET);
-    assert_eq!((party.size, party.open), (1, false));
-    assert!(party.max >= 2);
+    // No party: Discord refuses buttons beside a join secret (#1450).
+    assert_eq!(fake.last_party(), None);
+    let v = fake
+        .payloads
+        .lock()
+        .unwrap()
+        .last()
+        .cloned()
+        .expect("a set");
+    assert!(v.get("secrets").is_none());
+    let urls: Vec<_> = v["buttons"]
+        .as_array()
+        .expect("buttons")
+        .iter()
+        .map(|b| b["url"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(urls, [presence::SITE_URL]);
+}
+
+#[test]
+fn a_refused_button_falls_back_to_the_activity_without_it() {
+    let (_dir, core, _c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake {
+        reject_links: true,
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    core.presence_flush();
+    tick(&core, s, 2.0, true);
+    core.presence_flush();
+    let sent = fake.sent();
+    let all = sets(&sent);
+    // Both reach Discord with their poster, and the second never tries the
+    // button again.
+    assert_eq!(all.len(), 2);
+    assert!(all.iter().all(|a| !a.links && a.poster.is_some()));
 }
 
 #[test]

@@ -534,6 +534,7 @@ core-presence-extra = Ekstra
 core-presence-room = Ser sammen
 core-presence-in-room = I et rum
 core-presence-no-room = Den Discord-invitation har intet rum endnu. Bed dem starte et.
+core-presence-button-site = Hent Anibeam
 
 ## trackers/src/accounts.rs
 
@@ -582,17 +583,26 @@ core-trackers-oauth-could-not-start = Kunne ikke starte login
 core-trackers-oauth-port-failed = port { $port } på denne computer kunne ikke åbnes: { $error }
 core-trackers-oauth-port-busy = port { $port } på denne computer bruges af et andet program. Vent et øjeblik og prøv igen, eller luk programmet, der bruger den, hvis den bliver ved med at være optaget.
 core-trackers-oauth-provider-error = { $site } returnerede en fejl: { $error }
-core-trackers-page-connected = { $site } er forbundet med { $app }
-core-trackers-page-close-tab = Du kan lukke denne fane.
+core-trackers-page-connected = { $site } og { $app } er nu forbundet
+core-trackers-page-signed-in = Logget ind som { $username }
+core-trackers-page-close-tab = Alt er klar. Denne fane lukker om lidt, eller du kan lukke den nu.
 core-trackers-page-failed-title = { $app }, login mislykkedes
-core-trackers-page-failed = Login blev ikke gennemført
+core-trackers-page-failed = Login løb ind i et problem
 core-trackers-page-go-back = Gå tilbage til { $app } og prøv igen.
-core-trackers-page-finishing-title = { $app }, gør stadig færdig
-core-trackers-page-finishing = Gør stadig færdig
-core-trackers-page-finishing-body = { $site } svarede, og Anibeam gør login færdigt. Gå tilbage til { $app } for at fortsætte.
+core-trackers-page-finishing-title = { $app }, næsten klar
+core-trackers-page-finishing = Gør det sidste klar
+core-trackers-page-finishing-body = { $site } svarede, og login bliver stadig gjort færdigt. Gå tilbage til { $app } for at se resultatet.
 core-trackers-page-cancelled-title = { $app }, login annulleret
 core-trackers-page-cancelled = Login blev annulleret
-core-trackers-page-cancelled-body = Du kan lukke denne fane. Start igen fra { $app }, hvis du stadig vil logge ind.
+core-trackers-page-cancelled-body = Du kan lukke denne fane. Start igen fra { $app }, når du er klar.
+core-trackers-page-status-connected = Forbundet
+core-trackers-page-status-failed = Ikke forbundet
+core-trackers-page-status-finishing = Næsten klar
+core-trackers-page-status-cancelled = Annulleret
+core-trackers-page-status-connecting = Forbinder
+core-trackers-page-connecting-title = { $app }, forbinder
+core-trackers-page-connecting = Sender dig videre fra { $site }
+core-trackers-page-no-token = Denne adresse manglede en logintoken. Gå tilbage til { $app } og prøv igen.
 
 ## trackers/src/on_hold.rs
 

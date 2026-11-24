@@ -165,7 +165,7 @@ fn handler_word(current: &str, ours: &str) -> &'static str {
 /// The program an Exec line runs: the first word that is not `env` or a `NAME=value`
 /// assignment, unquoted.
 #[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
-fn program(exec: &str) -> Option<String> {
+pub(crate) fn program(exec: &str) -> Option<String> {
     let mut words = Vec::new();
     let mut word = String::new();
     let mut quoted = false;
@@ -214,7 +214,8 @@ pub(crate) mod linux {
     const MAIN: &str = "com.marcusrosado.Anibeam.desktop";
     const DEV: &str = "com.marcusrosado.Anibeam.Dev.desktop";
 
-    fn applications() -> Option<PathBuf> {
+    /// The user's own applications folder, `$XDG_DATA_HOME/applications`.
+    pub(crate) fn applications() -> Option<PathBuf> {
         let data = std::env::var_os("XDG_DATA_HOME")
             .filter(|d| !d.is_empty())
             .map(PathBuf::from)

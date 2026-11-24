@@ -620,6 +620,7 @@ core-presence-extra = Extra
 core-presence-room = Watching together
 core-presence-in-room = In a room
 core-presence-no-room = That Discord invite has no room yet. Ask them to start one.
+core-presence-button-site = Get Anibeam
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).
@@ -681,17 +682,26 @@ core-trackers-oauth-port-busy = port { $port } on this computer is in use by ano
 core-trackers-oauth-provider-error = { $site } returned an error: { $error }
 # The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
-core-trackers-page-connected = { $site } is connected to { $app }
-core-trackers-page-close-tab = You can close this tab.
+core-trackers-page-connected = { $site } and { $app } are linked up
+core-trackers-page-signed-in = Signed in as { $username }
+core-trackers-page-close-tab = All set. This tab closes shortly, or you can close it now.
 core-trackers-page-failed-title = { $app }, sign-in failed
-core-trackers-page-failed = Sign-in did not finish
-core-trackers-page-go-back = Go back to { $app } and try again.
-core-trackers-page-finishing-title = { $app }, still finishing
-core-trackers-page-finishing = Still finishing
-core-trackers-page-finishing-body = { $site } responded and Anibeam is finishing sign-in. Return to { $app } to continue.
+core-trackers-page-failed = Sign-in hit a snag
+core-trackers-page-go-back = Head back to { $app } and try again.
+core-trackers-page-finishing-title = { $app }, almost there
+core-trackers-page-finishing = Still wrapping things up
+core-trackers-page-finishing-body = { $site } answered, and sign-in is still finishing. Head back to { $app } to see the result.
 core-trackers-page-cancelled-title = { $app }, sign-in canceled
 core-trackers-page-cancelled = Sign-in was canceled
-core-trackers-page-cancelled-body = You can close this tab. Start again from { $app } if you still want to sign in.
+core-trackers-page-cancelled-body = You can close this tab. Start again from { $app } whenever you are ready.
+core-trackers-page-status-connected = Connected
+core-trackers-page-status-failed = Not connected
+core-trackers-page-status-finishing = Almost there
+core-trackers-page-status-cancelled = Canceled
+core-trackers-page-status-connecting = Connecting
+core-trackers-page-connecting-title = { $app }, connecting
+core-trackers-page-connecting = Handing you over from { $site }
+core-trackers-page-no-token = This address had no sign-in token. Head back to { $app } and try again.
 
 ## trackers/src/on_hold.rs
 

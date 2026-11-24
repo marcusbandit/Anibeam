@@ -139,6 +139,11 @@ pub async fn fetch_and_write(
         })
         .await?;
 
+    // A season ani.zip has not mapped yet takes its episode details and its
+    // logo from the franchise around it (#1461), in a job of its own that
+    // starts now, so the match never waits on the walk.
+    crate::fallback::follow_up(metadata, anilist_id);
+
     // Waited for rather than fired off: a card that reports a match and
     // then draws a blank poster for the next few seconds is worse than a
     // match that takes those seconds to report. The clear logo and the
