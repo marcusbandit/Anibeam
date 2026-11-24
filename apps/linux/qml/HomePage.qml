@@ -1421,8 +1421,8 @@ Item {
                     // With a logo the words take the poster's height whatever the window;
                     // without one, the words' own height
                     readonly property real blockH: Math.max(hero.framed || hasLogo ? posterH : 0, hasLogo ? 0 : lower.implicitHeight)
-                    // The core's pick (#1475): the show's background, else a banner wide
-                    // enough to stay sharp, else nothing and the poster wash below
+                    // The core's pick (#1475): the wider of the show's background and its
+                    // banner, else nothing and the poster wash below
                     readonly property string backdrop: d && d.backdrop ? d.backdrop : ""
                     readonly property string poster: c.poster || ""
                     function focusResume() { resumeButton.forceActiveFocus() }

@@ -484,9 +484,10 @@ pub struct SeriesDetail {
     #[serde(default)]
     pub artwork: Vec<Artwork>,
     /// The wide picture behind the Home hero and the series head (#1475), a
-    /// local file: ani.zip's background once the image cache holds it, else
-    /// `banner` when it is wide enough to stay sharp across a window. None
-    /// when neither is, and the shells wash the poster in instead.
+    /// local file: of ani.zip's background and `banner`, whichever the image
+    /// cache holds, the one with more pixels across (a tie goes to the
+    /// background). None when neither is there, and the shells wash the
+    /// poster in instead.
     #[serde(default)]
     pub backdrop: Option<String>,
     /// The person's choice for this show between its logo (true) and its

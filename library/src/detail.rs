@@ -51,25 +51,32 @@ impl AniZipView {
     }
 }
 
-/// How wide a backdrop has to be to stay sharp across the hero (#1475).
-/// AniList's banners are often 1900 wide, many narrower, and an older
-/// TheTVDB background can be 1280; stretched past the window's width a
-/// narrow one reads as a blur.
-const SHARP_WIDTH: u32 = 1600;
-
-/// The wide picture behind the hero and the series head (#1475): ani.zip's
-/// background once it is on disk, else the banner, each only when it is at
-/// least `SHARP_WIDTH` across, else none, and the shells wash the poster in.
-/// A width the header does not give away is not taken for a narrow one.
+/// The wide picture behind the hero and the series head (#1475): of
+/// ani.zip's first background and the banner, whichever are on disk, the
+/// one with more pixels across. A width the header does not give away loses
+/// to one it does, and a tie goes to the background. None only when neither
+/// is there, and the shells wash the poster in. No minimum: a narrow banner
+/// still beats the blurred poster.
 fn backdrop(
     fanart: Option<String>,
     banner: Option<&str>,
     width_of: impl Fn(&Path) -> Option<u32>,
 ) -> Option<String> {
-    let sharp = |p: &str| width_of(Path::new(p)).is_none_or(|w| w >= SHARP_WIDTH);
-    fanart
-        .filter(|f| sharp(f))
-        .or_else(|| banner.filter(|b| sharp(b)).map(str::to_string))
+    let on_disk = |p: &str| Path::new(p).is_file();
+    let fanart = fanart.filter(|f| on_disk(f));
+    let banner = banner.filter(|b| on_disk(b));
+    match (fanart, banner) {
+        (Some(f), Some(b)) => {
+            // None sorts below any width, so an unread width loses.
+            if width_of(Path::new(b)) > width_of(Path::new(&f)) {
+                Some(b.to_string())
+            } else {
+                Some(f)
+            }
+        }
+        (Some(f), None) => Some(f),
+        (None, b) => b.map(str::to_string),
+    }
 }
 
 /// Midnight UTC of a `YYYY-MM-DD`.
@@ -1211,7 +1218,7 @@ mod tests {
     }
 
     #[test]
-    fn the_background_comes_first_then_a_wide_banner_then_none() {
+    fn the_wider_of_the_background_and_the_banner_is_the_backdrop() {
         use anibeam_net::dimensions::{testing, width_of};
         let dir = tempfile::tempdir().unwrap();
         let write = |name: &str, bytes: Vec<u8>| {
@@ -1222,34 +1229,52 @@ mod tests {
         let fanart = write("fanart.jpg", testing::jpeg(1920, 1080));
         let old_fanart = write("old.jpg", testing::jpeg(1280, 720));
         let wide = write("wide.jpg", testing::jpeg(1900, 400));
+        let wider = write("wider.jpg", testing::jpeg(2560, 600));
         let small = write("small.png", testing::png(1200, 300));
-        let edge = write("edge.jpg", testing::jpeg(1600, 400));
+        let same = write("same.jpg", testing::jpeg(1920, 400));
         let avif = write("odd.avif", b"....ftypavif".to_vec());
+        let gone = dir.path().join("gone.jpg").to_string_lossy().into_owned();
 
-        // The background wins over any banner, even a wide one.
+        // The wider one wins, whichever it is.
         assert_eq!(
             backdrop(Some(fanart.clone()), Some(&wide), width_of),
             Some(fanart.clone())
         );
-        assert_eq!(backdrop(Some(fanart.clone()), None, width_of), Some(fanart));
-        // A narrow background falls to a wide banner, and to none without one.
+        assert_eq!(
+            backdrop(Some(fanart.clone()), Some(&wider), width_of),
+            Some(wider.clone())
+        );
         assert_eq!(
             backdrop(Some(old_fanart.clone()), Some(&wide), width_of),
             Some(wide.clone())
         );
+        // A tie goes to the background.
         assert_eq!(
-            backdrop(Some(old_fanart.clone()), Some(&small), width_of),
-            None
+            backdrop(Some(fanart.clone()), Some(&same), width_of),
+            Some(fanart.clone())
         );
-        assert_eq!(backdrop(Some(old_fanart), None, width_of), None);
-        // Without one, a banner 1600 wide or more.
-        assert_eq!(backdrop(None, Some(&wide), width_of), Some(wide));
-        assert_eq!(backdrop(None, Some(&edge), width_of), Some(edge));
-        // A narrower banner, or none: nothing.
-        assert_eq!(backdrop(None, Some(&small), width_of), None);
+        // A width nobody could read loses to one that was read, both ways.
+        assert_eq!(
+            backdrop(Some(avif.clone()), Some(&small), width_of),
+            Some(small.clone())
+        );
+        assert_eq!(
+            backdrop(Some(old_fanart.clone()), Some(&avif), width_of),
+            Some(old_fanart.clone())
+        );
+        // No minimum: a narrow banner alone is still the backdrop.
+        assert_eq!(backdrop(None, Some(&small), width_of), Some(small.clone()));
+        assert_eq!(
+            backdrop(Some(old_fanart.clone()), None, width_of),
+            Some(old_fanart)
+        );
+        // Only what is on disk counts; nothing at all is no backdrop.
+        assert_eq!(
+            backdrop(Some(gone.clone()), Some(&small), width_of),
+            Some(small)
+        );
+        assert_eq!(backdrop(Some(gone.clone()), Some(&gone), width_of), None);
         assert_eq!(backdrop(None, None, width_of), None);
-        // A width the header does not give away is not a narrow one.
-        assert_eq!(backdrop(None, Some(&avif), width_of), Some(avif));
     }
 
     #[test]

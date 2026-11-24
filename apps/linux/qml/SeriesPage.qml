@@ -516,7 +516,7 @@ Item {
     }
     readonly property real progressFraction: tracked && detail.progress.total ? Math.min(1, watchedCount / detail.progress.total) : 0
     readonly property bool airsAhead: !!card.next_airing && card.next_airing.at * 1000 > nowMs
-    // The core's pick (#1475): the show's background, else a banner wide enough to stay sharp
+    // The core's pick (#1475): the wider of the show's background and its banner
     readonly property bool hasBackdrop: !!(detail && detail.backdrop)
     // Without one the poster, blurred, fills the head the same way
     readonly property bool hasHeadArt: hasBackdrop || !!card.poster
