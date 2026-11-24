@@ -64,6 +64,12 @@ pub struct Metadata {
     /// Whether the launch's walk over the shows ani.zip was never asked
     /// about is running (`anizip::start`).
     pub(crate) anizip_walking: AtomicBool,
+    /// When TheTVDB's site last failed (#1470): inside `OUTAGE_WINDOW` it is
+    /// not asked.
+    pub(crate) tvdb_outage: Mutex<Option<Instant>>,
+    /// Whether the launch's walk over the logo languages is running
+    /// (`logos::start`).
+    pub(crate) tvdb_walking: AtomicBool,
     /// This team, for the reply that ends an outage to start that walk
     /// from. Set once, by `listen`.
     this: OnceLock<Weak<Metadata>>,
@@ -92,6 +98,8 @@ impl Metadata {
             anizip_outage: Mutex::new(None),
             anizip_window_ms: AtomicU64::new(OUTAGE_WINDOW.as_millis() as u64),
             anizip_walking: AtomicBool::new(false),
+            tvdb_outage: Mutex::new(None),
+            tvdb_walking: AtomicBool::new(false),
             this: OnceLock::new(),
             crawl_recent: Mutex::new(HashMap::new()),
         }

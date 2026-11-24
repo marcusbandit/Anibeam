@@ -286,6 +286,10 @@ async fn refresh_anilist(
             .await
             .unwrap_or(false);
     let changed = changed || fell_back;
+    // A fresh ani.zip answer may carry a logo TheTVDB has not named yet (#1470).
+    if anizip_due {
+        crate::logos::follow_up(metadata, anilist_id);
+    }
     if anizip_due || fallback_due {
         let urls = metadata
             .services

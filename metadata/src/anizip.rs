@@ -286,6 +286,8 @@ pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, Cor
             LIMIT 1
          )
          UNION
+         SELECT w.url FROM tvdb_logo_wanted w WHERE w.anilist_id = ?1
+         UNION
          SELECT z.still_url FROM anizip_episodes z
             JOIN series s ON s.anilist_id = z.anilist_id AND s.provider = 'anilist'
             JOIN files f ON f.series_id = s.id AND f.kind != 'extra' AND f.number = z.number
@@ -445,6 +447,13 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<(u64, u64), Core
     // launch reads the list again before it ends, so it takes these too.
     if owed_any && let Some(this) = metadata.this() {
         crate::owed::start(&this);
+    }
+    // The logos it found are owed their languages (#1470). A walk already
+    // running reads its list again before it ends.
+    if filled > 0
+        && let Some(this) = metadata.this()
+    {
+        crate::logos::start(&this);
     }
     Ok((filled, fell_back_for))
 }

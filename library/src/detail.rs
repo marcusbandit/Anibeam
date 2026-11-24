@@ -57,6 +57,30 @@ fn day_start(day: &str) -> Option<i64> {
     Some(date.midnight().assume_utc().unix_timestamp())
 }
 
+/// The file of the TheTVDB logo `anilist_id` draws, by the logo language
+/// setting, among those the image cache holds. `None` when TheTVDB named
+/// none of its logos, or none is on disk yet.
+fn tvdb_logo(conn: &Connection, anilist_id: u64) -> Result<Option<String>, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT l.lang, i.path FROM tvdb_logo_asks k
+         JOIN anizip_shows z ON z.anilist_id = k.anilist_id AND z.tvdb_id = k.tvdb_id
+         JOIN tvdb_logos l ON l.tvdb_id = k.tvdb_id
+         JOIN images i ON i.url = l.url
+         WHERE k.anilist_id = ?1 ORDER BY l.rank",
+    )?;
+    let rows = stmt.query_map([anilist_id as i64], |r| {
+        Ok((r.get::<_, Option<String>>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let logos = rows.collect::<Result<Vec<_>, _>>()?;
+    if logos.is_empty() {
+        return Ok(None);
+    }
+    let prefs = anibeam_foundation::prefs::load_preferences(conn).unwrap_or_default();
+    let want = crate::logo::wanted(prefs.logo_language, prefs.title_language);
+    let langs: Vec<Option<&str>> = logos.iter().map(|(l, _)| l.as_deref()).collect();
+    Ok(crate::logo::pick(&langs, want).map(|at| logos[at].1.clone()))
+}
+
 impl Snapshot {
     /// The series page. Takes the connection because the character images
     /// and the recommendations are one query each, and neither belongs in a
@@ -445,6 +469,13 @@ impl Snapshot {
         let own_logo = !logos.is_empty();
         logos.sort_by_key(|(missing, pick, _)| (*missing, *pick));
         view.logo = logos.into_iter().next().and_then(|(_, _, path)| path);
+        // TheTVDB's logos, where it named their languages (#1470), win over
+        // ani.zip's order: the one in the language wanted, then the other of
+        // English and Japanese, then any, of those on disk.
+        if let Some(path) = tvdb_logo(conn, anilist_id)? {
+            view.logo = local(Some(path));
+            return Ok(view);
+        }
         if !own_logo {
             let borrowed: Option<String> = conn
                 .query_row(

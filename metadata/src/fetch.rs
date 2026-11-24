@@ -143,6 +143,8 @@ pub async fn fetch_and_write(
     // logo from the franchise around it (#1461), in a job of its own that
     // starts now, so the match never waits on the walk.
     crate::fallback::follow_up(metadata, anilist_id);
+    // And which language each of its logos is in (#1470), the same way.
+    crate::logos::follow_up(metadata, anilist_id);
 
     // Waited for rather than fired off: a card that reports a match and
     // then draws a blank poster for the next few seconds is worse than a

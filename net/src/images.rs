@@ -79,6 +79,7 @@ const REFERENCED_SQL: &str =
            WHERE z.still_url IS NOT NULL
      UNION SELECT b.logo_url FROM fallback_shows b JOIN series s ON s.anilist_id = b.anilist_id
            WHERE b.logo_url IS NOT NULL
+     UNION SELECT url FROM tvdb_logo_wanted
      UNION SELECT e.still_url FROM fallback_episodes e JOIN series s ON s.anilist_id = e.anilist_id
            WHERE e.still_url IS NOT NULL
              AND NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = e.anilist_id AND ze2.number IS NOT NULL)";
@@ -101,7 +102,8 @@ const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN se
      UNION SELECT b.logo_url FROM fallback_shows b
            WHERE b.logo_url IS NOT NULL
              AND b.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
-             AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')";
+             AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')
+     UNION SELECT url FROM tvdb_logo_wanted";
 
 /// What a fill goes and gets: everything an owned series draws, the covers
 /// of what it recommends, the covers behind the watching list, and the
@@ -148,6 +150,7 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
            WHERE b.logo_url IS NOT NULL
              AND b.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
              AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')
+        UNION SELECT url FROM tvdb_logo_wanted
         UNION SELECT fe.still_url FROM fallback_episodes fe
                      JOIN series s ON s.anilist_id = fe.anilist_id AND s.provider = 'anilist'
                      JOIN files f ON f.series_id = s.id AND f.kind != 'extra' AND f.number = fe.number
@@ -605,12 +608,16 @@ fn series_for_urls(conn: &Connection, urls: &[String]) -> Result<Vec<u64>, CoreE
          WHERE b.logo_url IN ({list})
          UNION
          SELECT s.id FROM series s JOIN fallback_episodes e ON e.anilist_id = s.anilist_id
-         WHERE e.still_url IN ({list})"
+         WHERE e.still_url IN ({list})
+         UNION
+         SELECT s.id FROM series s JOIN tvdb_logo_wanted w ON w.anilist_id = s.anilist_id
+         WHERE w.url IN ({list})"
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(
         params_from_iter(
             urls.iter()
+                .chain(urls)
                 .chain(urls)
                 .chain(urls)
                 .chain(urls)
