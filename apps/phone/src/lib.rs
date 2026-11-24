@@ -24,6 +24,8 @@ mod control;
 mod crease;
 mod desk;
 mod disk;
+#[cfg(test)]
+mod dismiss;
 mod feed;
 mod files;
 mod find;
