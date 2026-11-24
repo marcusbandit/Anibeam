@@ -263,6 +263,7 @@ impl Snapshot {
                 })
                 .unwrap_or_default(),
             year: media.and_then(|m| m.year),
+            season: media.and_then(|m| m.season.clone()),
             studio: media.and_then(|m| m.studio.clone()),
             episode_minutes: media.and_then(|m| m.duration).filter(|m| *m > 0),
             genres: media.map(|m| m.genres.clone()).unwrap_or_default(),

@@ -1286,16 +1286,14 @@ series-page-rewatched =
        *[other] Rivista { $count } volte
     }
 series-your-notes = Le tue note
+series-studio = Studio
+series-open-anilist = Apri su AniList
+series-open-mal = Apri su MyAnimeList
 series-add-notes = Aggiungi note
-series-notes-tip = Note sulla voce della tua lista, salvate su { $sites }
 series-unhide = Mostra
 series-hide = Nascondi
 series-hidden-toast = { $title } è nascosta qui, e Anibeam smette di sincronizzarla con AniList e MyAnimeList
 series-unhidden-toast = { $title } è tornata, e si sincronizza di nuovo
-series-hide-tip-tracked = Nascosta da ogni pagina qui, e Anibeam smette di sincronizzarla con AniList e MyAnimeList
-series-hide-tip = Nascosta da ogni lista
-series-fixes = Correzioni
-series-fixes-tip = Correggi file, numero di episodi, abbinamento, o riscansiona
 series-quick-fix = Correzione rapida
 series-film = Film
 series-episodes = Episodi

@@ -1328,17 +1328,15 @@ series-page-rewatched =
        *[other] Rewatched { $count } times
     }
 series-your-notes = Your notes
+series-studio = Studio
+series-open-anilist = Open on AniList
+series-open-mal = Open on MyAnimeList
 series-add-notes = Add notes
 # $sites is AniList, MyAnimeList, or both
-series-notes-tip = Notes on your list entry, kept on { $sites }
 series-unhide = Unhide
 series-hide = Hide
 series-hidden-toast = { $title } is hidden here, and Anibeam stops syncing it to AniList and MyAnimeList
 series-unhidden-toast = { $title } is back, and syncs again
-series-hide-tip-tracked = Hidden from every page here, and Anibeam stops syncing it to AniList and MyAnimeList
-series-hide-tip = Hidden from every list
-series-fixes = Fixes
-series-fixes-tip = Fix files, the episode count, the match, or rescan
 series-quick-fix = Quick fix
 series-film = Movie
 series-episodes = Episodes

@@ -1457,17 +1457,15 @@ series-page-rewatched =
        *[other] Пересмотрено { $count } раза
     }
 series-your-notes = Ваши заметки
+series-studio = Студия
+series-open-anilist = Открыть на AniList
+series-open-mal = Открыть на MyAnimeList
 series-add-notes = Заметки
 # $sites is AniList, MyAnimeList, or both
-series-notes-tip = Заметки к записи в вашем списке, хранятся на { $sites }
 series-unhide = Показать
 series-hide = Скрыть
 series-hidden-toast = «{ $title }» скрыт здесь, и Anibeam перестаёт синхронизировать его с AniList и MyAnimeList
 series-unhidden-toast = «{ $title }» снова виден и синхронизируется
-series-hide-tip-tracked = Скрыть со всех страниц здесь; Anibeam перестанет синхронизировать его с AniList и MyAnimeList
-series-hide-tip = Скрыть из всех списков
-series-fixes = Правки
-series-fixes-tip = Исправить файлы, число серий, привязку или пересканировать
 series-quick-fix = Быстрая правка
 series-film = Фильм
 series-episodes = Серии

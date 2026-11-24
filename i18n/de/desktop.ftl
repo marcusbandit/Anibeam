@@ -1286,16 +1286,14 @@ series-page-rewatched =
        *[other] { $count }-mal erneut geschaut
     }
 series-your-notes = Deine Notizen
+series-studio = Studio
+series-open-anilist = Auf AniList öffnen
+series-open-mal = Auf MyAnimeList öffnen
 series-add-notes = Notiz anlegen
-series-notes-tip = Notizen zu deinem Listeneintrag, gespeichert bei { $sites }
 series-unhide = Einblenden
 series-hide = Ausblenden
 series-hidden-toast = { $title } ist hier ausgeblendet, und Anibeam synct es nicht mehr mit AniList und MyAnimeList
 series-unhidden-toast = { $title } ist wieder da und wird gesynct
-series-hide-tip-tracked = Auf jeder Seite hier ausgeblendet, und Anibeam synct es nicht mehr mit AniList und MyAnimeList
-series-hide-tip = Aus jeder Liste ausgeblendet
-series-fixes = Korrektur
-series-fixes-tip = Dateien, Folgenzahl oder Zuordnung korrigieren, oder neu scannen
 series-quick-fix = Schnellkorrektur
 series-film = Film
 series-episodes = Folgen
