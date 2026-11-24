@@ -1289,7 +1289,6 @@ series-your-notes = Tus notas
 series-studio = Estudio
 series-open-anilist = Abrir en AniList
 series-open-mal = Abrir en MyAnimeList
-series-more = Más
 series-add-notes = Añadir notas
 series-unhide = Mostrar
 series-hide = Ocultar

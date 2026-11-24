@@ -1142,7 +1142,6 @@ series-your-notes = 내 메모
 series-studio = 스튜디오
 series-open-anilist = AniList에서 열기
 series-open-mal = MyAnimeList에서 열기
-series-more = 더보기
 series-add-notes = 메모 추가
 series-unhide = 숨김 해제
 series-hide = 숨기기

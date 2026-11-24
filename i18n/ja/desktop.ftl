@@ -1010,7 +1010,6 @@ series-your-notes = メモ
 series-studio = スタジオ
 series-open-anilist = AniListで開く
 series-open-mal = MyAnimeListで開く
-series-more = その他
 series-add-notes = メモを追加
 # $sites is AniList, MyAnimeList, or both
 series-unhide = 再表示

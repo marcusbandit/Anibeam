@@ -1289,7 +1289,6 @@ series-your-notes = Je notities
 series-studio = Studio
 series-open-anilist = Openen op AniList
 series-open-mal = Openen op MyAnimeList
-series-more = Meer
 series-add-notes = Notitie maken
 series-unhide = Tonen
 series-hide = Verbergen
