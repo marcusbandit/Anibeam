@@ -33,16 +33,43 @@ import time
 from PIL import Image, ImageDraw, ImageFont
 
 # Finds the view and leaves it in `v`. Every eval reruns it, since nothing an eval makes
-# outlives the request. Largest visible Flickable whose content is taller than itself wins.
+# outlives the request. The largest visible Flickable whose content is taller than itself wins,
+# but only one nothing covers: the topmost painted item at its centre has to be inside it, so
+# a page under a panel (onboarding, a drawer) is passed over for whatever is on top.
 FIND = r"""
 var v = null;
 (function () {
-  var want = %(target)s, best = null, area = 0;
+  var want = %(target)s, best = null, area = 0, root = window.contentItem.parent || window.contentItem;
+  function paints(it) {
+    return (it.color !== undefined && it.color.a > 0) || it.source !== undefined
+        || it.text !== undefined;  // a MouseArea draws nothing, so it covers nothing
+  }
+  function topAt(node, x, y) {
+    var kids = Array.prototype.slice.call(node.children).map(function (c, i) { return [c, i]; });
+    kids.sort(function (a, b) { return (b[0].z - a[0].z) || (b[1] - a[1]); });
+    for (var i = 0; i < kids.length; i++) {
+      var c = kids[i][0];
+      if (!c.visible || c.opacity === 0) continue;
+      var q = c.mapFromItem(root, x, y);
+      if (q.x < 0 || q.y < 0 || q.x >= c.width || q.y >= c.height) continue;
+      var hit = topAt(c, x, y);
+      if (hit) return hit;
+      if (paints(c)) return c;
+    }
+    return null;
+  }
+  function uncovered(it) {
+    var c = it.mapToItem(root, it.width / 2, it.height / 2);
+    for (var h = topAt(root, c.x, c.y); h; h = h.parent) if (h === it) return true;
+    return false;
+  }
   function walk(it) {
     if (!it || !it.visible || it.opacity === 0) return;
     if (it.contentY !== undefined && it.contentHeight !== undefined && it.flickableDirection !== undefined) {
       if (want !== null) { if (it.objectName === want) { best = it; area = Infinity; } }
-      else if (it.contentHeight > it.height + 1 && it.width * it.height > area) { best = it; area = it.width * it.height; }
+      else if (it.contentHeight > it.height + 1 && it.width * it.height > area && uncovered(it)) {
+        best = it; area = it.width * it.height;
+      }
     }
     var c = it.children;
     for (var i = 0; i < c.length; i++) walk(c[i]);
@@ -69,6 +96,14 @@ MOVE = FIND + r"""
   return v.contentY;
 })()
 """
+
+# Where the view is now. A ListView with rows of mixed height only estimates contentHeight
+# and moves originY as rows get built, so this is read again at every step.
+WHERE = FIND + r"""
+(function () { return {cy: v.contentY, y0: v.originY, ch: v.contentHeight, h: v.height}; })()
+"""
+
+MAX_STEPS = 400
 
 # True once no image inside the view is still loading.
 LOADED = FIND + r"""
@@ -114,6 +149,59 @@ class Ctl:
         return json.loads(out) if out else None
 
 
+def settle_still(ctl, sub):
+    """Waits for a running glide (WheelStep's contentY animation) to end before stepping."""
+    last = None
+    for _ in range(40):
+        now = ctl.eval(WHERE % sub)["cy"]
+        if now == last:
+            return
+        last = now
+        time.sleep(0.05)
+
+
+def shoot(ctl, sub, info, work, settle_ms):
+    """Steps the view from the top, one viewport at a time, until it reaches the current end.
+    Returns [(offset into the content, image)], the stitched scroll image and the scale."""
+    shots, pos = [], info["y0"]
+    try:
+        for i in range(MAX_STEPS):
+            ctl.eval(MOVE % dict(sub, y=pos))
+            time.sleep(settle_ms / 1000)
+            ctl.run("wait", LOADED % sub, "--timeout", "3000", check=False)
+            f = os.path.join(work, f"{i:03}.png")
+            ctl.run("shot", f)
+            at = ctl.eval(WHERE % sub)
+            shots.append((at["cy"] - at["y0"], Image.open(f).convert("RGB")))
+            end = at["y0"] + max(0.0, at["ch"] - at["h"])
+            if at["cy"] >= end - 0.5:
+                break
+            pos = min(at["cy"] + at["h"], end)
+        else:
+            print(f"# stopped after {MAX_STEPS} steps", file=sys.stderr)
+    finally:
+        ctl.run("eval", MOVE % dict(sub, y=info["cy"]), check=False)
+
+    win = shots[0][1]
+    s = win.width / info["ww"]  # device pixels per window pixel
+    vx, vy = round(info["x"] * s), round(info["y"] * s)
+    vw, h = round(info["w"] * s), info["h"]
+    bottom = min(win.height, round((info["y"] + h) * s))  # the view may reach past the window
+    full = Image.new("RGB", (vw, round((max(o for o, _ in shots) + h) * s)))
+    for off, img in shots:
+        top = round(off * s)
+        rows = min(round((off + h) * s) - top, bottom - vy)  # each tile meets the next exactly
+        full.paste(img.crop((vx, vy, vx + vw, vy + rows)), (0, top))
+    return shots, full, s
+
+
+def font(size):
+    try:
+        return ImageFont.load_default(size=size)  # Pillow 10.1+ with FreeType
+    except (TypeError, OSError):
+        return ImageFont.load_default()
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=True, usage=__doc__)
     ap.add_argument("out", nargs="?")
@@ -138,36 +226,18 @@ def main():
               + "; only the window shot was taken", file=sys.stderr)
         print(window_png)
         return
-    span = max(0.0, info["ch"] - info["h"])
-    ys, y = [], info["y0"]
-    while True:
-        ys.append(y)
-        if y >= info["y0"] + span:
-            break
-        y = min(y + info["h"], info["y0"] + span)
+    if info["h"] < 1:
+        sys.exit(f"longshot: the view is {info['h']:.0f} px tall; nothing to step through")
 
     work = tempfile.mkdtemp(prefix="longshot-")
-    shots = []
     try:
-        for i, want in enumerate(ys):
-            got = ctl.eval(MOVE % dict(sub, y=want))
-            time.sleep(a.settle / 1000)
-            ctl.run("wait", LOADED % sub, "--timeout", "3000", check=False)
-            f = os.path.join(work, f"{i:03}.png")
-            ctl.run("shot", f)
-            shots.append((got - info["y0"], f))
+        settle_still(ctl, sub)
+        info = ctl.eval(INFO % sub)  # where the view rests, to put it back there
+        ctl.run("shot", os.path.join(work, "window.png"))  # before anything moves
+        first = Image.open(os.path.join(work, "window.png")).convert("RGB")
+        shots, full, s = shoot(ctl, sub, info, work, a.settle)
     finally:
-        ctl.run("eval", MOVE % dict(sub, y=info["cy"]), check=False)
-
-    first = Image.open(shots[0][1]).convert("RGB")
-    s = first.width / info["ww"]  # device pixels per window pixel
-    vx, vy = round(info["x"] * s), round(info["y"] * s)
-    vw, vh = round(info["w"] * s), round(info["h"] * s)
-    full = Image.new("RGB", (vw, vh + round(span * s)))
-    for off, f in shots:
-        img = Image.open(f).convert("RGB")
-        full.paste(img.crop((vx, vy, vx + vw, vy + vh)), (0, round(off * s)))
-    shutil.rmtree(work, ignore_errors=True)
+        shutil.rmtree(work, ignore_errors=True)
 
     stem = out[:-4]
     window_png, scroll_png = f"{stem}-window.png", f"{stem}-scroll.png"
@@ -179,8 +249,7 @@ def main():
         ("1  WINDOW, AS SHOWN", "static, nothing stitched"),
         ("2  SCROLLING AREA ONLY, FULL LENGTH", f"{len(shots)} shots stitched, {name}"),
     ]
-    big = ImageFont.load_default(size=max(18, round(22 * s)))
-    small = ImageFont.load_default(size=max(14, round(15 * s)))
+    big, small = font(max(18, round(22 * s))), font(max(14, round(15 * s)))
     pad, band = round(24 * s), round(72 * s)
     probe = ImageDraw.Draw(Image.new("RGB", (1, 1)))
     cols = []
@@ -193,8 +262,8 @@ def main():
     draw = ImageDraw.Draw(sheet)
     x = pad
     for title, detail, img, col_w in cols:
-        draw.text((x, round(band * 0.38)), title, fill=(255, 255, 255), font=big, anchor="lm")
-        draw.text((x, round(band * 0.75)), detail, fill=(235, 235, 235), font=small, anchor="lm")
+        draw.text((x, round(band * 0.18)), title, fill=(255, 255, 255), font=big)
+        draw.text((x, round(band * 0.6)), detail, fill=(235, 235, 235), font=small)
         sheet.paste(img, (x, band))
         x += col_w + pad
     sheet.save(out)
@@ -205,7 +274,7 @@ def main():
             t = f"{stem}-scroll-{n:02}.png"
             full.crop((0, top, full.width, min(top + a.tiles, full.height))).save(t)
             lines.append(t)
-    print(f"# {name}: {len(shots)} steps, content {info['ch']:.0f} px, scroll image {full.width}x{full.height}", file=sys.stderr)
+    print(f"# {name}: {len(shots)} steps, scroll image {full.width}x{full.height}", file=sys.stderr)
     print("\n".join(lines))
 
 

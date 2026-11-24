@@ -207,7 +207,7 @@ window lacks it only with `--focus`, since asking can take focus from what you a
 `--offscreen` window (it needs `--root`) never touches the desktop. A request whose caller stops
 waiting is stopped too. Not on Windows yet: it needs a Unix socket.
 
-`scripts/longshot.py [out.png] [--root DIR]` shoots a whole scrolling page through `ctl`, for
+`scripts/longshot.py [out.png] [--root DIR]` (Python 3, Pillow) shoots a whole scrolling page through `ctl`, for
 debugging: it steps the largest scrolling view one screen at a time and puts it back after.
 It writes `out-window.png` (the window as shown), `out-scroll.png` (the scrolling area alone,
 stitched to its full length) and `out.png`, both side by side under labels. Only the scroll
