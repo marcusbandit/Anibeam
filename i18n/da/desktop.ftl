@@ -2705,7 +2705,7 @@ settings-about-credits = Kreditering
 settings-about-ratings = Bedømmelser
 settings-about-ratings-helper = Oplysninger stillet til rådighed af IMDb (https://www.imdb.com). Brugt med tilladelse.
 settings-about-series = Serier og afsnit
-settings-about-series-helper = AniList og TVmaze. Springtider fra AniSkip.
+settings-about-series-helper = AniList og TVmaze. Episodedetaljer og billeder fra ani.zip med data fra AniDB og TheTVDB. Springtider fra AniSkip.
 
 ## SettingsPlaybackTab
 

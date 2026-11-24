@@ -2705,7 +2705,7 @@ settings-about-credits = Créditos
 settings-about-ratings = Valoraciones
 settings-about-ratings-helper = Información por cortesía de IMDb (https://www.imdb.com). Usada con permiso.
 settings-about-series = Series y episodios
-settings-about-series-helper = AniList y TVmaze. Tiempos de salto de AniSkip.
+settings-about-series-helper = AniList y TVmaze. Detalles de episodios e imágenes de ani.zip, con datos de AniDB y TheTVDB. Tiempos de salto de AniSkip.
 
 ## SettingsPlaybackTab
 

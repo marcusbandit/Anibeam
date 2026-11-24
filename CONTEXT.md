@@ -126,6 +126,10 @@ _Avoid_: show, title, entry, anime, media
 The link from a series to one provider record: AniList (carrying the MAL id when known), MAL alone, or TVmaze, which holds the series AniList has no entry for, western animation and live-action television. A TMDB match only arrives through an import and carries its ids with nothing behind them. A series has at most one match. The auto-match tries the providers in the user's provider order, AniList then TVmaze by default, and keeps the first that matches. A match the user applied or imported is confirmed, and the auto-match sweep never replaces it. A match the user cleared keeps the auto-match off the series until they pick one, whatever matcher version comes later. A TVmaze match carries no tracker ids, so it is never marked or synced.
 _Avoid_: mapping, source mapping, metadata link
 
+**Episode details**:
+What ani.zip adds to an AniList match, asked by AniList id beside the match: each episode's title, synopsis, still, runtime and air date, the show's artwork, and the MAL id when AniList has none. Its title wins over AniList's streaming title, which wins over Jikan's; a placeholder such as "Episode 5" never wins. A still is the episode's picture, a clear logo the show's name drawn as a transparent image. An outage costs nothing: the last answer's rows stay.
+_Avoid_: episode metadata, thumbnails
+
 **Provider order**:
 The order the auto-match tries the match providers in, and the one the match panel offers first. Every match provider appears in it exactly once; it reorders them and never switches one off.
 _Avoid_: provider priority, fallback list

@@ -80,7 +80,9 @@ pub enum Behind {
 /// match disappear from it: a NULL id matches no row. The TVmaze half
 /// reads the show's last fetch as its refresh stamp.
 const ELIGIBILITY_SQL: &str = "SELECT * FROM (
-    SELECT s.id AS id, s.anilist_id, s.mal_id, NULL AS show_id, s.folder_name, m.status, m.airing_refreshed_at,
+    SELECT s.id AS id, s.anilist_id,
+           coalesce(s.mal_id, (SELECT z.mal_id FROM anizip_shows z WHERE z.anilist_id = s.anilist_id)) AS mal_id,
+           NULL AS show_id, s.folder_name, m.status, m.airing_refreshed_at,
            EXISTS (SELECT 1 FROM files f WHERE f.series_id = s.id) AS has_files
     FROM series s JOIN anilist_media m ON m.id = s.anilist_id
     UNION ALL
@@ -237,11 +239,28 @@ async fn refresh_anilist(
     // from, and an empty list is not an instruction to clear anything.
     let rows = record::merge_episodes(Some(&schedule), &[], &jikan);
     let status = schedule.status.clone();
-    metadata
+    // ani.zip's answer goes stale as the season airs: TheTVDB gains the new
+    // episodes, their titles and their stills after broadcast (#1036). A
+    // show it answered for is asked again once that answer is older than
+    // this window; one it was never asked about is the launch walk's.
+    let anizip_due = metadata
+        .services
+        .store
+        .read(move |c| crate::anizip::due(c, anilist_id, now))
+        .unwrap_or(false);
+    let anizip = if anizip_due {
+        metadata.anizip_show(anilist_id).await
+    } else {
+        crate::anizip::AniZipRead::Failed
+    };
+    let changed = metadata
         .services
         .store
         .tx_async(move |tx| {
             let before = stored(tx, anilist_id)?;
+            let details_before = crate::anizip::fingerprint(tx, anilist_id)?;
+            crate::anizip::write(tx, anilist_id, &anizip, now)?;
+            let details_changed = details_before != crate::anizip::fingerprint(tx, anilist_id)?;
             if whole {
                 record::write_episodes(tx, anilist_id, &rows, true, now)?;
             } else {
@@ -252,9 +271,19 @@ async fn refresh_anilist(
             }
             let status_changed = write_status(tx, anilist_id, status.as_deref())?;
             stamp(tx, anilist_id, now)?;
-            Ok(status_changed || before != stored(tx, anilist_id)?)
+            Ok(status_changed || details_changed || before != stored(tx, anilist_id)?)
         })
-        .await
+        .await?;
+    if anizip_due {
+        let urls = metadata
+            .services
+            .store
+            .write_async(move |c| crate::anizip::image_urls(c, anilist_id))
+            .await
+            .unwrap_or_default();
+        metadata.net.images.ensure(&urls).await;
+    }
+    Ok(changed)
 }
 
 /// How far back an untitled episode is still worth asking Jikan about.

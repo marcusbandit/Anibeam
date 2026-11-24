@@ -2260,7 +2260,7 @@ settings-about-credits = クレジット
 settings-about-ratings = 評価
 settings-about-ratings-helper = 情報提供: IMDb（https://www.imdb.com）。許可を得て使用しています。
 settings-about-series = 作品とエピソード
-settings-about-series-helper = AniListとTVmaze。スキップ時間はAniSkipから。
+settings-about-series-helper = AniListとTVmaze。エピソード詳細と画像はAniDBとTheTVDBのデータを使うani.zipから。スキップ時間はAniSkipから。
 
 ## SettingsPlaybackTab
 
