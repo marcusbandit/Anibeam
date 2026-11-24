@@ -572,6 +572,7 @@ core-presence-extra = Доп. материал
 core-presence-room = Смотрим вместе
 core-presence-in-room = В комнате
 core-presence-no-room = У этого приглашения из Discord ещё нет комнаты. Попросите её создать.
+core-presence-button-site = Скачать Anibeam
 
 # The core's words for the library group: trackers, metadata, library, franchise,
 # images and transfer (#798).

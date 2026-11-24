@@ -529,6 +529,7 @@ core-presence-extra = Extra
 core-presence-room = Viendo juntos
 core-presence-in-room = En una sala
 core-presence-no-room = Esa invitación de Discord aún no tiene sala. Pídele que abra una.
+core-presence-button-site = Obtener Anibeam
 
 ## trackers/src/accounts.rs
 

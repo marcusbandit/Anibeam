@@ -531,6 +531,7 @@ core-presence-extra = Extra
 core-presence-room = Gemeinsam schauen
 core-presence-in-room = In einem Raum
 core-presence-no-room = Zu dieser Discord-Einladung gibt es noch keinen Raum. Bitte sie, einen zu starten.
+core-presence-button-site = Anibeam holen
 
 ## trackers/src/accounts.rs
 

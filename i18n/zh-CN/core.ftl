@@ -517,6 +517,7 @@ core-presence-extra = 附加内容
 core-presence-room = 一起观看
 core-presence-in-room = 在房间中
 core-presence-no-room = 这个 Discord 邀请还没有房间。请对方先开一个房间。
+core-presence-button-site = 获取 Anibeam
 
 ## trackers/src/accounts.rs
 
