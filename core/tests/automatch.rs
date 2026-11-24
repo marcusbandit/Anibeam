@@ -93,6 +93,8 @@ fn auto_match_matches_once_at_the_gate_and_never_rehammers() {
         serde_json::json!({ "data": [] }).to_string(),
     );
     http.push_for("img/1-xl.jpg", 200, vec![1, 2, 3]);
+    // ani.zip's side-fetch for the hit, which has no entry there (#1036).
+    http.push_for("api.ani.zip", 404, "\"Not Found\"");
     http.push_json(200, serde_json::json!({ "data": { "Page": { "media": [ media_json(3, "Completely Different Title", true) ] } } }));
     // AniList missed, so TVmaze has its turn, and misses too: only then is
     // the series stamped.

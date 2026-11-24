@@ -10,6 +10,7 @@ use std::time::Duration;
 pub mod aired;
 pub mod airing;
 pub mod airing_now;
+pub mod anizip;
 pub mod apply;
 pub mod automatch;
 pub mod calendar;

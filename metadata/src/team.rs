@@ -55,6 +55,15 @@ pub struct Metadata {
     /// Whether the walk over the titles an outage still owes is running
     /// (`owed`), so a launch and a reply after an outage start one, not two.
     pub(crate) owed_walking: AtomicBool,
+    /// When ani.zip last failed and the core said so (#1036): inside the
+    /// window it is not asked, the way Jikan is not.
+    pub(crate) anizip_outage: Mutex<Option<Instant>>,
+    /// How long, in milliseconds, ani.zip is left alone after it failed:
+    /// `OUTAGE_WINDOW`, which a test shortens.
+    pub anizip_window_ms: AtomicU64,
+    /// Whether the launch's walk over the shows ani.zip was never asked
+    /// about is running (`anizip::start`).
+    pub(crate) anizip_walking: AtomicBool,
     /// This team, for the reply that ends an outage to start that walk
     /// from. Set once, by `listen`.
     this: OnceLock<Weak<Metadata>>,
@@ -80,6 +89,9 @@ impl Metadata {
             jikan_capped: Mutex::new(HashSet::new()),
             jikan_window_ms: AtomicU64::new(OUTAGE_WINDOW.as_millis() as u64),
             owed_walking: AtomicBool::new(false),
+            anizip_outage: Mutex::new(None),
+            anizip_window_ms: AtomicU64::new(OUTAGE_WINDOW.as_millis() as u64),
+            anizip_walking: AtomicBool::new(false),
             this: OnceLock::new(),
             crawl_recent: Mutex::new(HashMap::new()),
         }
@@ -103,6 +115,12 @@ impl Metadata {
                 Signal::SchedulesMoved => {}
             }
         }));
+    }
+
+    /// This team, once `listen` has run: for a job that wants to start
+    /// another from inside its own body.
+    pub(crate) fn this(&self) -> Option<Arc<Metadata>> {
+        self.this.get().and_then(Weak::upgrade)
     }
 
     /// Jikan's episodes for `mal_id`. The list is `whole` only when Jikan
@@ -227,7 +245,7 @@ pub(crate) fn owes_titles(read: &JikanEpisodes) -> bool {
 /// Whether a Jikan failure says Jikan is down rather than that one series'
 /// answer was bad: no answer at all (a timeout or a dropped connection), a
 /// rate limit the limiter already waited out, or a server error.
-fn is_outage(e: &CoreError) -> bool {
+pub(crate) fn is_outage(e: &CoreError) -> bool {
     match e {
         CoreError::Provider { status, .. } => match status {
             None => true,

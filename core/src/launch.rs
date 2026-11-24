@@ -2,7 +2,7 @@
 //!
 //! One catch-up walk of the library, and behind it the jobs a fresh start
 //! owes: the match, the backfill, the crawl, the airing schedules, the
-//! IMDb ratings, the tracker lists, the images. Nothing here is on a timer.
+//! ani.zip episode details, the IMDb ratings, the tracker lists, the images. Nothing here is on a timer.
 //! The scan's own terminal event is the trigger, so the list runs when the
 //! library is actually on the tables rather than at some guessed moment
 //! after it.
@@ -23,7 +23,7 @@ use crate::events::Subscription;
 use crate::franchise::crawl;
 use crate::images;
 use crate::library::scan::{self, ScanScope};
-use crate::metadata::{Metadata, airing, apply, automatch, imdb, owed};
+use crate::metadata::{Metadata, airing, anizip, apply, automatch, imdb, owed};
 use crate::sync::recover;
 use crate::trackers::{Trackers, cache};
 
@@ -151,6 +151,8 @@ fn after_scan(metadata: &Arc<Metadata>, trackers: &Arc<Trackers>, downloads: &Ar
     airing::start_refresh_library(metadata);
     // The titles a Jikan outage left owed, asked for again (#1065).
     owed::start(metadata);
+    // ani.zip's episode details for the series matched before it was asked (#1036).
+    anizip::start(metadata);
     imdb::start_refresh(&metadata.services);
     cache::start_refresh(trackers, None, false);
     images::start_fill(&metadata.net);

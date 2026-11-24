@@ -13,6 +13,7 @@ use anibeam_foundation::sync::recover;
 
 pub mod anilist;
 pub mod aniskip;
+pub mod anizip;
 pub mod doh;
 pub mod front;
 pub mod gzip;
@@ -155,9 +156,10 @@ impl From<HttpError> for Fault {
 }
 
 /// Which service a limiter paces. The contract's `Provider` names the
-/// metadata sources; this names the five hosts the core actually talks to,
-/// so Jikan and AniSkip can be paced separately while still reporting as
-/// the MyAnimeList-keyed provider they belong to.
+/// metadata sources; this names the hosts the core actually talks to, so
+/// Jikan and AniSkip can be paced separately while still reporting as the
+/// MyAnimeList-keyed provider they belong to, and ani.zip as the AniList-keyed
+/// one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Upstream {
     Anilist,
@@ -165,6 +167,7 @@ pub enum Upstream {
     AniSkip,
     Mal,
     Tvmaze,
+    AniZip,
 }
 
 impl Upstream {
@@ -175,6 +178,8 @@ impl Upstream {
             // for MyAnimeList's data, so an error from either names MAL.
             Upstream::Jikan | Upstream::AniSkip | Upstream::Mal => Provider::Mal,
             Upstream::Tvmaze => Provider::Tvmaze,
+            // ani.zip is asked by AniList id and answers for that entry.
+            Upstream::AniZip => Provider::Anilist,
         }
     }
 
@@ -185,6 +190,7 @@ impl Upstream {
             Upstream::AniSkip => "AniSkip",
             Upstream::Mal => "MAL",
             Upstream::Tvmaze => "TVmaze",
+            Upstream::AniZip => "ani.zip",
         }
     }
 }

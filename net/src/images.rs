@@ -73,20 +73,27 @@ const REFERENCED_SQL: &str =
      UNION SELECT t.poster_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.poster_url IS NOT NULL
      UNION SELECT t.background_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.background_url IS NOT NULL
      UNION SELECT cover_url FROM season_shows WHERE cover_url IS NOT NULL
-     UNION SELECT cover_url FROM not_interested WHERE cover_url IS NOT NULL";
+     UNION SELECT cover_url FROM not_interested WHERE cover_url IS NOT NULL
+     UNION SELECT a.url FROM anizip_images a JOIN series s ON s.anilist_id = a.anilist_id
+     UNION SELECT z.still_url FROM anizip_episodes z JOIN series s ON s.anilist_id = z.anilist_id
+           WHERE z.still_url IS NOT NULL";
 
 /// The urls of a series the library actually owns. These are never evicted
 /// by the cap: losing them is the one loss a user would see at once.
 const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.cover_url IS NOT NULL
      UNION SELECT m.banner_url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.banner_url IS NOT NULL
      UNION SELECT t.poster_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.poster_url IS NOT NULL
-     UNION SELECT t.background_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.background_url IS NOT NULL";
+     UNION SELECT t.background_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.background_url IS NOT NULL
+     UNION SELECT a.url FROM anizip_images a JOIN series s ON s.anilist_id = a.anilist_id AND s.provider = 'anilist'
+           WHERE a.kind = 'Clearlogo'";
 
 /// What a fill goes and gets: everything an owned series draws, the covers
 /// of what it recommends, the covers behind the watching list, and the
 /// covers of every entry in an owned series' franchise, walked the way the
 /// graph closes it (CHARACTER and OTHER edges are never crossed), so the
-/// series page's Related stones have their art offline too.
+/// series page's Related stones have their art offline too. From ani.zip
+/// (#1036), an owned series' clear logos and the stills of the episodes it
+/// has a file of; the rest of its artwork waits until something asks.
 const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
         SELECT anilist_id FROM series WHERE anilist_id IS NOT NULL
         UNION SELECT r.to_id FROM relations r JOIN franchise f ON r.from_id = f.id
@@ -108,6 +115,11 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
         UNION SELECT fm.cover_url FROM franchise f JOIN anilist_media fm ON fm.id = f.id
         UNION SELECT ts.poster_url FROM tvmaze_shows ts JOIN series s ON s.tvmaze_id = ts.id
         UNION SELECT ts.background_url FROM tvmaze_shows ts JOIN series s ON s.tvmaze_id = ts.id
+        UNION SELECT za.url FROM anizip_images za JOIN series s ON s.anilist_id = za.anilist_id AND s.provider = 'anilist'
+                     WHERE za.kind = 'Clearlogo'
+        UNION SELECT ze.still_url FROM anizip_episodes ze
+                     JOIN series s ON s.anilist_id = ze.anilist_id AND s.provider = 'anilist'
+                     JOIN files f ON f.series_id = s.id AND f.kind != 'extra' AND f.number = ze.number
      )
      WHERE url IS NOT NULL AND url NOT IN (SELECT url FROM images)
      ORDER BY url";
@@ -549,11 +561,24 @@ fn series_for_urls(conn: &Connection, urls: &[String]) -> Result<Vec<u64>, CoreE
          WHERE m.cover_url IN ({list}) OR m.banner_url IN ({list})
          UNION
          SELECT s.id FROM series s JOIN tvmaze_shows t ON t.id = s.tvmaze_id
-         WHERE t.poster_url IN ({list}) OR t.background_url IN ({list})"
+         WHERE t.poster_url IN ({list}) OR t.background_url IN ({list})
+         UNION
+         SELECT s.id FROM series s JOIN anizip_images a ON a.anilist_id = s.anilist_id
+         WHERE a.url IN ({list})
+         UNION
+         SELECT s.id FROM series s JOIN anizip_episodes z ON z.anilist_id = s.anilist_id
+         WHERE z.still_url IN ({list})"
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(
-        params_from_iter(urls.iter().chain(urls).chain(urls).chain(urls)),
+        params_from_iter(
+            urls.iter()
+                .chain(urls)
+                .chain(urls)
+                .chain(urls)
+                .chain(urls)
+                .chain(urls),
+        ),
         |r| r.get::<_, i64>(0),
     )?;
     Ok(rows
