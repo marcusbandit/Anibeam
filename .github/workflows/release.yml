@@ -47,6 +47,8 @@ permissions:
 
 jobs:
   resolve:
+    # Every other job waits on this one, so the release environment's approval gates the whole run.
+    environment: release
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}

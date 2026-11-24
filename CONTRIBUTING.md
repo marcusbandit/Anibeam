@@ -414,6 +414,10 @@ Release workflow deploy the site automatically. Nobody writes these pages by han
   a tag that is not on its own branch. The branch is never merged back, since everything on
   it came from main.
 
+Every Release run, by hand or from a tag, waits for the repo owner to approve it in the
+`release` environment before any job starts. Only an admin can move or delete a shipped
+`v*` or `android-v*` tag.
+
 Every phone APK on a release is signed with one key, the `ANIBEAM_ANDROID_KEYSTORE`
 secret (a base64 keystore), because Android installs an update only over an install signed
 with the same key. A phone build is never published by hand: run the Nightly workflow.
