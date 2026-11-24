@@ -33,7 +33,7 @@ How a changed file maps to crates:
      nothing else: no clippy, no other test, no crate above it. `tests=` lists them as
      crate:target. The core's patch note test is one (#1086):
          [package.metadata.ci]
-         test-reads = { changelog = ["../apps/linux/changes"] }
+         test-reads = { changelog = ["../apps/linux/CHANGELOG.md"] }
   4. Cargo.lock, when the lock it is compared with is at hand (--base): the workspace crates
      that use a package whose entry changed, directly or not. Without it, every crate.
   5. A file no crate owns or reads that sits under NO_CRATE below (docs, the site, the phone's
@@ -78,6 +78,8 @@ NO_CRATE = [
     "assets/",
     "Casks/",
     "relay/",
+    "apps/phone/",
+    # Build output a pull leaves behind in a checkout from before the move (#1309).
     "apps/android/",
     ".github/",
     "LICENSE",
@@ -104,7 +106,7 @@ class Workspace:
     def __init__(self, crates):
         # crates: {name: {"dir": "core", "reads": ["apps/linux/packaging/"], "uses": {names},
         #                 "dev": {names only its tests use},
-        #                 "test_reads": {"changelog": ["apps/linux/changes/"]}}}
+        #                 "test_reads": {"changelog": ["apps/linux/CHANGELOG.md"]}}}
         self.crates = crates
         self.users = {name: set() for name in crates}
         self.dev_users = {name: set() for name in crates}
@@ -548,7 +550,7 @@ def undeclared_reads(ws, root):
 # desktop apps are workspace members; the phone is its own workspace, read with its own
 # `cargo metadata`. ios.yml leaves the shared crates out on purpose and is not checked.
 DESKTOP_APPS = ["apps/linux", "apps/cli"]
-PHONE_APP = "apps/android"
+PHONE_APP = "apps/phone"
 # A crate's declared read that only its own tests make, which no app build compiles in.
 TEST_ONLY_READS = {
     ("anibeam-downloads", "apps/linux/packaging/"): "downloads/src/anirss.rs checks the "
@@ -722,7 +724,7 @@ FAKE = {
     "trackers": {"dir": "trackers", "reads": [], "uses": {"metadata"}},
     "relay": {"dir": "apps/relay", "reads": [], "uses": {"room"}},
     "core": {"dir": "core", "reads": ["apps/linux/packaging/"],
-             "test_reads": {"changelog": ["apps/*/changes/*", "apps/android/CHANGELOG.md"]},
+             "test_reads": {"changelog": ["apps/linux/CHANGELOG.md", "apps/phone/CHANGELOG.md"]},
              "uses": {"trackers", "room"}, "dev": {"relay"}},
     "cli": {"dir": "apps/cli", "reads": [], "uses": {"core"}},
     "shell": {"dir": "apps/linux", "reads": [], "uses": {"core"}},
@@ -747,13 +749,13 @@ CASES = [
     # Files outside a crate that it declares it reads.
     (["i18n/en/core.ftl"], ALL - {"host-api", "room", "relay"}),
     (["apps/linux/packaging/linux/appimage.sh"], {"shell", "core", "cli"}),
-    # A patch note: the shell builds its own in, the core only tests them (TEST_CASES).
-    (["apps/linux/changes/12-x.md"], {"shell"}),
-    (["apps/android/changes/12-x.md"], set()),
+    # Patch notes: the shell builds its own in, the core only tests them (TEST_CASES).
+    (["apps/linux/CHANGELOG.md"], {"shell"}),
+    (["apps/phone/CHANGELOG.md"], set()),
     # Touches no crate.
     (["docs/agents/triage.md"], set()),
     (["README.md", "site/index.html", ".github/workflows/site.yml"], set()),
-    (["apps/android/src/main.rs"], set()),
+    (["apps/phone/src/main.rs"], set()),
     ([], set()),
     # Workspace-wide.
     (["Cargo.lock"], ALL),
@@ -768,11 +770,11 @@ CASES = [
 
 # Files a test target reads by itself: the crates to check in full, and the targets to run.
 TEST_CASES = [
-    (["apps/android/changes/12-x.md"], set(), ["core:changelog"]),
-    (["apps/linux/changes/12-x.md"], {"shell"}, ["core:changelog"]),
-    (["apps/linux/changes/12-x.md", "apps/android/CHANGELOG.md"], {"shell"}, ["core:changelog"]),
+    (["apps/phone/CHANGELOG.md"], set(), ["core:changelog"]),
+    (["apps/linux/CHANGELOG.md"], {"shell"}, ["core:changelog"]),
+    (["apps/linux/CHANGELOG.md", "apps/phone/CHANGELOG.md"], {"shell"}, ["core:changelog"]),
     # The core checked in full runs the target anyway.
-    (["apps/android/changes/12-x.md", "trackers/src/a.rs"], {"trackers", "core", "cli", "shell"},
+    (["apps/phone/CHANGELOG.md", "trackers/src/a.rs"], {"trackers", "core", "cli", "shell"},
      []),
     (["docs/x.md"], set(), []),
 ]
@@ -925,10 +927,10 @@ def self_test():
                   file=sys.stderr)
     for entry, path, how, want in [
         ("room/**", "room/src/lib.rs", "glob", True), ("room/**", "roomy/a.rs", "glob", False),
-        ("apps/*", "apps/android/src/main.rs", "glob", False), ("*", "core/a.rs", "glob", False),
+        ("apps/*", "apps/phone/src/main.rs", "glob", False), ("*", "core/a.rs", "glob", False),
         ("**", "x/y", "glob", True), ("**.md", "docs/a.md", "glob", True),
         ("Cargo.toml", "core/Cargo.toml", "glob", False),
-        ("apps/android/src/**/ios.rs", "apps/android/src/a/ios.rs", "glob", True),
+        ("apps/phone/src/**/ios.rs", "apps/phone/src/a/ios.rs", "glob", True),
         ("core", "core/tests/a.json", "pathspec", True), ("room", "roomy/a", "pathspec", False),
     ]:
         total += 1
@@ -963,7 +965,7 @@ def self_test():
     extra = phone + [{"dir": PHONE_APP, "reads": ["docs"], "paths": []}]
     if "docs" not in app_needs(real, root, "phone", extra):
         bad += 1
-        print("self-test: a phone read outside apps/android is not needed", file=sys.stderr)
+        print("self-test: a phone read outside apps/phone is not needed", file=sys.stderr)
     total += 1
     problems = unlisted(real, root, None, files, phone)
     for problem in problems:
@@ -1003,7 +1005,7 @@ def self_test():
     if any(has_doctest(r) for r in real.crates["anibeam-cli"]["lib_roots"]):
         bad += 1
         print("self-test: the cli has no library, so no doctests", file=sys.stderr)
-    got, _, tests, why = select(ws, ["apps/android/changes/1-x.md"], skip=["core"])
+    got, _, tests, why = select(ws, ["apps/phone/CHANGELOG.md"], skip=["core"])
     total += 1
     if tests or not any("left out: core --test changelog" in w for w in why):
         bad += 1
