@@ -1,6 +1,6 @@
 cask "anibeam" do
-  version "2.4.0"
-  sha256 "407ff751808e9cf297eb034e188f70c65b33f92085b26a9d5d5032a2bc68ca59"
+  version "2.5.0"
+  sha256 "6910e4864502dff24aaf2d4bce3899c240bb9d8c7d0085b649328eb228aef80e"
 
   url "https://github.com/marcusbandit/Anibeam/releases/download/v#{version}/Anibeam-#{version}-macos-arm64.dmg"
   name "Anibeam"
