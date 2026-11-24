@@ -9,7 +9,8 @@
 //! launch and the entry goes away with the package. A run with no live launcher entry of the
 //! user's writes no entry: it removes a hidden entry an AppImage left in the user's folder
 //! once that AppImage is gone, since the user's copy would hide the package's, and names the
-//! package's entry the handler when nothing is.
+//! package's entry the handler when nothing is. That name stays in the user's mimeapps.list
+//! after the package goes, as any default does, and points at nothing until one is back.
 //!
 //! Only the user's own files are touched, never with a sandbox root, a drive or a shot, and
 //! nothing when the build has no Discord application.
@@ -64,7 +65,6 @@ fn main_exec(entry: &str) -> Option<String> {
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use std::ffi::OsStr;
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
@@ -73,13 +73,12 @@ mod linux {
 
     pub fn ensure(id: &str) {
         let name = format!("discord-{id}.desktop");
-        let search = std::env::var_os("PATH");
         // The user's own launcher entry, while what it runs is still there
         let own = launcher_entry().and_then(|own| {
             let exec = std::fs::read_to_string(&own)
                 .ok()
                 .and_then(|t| super::main_exec(&t))?;
-            live(&exec, search.as_deref()).then_some((own, exec))
+            live(&exec).then_some((own, exec))
         });
         if let Some((own, exec)) = own {
             let Some(dir) = own.parent().map(|d| d.to_path_buf()) else {
@@ -99,7 +98,7 @@ mod linux {
             // A package's run: its own hidden entry handles the scheme, unless a dead copy
             // in the user's folder hides it
             if let Some(dir) = applications()
-                && drop_dead(&dir.join(&name), search.as_deref())
+                && drop_dead(&dir.join(&name))
             {
                 quiet(Command::new("update-desktop-database").arg(&dir));
             }
@@ -141,9 +140,11 @@ mod linux {
         }
     }
 
-    /// Whether `exec` starts something: its program can run, as a path or on `search`. An
-    /// `env` with options counts as live, since those can take the place of the program.
-    pub(super) fn live(exec: &str, search: Option<&OsStr>) -> bool {
+    /// Whether `exec` may start something. Only a program named by an absolute path that is no
+    /// longer an executable file counts as gone, as a deleted AppImage's does. A bare name is
+    /// looked up on the PATH of whoever opens the link, which this run cannot see, so it stays,
+    /// and so does an `env` with options, since those can take the place of the program.
+    pub(super) fn live(exec: &str) -> bool {
         let mut words = exec.split_whitespace();
         if words
             .next()
@@ -152,33 +153,22 @@ mod linux {
         {
             return true;
         }
-        crate::scheme::program(exec).is_some_and(|p| runs(&p, search))
+        let Some(program) = crate::scheme::program(exec) else {
+            return false;
+        };
+        let path = Path::new(&program);
+        !path.is_absolute()
+            || std::fs::metadata(path)
+                .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
     }
 
-    /// Removes the hidden entry at `path` when it starts nothing: its Exec names no program
-    /// that can run, as a path or on `search` (a `$PATH` value). True when it went.
-    pub(super) fn drop_dead(path: &Path, search: Option<&OsStr>) -> bool {
+    /// Removes the hidden entry at `path` when what it runs is gone. True when it went.
+    pub(super) fn drop_dead(path: &Path) -> bool {
         let Ok(text) = std::fs::read_to_string(path) else {
             return false;
         };
-        let starts = super::main_exec(&text).is_some_and(|e| live(&e, search));
+        let starts = super::main_exec(&text).is_some_and(|e| live(&e));
         !starts && std::fs::remove_file(path).is_ok()
-    }
-
-    /// Whether `program` can be started: an executable file at its path, or one on `search`.
-    fn runs(program: &str, search: Option<&OsStr>) -> bool {
-        let executable = |p: &Path| {
-            std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        };
-        if program.contains('/') {
-            let p = Path::new(program);
-            return p.is_absolute() && executable(p);
-        }
-        search.is_some_and(|s| {
-            std::env::split_paths(s)
-                .filter(|d| d.is_absolute())
-                .any(|d| executable(&d.join(program)))
-        })
     }
 }
 
@@ -200,35 +190,29 @@ mod tests {
     fn a_hidden_entry_goes_only_once_what_it_runs_is_gone() {
         use std::os::unix::fs::PermissionsExt;
         let root = tempfile::tempdir().unwrap();
-        let bin = root.path().join("bin");
-        std::fs::create_dir(&bin).unwrap();
-        let app = bin.join("anibeam");
+        let app = root.path().join("anibeam");
         std::fs::write(&app, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&app, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let search = bin.clone().into_os_string();
         let at = |exec: &str| {
             let path = root.path().join("discord-1.desktop");
             std::fs::write(&path, entry("1", exec)).unwrap();
-            let gone = linux::drop_dead(&path, Some(&search));
+            let gone = linux::drop_dead(&path);
             assert_eq!(gone, !path.exists());
             gone
         };
-        // A program that is there, by path or on PATH, keeps its entry
+        // A program that is there stays, and so does a bare name: the PATH that counts is
+        // the one of whoever opens the link
         assert!(!at(&format!("{} %U", app.display())));
-        assert!(!at("anibeam %U"));
         assert!(!at(&format!("env A=1 {}", app.display())));
+        assert!(!at("anibeam-dev %U"));
         // env's options can stand where the program would, so those stay
         assert!(!at("env -u FOO /nowhere/anibeam %U"));
-        // An AppImage that was deleted, a name not on PATH, a file that cannot run
+        // An AppImage that was deleted, or a file that cannot run
         assert!(at("/nowhere/Anibeam.AppImage %U"));
-        assert!(at("anibeam-gone %U"));
         std::fs::set_permissions(&app, std::fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(at("anibeam %U"));
+        assert!(at(&format!("{} %U", app.display())));
         // No entry at all is nothing to remove
-        assert!(!linux::drop_dead(
-            &root.path().join("none.desktop"),
-            Some(&search)
-        ));
+        assert!(!linux::drop_dead(&root.path().join("none.desktop")));
     }
 
     #[test]
