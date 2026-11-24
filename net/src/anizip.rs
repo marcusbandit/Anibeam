@@ -226,7 +226,7 @@ fn episode_of(key: &str, raw: RawEpisode) -> AniZipEpisode {
 /// name wider than it is tall, rather than the square icon ani.zip also
 /// files under that kind.
 pub fn is_clear_logo(url: &str) -> bool {
-    url.contains("/clearlogo/")
+    url.to_ascii_lowercase().contains("/clearlogo/")
 }
 
 fn show_of(reply: Reply) -> AniZipShow {
@@ -379,7 +379,6 @@ mod tests {
         assert_eq!(second.air_date.as_deref(), Some("2031-04-13"));
         assert_eq!(second.still_url, None);
         // A placeholder comes through as written; the metadata team drops it.
-        // The icon filed as a Clearlogo is not one, and is gone.
         assert_eq!(show.episodes[2].title_en.as_deref(), Some("Episode 3"));
         let special = &show.episodes[3];
         assert_eq!(special.number, None);
@@ -388,6 +387,17 @@ mod tests {
         let kinds: Vec<&str> = show.images.iter().map(|i| i.kind.as_str()).collect();
         assert_eq!(kinds, ["Banner", "Clearlogo", "Clearlogo", "Fanart"]);
         assert_eq!(show.images[2].lang.as_deref(), Some("en"));
+        // The icon filed as an English Clearlogo is not one, and is gone:
+        // the English logo kept is the clear logo art.
+        assert!(
+            show.images[2].url.ends_with("/clearlogo/logo-en.png"),
+            "{:?}",
+            show.images
+        );
+        assert!(is_clear_logo(
+            "https://example.com/series/1/ClearLogo/a.png"
+        ));
+        assert!(!is_clear_logo("https://example.com/series/1/icons/a.jpg"));
     }
 
     #[tokio::test]
