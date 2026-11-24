@@ -919,7 +919,7 @@ Item {
     }
 
     // ---- Continue (#1033): one card a series, the episode to go on with. The still of that
-    // episode at 16:9 (the banner, then the poster, where the record has none), how far into
+    // episode at 16:9 (a frame from its own file where it has none, else a plain face), how far into
     // it you stopped as a thin bar along its foot, then the show and the episode. A click,
     // Return or Space plays it from where it stopped; the series is in the context menu, from
     // a right click or Shift+F10 / the Menu key on a focused card. Every series Continue holds
@@ -947,8 +947,9 @@ Item {
         readonly property var card: entry ? entry.card : ({})
         readonly property var ep: entry ? entry.episode : null
         readonly property string still: ep && ep.still ? ep.still : ""
-        // Without a still, the show's own art in the same frame
-        readonly property string art: still || (entry && entry.detail && entry.detail.banner ? entry.detail.banner : "") || card.poster || ""
+        // Without a still, a frame from the episode's own file (#1469); never the show's
+        // banner or poster, so with neither the card keeps its plain face
+        readonly property string art: still || (ep && ep.frame ? ep.frame : "")
         readonly property real frac: page.resumeFrac(entry)
         height: thumb.height + theme.space(2.5) + text.height
         activeFocusOnTab: true
