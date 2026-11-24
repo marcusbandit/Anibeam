@@ -10,6 +10,7 @@
 // graphChanged. An unmatched series draws the same head off its folder name, with the match
 // where the synopsis would be.
 import QtQuick
+import QtCore
 import com.marcusrosado.Anibeam
 
 Item {
@@ -36,6 +37,10 @@ Item {
     property bool spoilers: false
     // The body's tab: 0 the episodes, 1 the seasons and relations, 2 the artwork and music
     property int tab: 0
+    // The episode stills, shown or hidden for every series at once (#1453), kept across launches
+    Settings { id: kept; location: Shell.settingsUrl; category: "series"; property bool stills: true }
+    readonly property bool stillsShown: kept.stills
+    readonly property bool anyStill: episodeRows.some(function(r) { return !!r.still })
     // Picking files to delete belongs to the Episodes tab and ends when it is left, or the
     // next Escape would go to a bar nobody can see
     onTabChanged: if (tab !== 0 && deleting) { deleting = false; deleteError = "" }
@@ -409,10 +414,12 @@ Item {
     readonly property var episodeRows: {
         if (!detail) return []
         var absent = (detail.absent || []).map(function(a) {
-            return { number: a.number, season: a.season, code: a.code, title: a.title, air_date: a.air_date, cube: a.cube, absent: true, watched: false, next_up: false }
+            return { number: a.number, season: a.season, code: a.code, title: a.title, air_date: a.air_date, cube: a.cube, absent: true, watched: false, next_up: false,
+                     still: a.still || null, synopsis: a.synopsis || "" }
         })
         var ahead = (detail.upcoming || []).map(function(u) {
-            return { number: u.number, season: u.season, code: u.code, title: u.title, air_date: u.at, predicted: u.predicted, cube: "f", upcoming: true, watched: false, next_up: false }
+            return { number: u.number, season: u.season, code: u.code, title: u.title, air_date: u.at, predicted: u.predicted, cube: "f", upcoming: true, watched: false, next_up: false,
+                     still: u.still || null, synopsis: u.synopsis || "" }
         })
         return grouped(episodes).concat(absent, ahead).sort(function(a, b) {
             return ((a.season || 1) - (b.season || 1)) || (a.number - b.number)
@@ -1252,7 +1259,19 @@ Item {
                             // Episodes, not files: the same while picking, when each file has a row
                             count: page.episodeRows.filter(function(r) { return !r.upcoming }).length - (page.deleting ? page.extraVersions : 0)
                             fact: page.episodesFact
-                            action: DeleteButton { where: "episodes" }
+                            action: Row {
+                                spacing: theme.space(2)
+                                // Every still on or off at once; the rows close up without them
+                                Button {
+                                    objectName: "series-stills"
+                                    visible: page.anyStill && !page.deleting
+                                    small: true; flat: true
+                                    icon: page.stillsShown ? "eye-off" : "image"
+                                    text: page.stillsShown ? words.t("series-stills-hide") : words.t("series-stills-show")
+                                    onClicked: kept.stills = !kept.stills
+                                }
+                                DeleteButton { where: "episodes" }
+                            }
                         }
                         DeleteBar { where: "episodes" }
                         Column {
@@ -1277,6 +1296,7 @@ Item {
                                     onPick: page.togglePick(modelData.file)
                                     gettable: !page.isMovie
                                     onDownload: page.getEpisodes()
+                                    stillsShown: page.stillsShown
                                 }
                             }
                         }
@@ -1520,7 +1540,9 @@ Item {
                     readonly property int cols: count < 1 ? 1
                         : (width - (count - 1) * gap) / count >= theme.space(28) ? count
                         : Math.min(Math.ceil(count / 2), fit)
-                    readonly property real cardW: Math.max(0, Math.floor((width - (cols - 1) * gap) / cols))
+                    // Never wider than a poster in a full row of eight on a wide window, so three
+                    // stay poster-sized at the left instead of filling the column
+                    readonly property real cardW: Math.max(0, Math.min(theme.space(44), Math.floor((width - (cols - 1) * gap) / cols)))
                     Heading { text: words.t("series-recommendations"); count: page.detail ? page.detail.recommendations.length : 0 }
                     Grid { columns: recCol.cols; spacing: recCol.gap
                         Repeater { model: page.detail ? page.detail.recommendations : []
