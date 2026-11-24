@@ -261,17 +261,22 @@ pub fn get_series(library: &Library, series: u64) -> Result<Reply, CoreError> {
             .iter()
             .map(|f| (f.id, (f.size, f.mtime)))
             .collect();
-        Ok((snap.detail(c, series)?, snap.gaps.clone(), poster, stamps))
+        Ok((
+            snap.detail_and_stills(c, series)?,
+            snap.gaps.clone(),
+            poster,
+            stamps,
+        ))
     })?;
     match detail {
-        Some(mut detail) => {
+        Some((mut detail, stills_coming)) => {
             if let Some(incoming) = library.incoming.get() {
                 incoming.overlay_detail(&mut detail);
             }
             // After the overlay, so an episode a torrent is still writing is
             // never framed
             let frames_dir = frames::dir(&library.services.paths);
-            if let Some(want) = frames::lay_on(&mut detail, &stamps, &frames_dir) {
+            if let Some(want) = frames::lay_on(&mut detail, &stamps, &stills_coming, &frames_dir) {
                 library.frames.want(want);
             }
             after_read(library, &gaps, poster.into_iter().collect());

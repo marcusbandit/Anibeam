@@ -132,3 +132,53 @@ fn only_a_series_home_puts_in_continue_takes_a_frame() {
         assert_eq!(with(Some(status), true, Some(3)), None, "{status:?}");
     }
 }
+
+/// An episode whose still is known but not fetched yet waits for the still:
+/// the read says a still is coming for its file, and only for that one.
+#[test]
+fn an_episode_with_a_still_on_the_way_is_not_framed() {
+    use anibeam_core::library::snapshot::Snapshot;
+    let (dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Show", "Show");
+    let cached = fixtures::insert_episode_file(&core, series, "/lib/Show/01.mkv", 1.0, 1);
+    let coming = fixtures::insert_episode_file(&core, series, "/lib/Show/02.mkv", 2.0, 1);
+    let bare = fixtures::insert_episode_file(&core, series, "/lib/Show/03.mkv", 3.0, 1);
+    fixtures::media(10, "Show").episodes(3).insert(&core);
+    fixtures::match_series(&core, series, Some(10), None);
+    core.store()
+        .write(|c| {
+            c.execute_batch(
+                "INSERT INTO anizip_shows (anilist_id, found, fetched_at) VALUES (10, 1, 0);
+                 INSERT INTO anizip_episodes (anilist_id, key, number, still_url) VALUES
+                     (10, '1', 1, 'https://images.example.com/1.jpg'),
+                     (10, '2', 2, 'https://images.example.com/2.jpg'),
+                     (10, '3', 3, NULL);
+                 INSERT INTO images (url, path, bytes, fetched_at, used_at) VALUES
+                     ('https://images.example.com/1.jpg', 'aa/1.jpg', 4, 0, 0);",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let images = dir.path().join("cache").join("images");
+    let (detail, stills) = core
+        .store()
+        .read(|c| {
+            let snap = Snapshot::load(c, &images, std::time::SystemTime::now(), Some(&[series]))?;
+            snap.detail_and_stills(c, series)
+        })
+        .unwrap()
+        .unwrap();
+    let still = |file: u64| {
+        detail
+            .episodes
+            .iter()
+            .find(|e| e.file == file)
+            .unwrap()
+            .still
+            .is_some()
+    };
+    assert!(still(cached));
+    assert!(!still(coming) && !still(bare));
+    assert_eq!(stills, std::collections::HashSet::from([coming]));
+}

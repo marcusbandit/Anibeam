@@ -194,16 +194,19 @@ pub struct Want {
 /// Lays the cached frame on the episode Continue would show and says what it
 /// still wants: that episode, with no still, no frame on disk yet and no miss
 /// remembered ([`miss_for`]).
-/// `stamps` holds each of the series' files' size and mtime by file id.
+/// `stamps` holds each of the series' files' size and mtime by file id, and
+/// `stills_coming` the files whose still is known and not cached yet: those
+/// wait for the still and take no frame.
 pub fn lay_on(
     detail: &mut SeriesDetail,
     stamps: &HashMap<u64, (u64, i64)>,
+    stills_coming: &HashSet<u64>,
     dir: &Path,
 ) -> Option<Want> {
     let at = continue_episode(detail)?;
     let series = detail.card.id;
     let e = &mut detail.episodes[at];
-    if e.still.is_some() {
+    if e.still.is_some() || stills_coming.contains(&e.file) {
         return None;
     }
     let (size, mtime) = *stamps.get(&e.file)?;
