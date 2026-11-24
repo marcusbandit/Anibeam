@@ -1993,6 +1993,9 @@ endpoint-repos-panel-link-ask = 링크에서 이 소스 목록을 추가할까�
 endpoint-repos-panel-link-no-url = 이 링크에는 소스 목록 주소가 없어요.
 endpoint-repos-panel-link-not-a-url = 이 링크의 소스 목록 주소를 읽지 못했어요.
 endpoint-repos-panel-link-not-https = 이 링크의 소스 목록 주소는 https를 사용하지 않아 아무것도 추가하지 않았어요.
+endpoint-repos-panel-config-head = 내 설정 파일의 소스
+endpoint-repos-panel-config-why = { $path }에 직접 설정해서 그 파일에서만 바꿀 수 있어요.
+endpoint-repos-panel-config-locked = 읽기 전용
 
 ## SourceAttach.qml
 
@@ -2332,10 +2335,6 @@ settings-downloads-magnet-anibeam = Anibeam이 열어요
 settings-downloads-magnet-other = 다른 앱이 열어요
 settings-downloads-magnet-none = 여는 앱이 없어요
 settings-downloads-magnet-use = Anibeam에서 열기
-settings-downloads-sources-title = 검색 소스
-settings-downloads-sources-empty = 아직 설정된 소스가 없어요
-settings-downloads-sources-connect = 목록을 보려면 검색 도우미를 연결하세요
-settings-downloads-config-file = 검색 도우미 설정 파일
 settings-downloads-unsaved = 저장 안 된 변경 사항
 settings-downloads-discard = 취소
 

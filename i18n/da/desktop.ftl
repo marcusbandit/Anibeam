@@ -2186,6 +2186,9 @@ endpoint-repos-panel-link-ask = Tilføj denne kildeliste fra linket?
 endpoint-repos-panel-link-no-url = Dette link har ingen adresse på en kildeliste.
 endpoint-repos-panel-link-not-a-url = Kildelistens adresse i dette link kunne ikke læses.
 endpoint-repos-panel-link-not-https = Kildelistens adresse i dette link bruger ikke https, så intet blev tilføjet.
+endpoint-repos-panel-config-head = Kilder fra din indstillingsfil
+endpoint-repos-panel-config-why = Du har sat dem op i { $path }, så de kun kan ændres der.
+endpoint-repos-panel-config-locked = Skrivebeskyttet
 
 ## SourceAttach.qml
 
@@ -2530,10 +2533,6 @@ settings-downloads-magnet-anibeam = Anibeam åbner dem
 settings-downloads-magnet-other = Et andet program åbner dem
 settings-downloads-magnet-none = Intet åbner dem
 settings-downloads-magnet-use = Åbn dem i Anibeam
-settings-downloads-sources-title = Søgekilder
-settings-downloads-sources-empty = Ingen kilder sat op endnu
-settings-downloads-sources-connect = Forbind søgehjælperen for at vise dem
-settings-downloads-config-file = Søgehjælperens indstillingsfil
 settings-downloads-unsaved = Ændringer ikke gemt
 settings-downloads-discard = Kassér
 

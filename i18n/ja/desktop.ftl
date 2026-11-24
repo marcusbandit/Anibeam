@@ -1739,6 +1739,9 @@ endpoint-repos-panel-link-ask = リンクからこのソースリストを追加
 endpoint-repos-panel-link-no-url = このリンクにはソースリストのアドレスがありません。
 endpoint-repos-panel-link-not-a-url = このリンクのソースリストのアドレスを読み取れませんでした。
 endpoint-repos-panel-link-not-https = このリンクのソースリストのアドレスは https ではないため、何も追加されませんでした。
+endpoint-repos-panel-config-head = 自分の設定ファイルのソース
+endpoint-repos-panel-config-why = { $path }で設定されているため、そのファイルでのみ変更できます。
+endpoint-repos-panel-config-locked = 読み取り専用
 
 ## SourceAttach.qml
 
@@ -2084,10 +2087,6 @@ settings-downloads-magnet-anibeam = Anibeamで開きます
 settings-downloads-magnet-other = 別のアプリで開きます
 settings-downloads-magnet-none = 開くアプリがありません
 settings-downloads-magnet-use = Anibeamで開く
-settings-downloads-sources-title = 検索ソース
-settings-downloads-sources-empty = ソースはまだ設定されていません
-settings-downloads-sources-connect = 一覧を表示するには検索ヘルパーに接続してください
-settings-downloads-config-file = 検索ヘルパーの設定ファイル
 settings-downloads-unsaved = 未保存の変更
 settings-downloads-discard = 破棄
 

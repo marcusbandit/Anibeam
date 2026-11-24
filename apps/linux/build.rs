@@ -252,6 +252,7 @@ fn main() {
         "assets/icons/languages.svg",
         "assets/icons/layers.svg",
         "assets/icons/link.svg",
+        "assets/icons/lock.svg",
         "assets/icons/layout-grid.svg",
         "assets/icons/list-filter.svg",
         "assets/icons/list-video.svg",
