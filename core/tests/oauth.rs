@@ -133,7 +133,10 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
         port,
         "/callback?access_token=tok&expires_in=3600&token_type=Bearer",
     );
-    assert!(second.contains("AniList and Anibeam are linked up"), "{second}");
+    assert!(
+        second.contains("AniList and Anibeam are linked up"),
+        "{second}"
+    );
 
     let done = common::wait_job(&c, job);
     assert!(
