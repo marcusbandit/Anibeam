@@ -25,6 +25,8 @@ on:
       - assets/logo/**
       - .github/workflows/site.yml
       - apps/desktop/CHANGELOG.md
+      # PRs opened before the move (#1477) still list apps/linux; drop once they merge main.
+      - apps/linux/CHANGELOG.md
       - apps/phone/CHANGELOG.md
   workflow_dispatch:
 

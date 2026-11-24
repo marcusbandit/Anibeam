@@ -1,5 +1,5 @@
 //! Tr: the catalog (#792) as a QML singleton. QML asks for words by message ID through
-//! `words.t()` (qml/Words.qml), which reads `lang` so every binding that shows words
+//! `words.t()` (qml/ui/Words.qml), which reads `lang` so every binding that shows words
 //! follows a language switch; `lookup` is the plain call underneath.
 
 use core::pin::Pin;

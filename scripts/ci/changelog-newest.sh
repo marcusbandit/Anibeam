@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Refuses lines added under any version heading in CHANGELOG.md except the newest one. A
 # merge of main into an old branch can land lines under a heading that has since shipped,
-# and the format check in core/tests/changelog.rs cannot tell (#480). CI runs it on every
+# and the format check in crates/core/tests/changelog.rs cannot tell (#480). CI runs it on every
 # pull request against the base it merges into, and on main against the commit before; run
 # it by hand against any ref. It checks committed work, HEAD, never the working tree:
 #

@@ -360,7 +360,7 @@ rail  header: one unit tall, whole column spans, spare columns to the title (cou
   only, the accent countdown on its stone. Its series also stand in their own groups, the
   one deliberate exception to a series showing once, like a "now" shelf. It leaves while a
   search is up.
-- **The packer** (`qml/mosaic.js`, tested by `node apps/desktop/qml/test-mosaic.mjs`):
+- **The packer**:
   `packGroups` packs boxes and lone tiles as one skyline. It always fills the lowest,
   left-most run of columns; the next item goes there when it fits, a box too wide for the
   run lets the next lone tile in first (lone tiles fill the gaps around boxes), and with

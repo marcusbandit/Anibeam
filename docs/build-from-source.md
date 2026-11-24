@@ -57,7 +57,7 @@ The Rust core crates live under `crates/` (with `crates/core/` as the top-level 
 
 ```bash
 cargo build --release -p anibeam-cli   # target/release/anibeam-cli
-cargo test --workspace                 # unit tests plus core/tests/
+cargo test --workspace                 # unit tests plus crates/core/tests/
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```

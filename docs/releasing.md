@@ -59,7 +59,7 @@ When a shipped desktop release needs a patch:
    ```bash
    git push origin v2.5.0^{commit}:refs/heads/release/2.5
    ```
-2. Land the fix on `main` first via a normal PR, then cherry-pick it (`git cherry-pick -x`) in a PR targeting `release/2.5`, bumping the version to `2.5.1` and adding a short entry to `apps/desktop/CHANGELOG.md`.
+2. Land the fix on `main` first via a normal PR, then cherry-pick it (`git cherry-pick -x`) in a PR targeting `release/2.5`, bumping the version to `2.5.1` and adding a short entry to that branch's changelog (`apps/desktop/CHANGELOG.md`, or `apps/linux/CHANGELOG.md` on release branches cut before `2.6.0`).
 3. Tag and push: `git tag v2.5.1 origin/release/2.5 && git push origin v2.5.1`. Never merge the release branch back into `main`.
 
 ## Automerge workflow

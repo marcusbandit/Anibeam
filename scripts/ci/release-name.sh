@@ -2,7 +2,7 @@
 # The name a release goes out under: "Anibeam 2.5.0", or "Anibeam 2.5.0 · Quality of life"
 # when that version's heading in apps/desktop/CHANGELOG.md carries a title. A nightly or test
 # build takes the title of the version it leads up to. The app reads the title back out of
-# the name for its update notice (core/src/update.rs). With phone, the phone's release:
+# the name for its update notice (crates/core/src/update.rs). With phone, the phone's release:
 # "Anibeam for Android 2.4.3", titled from apps/phone/CHANGELOG.md.
 #
 #   scripts/ci/release-name.sh 2.5.0-nightly.20261102.40

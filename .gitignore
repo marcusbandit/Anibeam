@@ -47,5 +47,8 @@ apps/desktop/.qmlls.ini
 __pycache__/
 
 # Checkouts from before the app folder renames keep stale build output here.
+# For apps/linux/, only ignore generated output so uncommitted source files on
+# pre-move branches stay visible to git status and git add.
 /apps/android/
-/apps/linux/
+/apps/linux/captures/
+/apps/linux/.qmlls.ini

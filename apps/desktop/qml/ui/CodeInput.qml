@@ -19,7 +19,7 @@ Item {
     // The full code `filled` last sent, so neither signal sends it twice
     property string sent: ""
 
-    // The core's room::code::ALPHABET and LEN (room/src/code.rs); change them there and here
+    // The core's room::code::ALPHABET and LEN (crates/room/src/code.rs); change them there and here
     readonly property string alphabet: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     readonly property real gap: theme.space(2)
     readonly property real box: Math.min(theme.controlHeight * 1.25, (width - gap * (length - 1)) / length)
@@ -29,7 +29,7 @@ Item {
 
     function focusInput() { input.forceActiveFocus() }
 
-    // A link's code read the way the relay reads one (code_from_query in room/src/page.rs): no
+    // A link's code read the way the relay reads one (code_from_query in crates/room/src/page.rs): no
     // query or fragment, the last path segment that is not empty. Then upper case, and nothing
     // outside the alphabet. A stray "/" typed after a few characters leaves them alone.
     function clean(raw) {
