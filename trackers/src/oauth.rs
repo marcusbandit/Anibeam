@@ -67,6 +67,10 @@ const MAX_REQUEST: usize = 8 * 1024;
 /// than allowed to hold the whole flow until it times out.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// How long a page may take to reach the browser before the listener gives
+/// up on that connection and goes back to accepting.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// What the pages call each provider. The site's own name, so the tab a
 /// user is looking at says what they just signed in to; `Tracker::label`
 /// says MAL, which is the shorthand the rest of the interface uses.
@@ -563,8 +567,18 @@ fn http_head(status: &str, body: &str) -> String {
 /// the tab, so a client that has already gone away is worth a log line and
 /// nothing more. The flow itself turns on what the request carried.
 async fn reply(stream: &mut TcpStream, status: &str, body: &str) {
-    if let Err(e) = write_all(stream, &http_head(status, body), body).await {
-        tracing::debug!("the callback page could not be written: {e}");
+    // Bounded: a page is a few hundred kilobytes, more than a socket's
+    // buffers hold, so a client that connects and never reads would
+    // otherwise hold the one-at-a-time listener until the flow times out.
+    match tokio::time::timeout(
+        WRITE_TIMEOUT,
+        write_all(stream, &http_head(status, body), body),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => tracing::debug!("the callback page could not be written: {e}"),
+        Err(_) => tracing::debug!("the callback page was not read within {WRITE_TIMEOUT:?}"),
     }
     // A client reading to EOF needs the write half closed before it sees
     // the page as complete.
@@ -705,9 +719,9 @@ const PAGE_STYLE: &str = r#"
 .bad{--state:#f0718a}.off{--state:var(--fg-2)}
 @media (prefers-color-scheme:light){.bad{--state:#c8405e}.wait,.go{--state:var(--fg)}}
 *{box-sizing:border-box}
-html{background:var(--ground)}
+html{background:var(--ground);overflow-x:clip}
 body{margin:0;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;justify-content:space-between;
-gap:3rem;padding:clamp(20px,5vw,64px);overflow:hidden;position:relative;background:var(--ground);color:var(--fg);
+gap:3rem;padding:clamp(20px,5vw,64px);overflow-x:clip;position:relative;background:var(--ground);color:var(--fg);
 font:400 18px/1.5 Archivo,system-ui,sans-serif}
 .art{position:absolute;z-index:0;right:-14vmin;top:50%;width:min(82vmin,780px);color:var(--art);
 transform:translateY(-55%) rotate(-6deg);animation:cut .42s cubic-bezier(.2,.9,.1,1) both}
@@ -732,15 +746,16 @@ p{margin:.9rem 0 0;max-width:38ch;color:var(--fg-2);text-wrap:pretty}
 "#;
 
 /// Archivo, the face the site and the shell set Anibeam in, latin and
-/// latin-ext. Its licence is in `site/fonts/OFL-Archivo.txt`.
+/// latin-ext, copied from `site/fonts` so the crate stands on its own.
+/// Its licence is in `assets/OFL-Archivo.txt`.
 const ARCHIVO: [(&[u8], &str); 2] = [
     (
-        include_bytes!("../../site/fonts/Archivo-latin-100-900.woff2"),
+        include_bytes!("../assets/Archivo-latin-100-900.woff2"),
         "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,\
          U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
     ),
     (
-        include_bytes!("../../site/fonts/Archivo-latin-ext-100-900.woff2"),
+        include_bytes!("../assets/Archivo-latin-ext-100-900.woff2"),
         "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,\
          U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF",
     ),
@@ -765,7 +780,8 @@ fn font_faces() -> &'static str {
 
 /// The app's icon, inline. The header shows it whole; the art behind the
 /// words is its ア alone.
-const ICON: &str = include_str!("../../apps/linux/assets/icon.svg");
+/// A copy of `apps/linux/assets/icon.svg`, kept in the crate like the fonts.
+const ICON: &str = include_str!("../assets/icon.svg");
 
 /// The tabs the listener leaves behind, each for the tracker it belongs to.
 enum Page<'a> {
@@ -898,7 +914,13 @@ fn forwarder(t: Tracker) -> String {
     let heading = tr("core-trackers-page-failed", &[]);
     // A JSON string is a JavaScript string literal, and the words go in as
     // text, so nothing in the catalog can break out of the script.
-    let quote = |s: &str| serde_json::to_string(s).unwrap_or_default();
+    // `<` is escaped as well, so no `</script>` in a translation can end
+    // the element.
+    let quote = |s: &str| {
+        serde_json::to_string(s)
+            .unwrap_or_default()
+            .replace('<', "\\u003c")
+    };
     let script = format!(
         "<script>(function(){{var h=window.location.hash;\
          if(!h){{document.body.className='bad';document.querySelector('.word').textContent={failed};\
@@ -1023,7 +1045,11 @@ mod tests {
         ];
         for shown in &pages {
             assert!(!shown.contains("core-trackers-"), "a missing id: {shown}");
-            let outside = shown.replace("http://www.w3.org/2000/svg", "");
+            let outside = shown
+                .replace("http://www.w3.org/2000/svg", "")
+                .split("url(data:")
+                .map(|part| part.split_once(')').map_or(part, |(_, rest)| rest))
+                .collect::<String>();
             assert!(!outside.contains("http"), "a fetch: {shown}");
             assert!(!shown.contains("@import"), "{shown}");
             assert!(shown.contains("fill=\"#FDC901\""), "the icon: {shown}");
@@ -1051,6 +1077,29 @@ mod tests {
             );
             assert_eq!(shown.contains("window.close()"), state == "ok", "{shown}");
         }
+    }
+
+    /// Each page's own words in the right slot: a swap would put the
+    /// heading's words in the tab's title or the status line.
+    #[test]
+    fn each_page_puts_its_words_in_the_right_slots() {
+        let shown = page(Page::Failed(Tracker::Mal, "why"));
+        let words = |id: &str| tr(id, &[("app", "Anibeam".into())]);
+        assert!(
+            shown.contains(&format!(
+                "<title>{}</title>",
+                words("core-trackers-page-failed-title")
+            )),
+            "{shown}"
+        );
+        assert!(
+            shown.contains(&format!(
+                "<strong class=\"word\">{}</strong><h1>{}</h1>",
+                words("core-trackers-page-status-failed"),
+                words("core-trackers-page-failed")
+            )),
+            "{shown}"
+        );
     }
 
     #[test]
