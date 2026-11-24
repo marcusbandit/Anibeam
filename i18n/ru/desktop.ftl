@@ -381,8 +381,6 @@ home-continue-fact = В процессе: { $count }
 home-on-hold = Отложено
 home-on-hold-fact = Ждут возвращения: { $count }
 home-hero-open = Открыть «{ $title }»
-home-hero-pick-up = Продолжить с того же места
-home-hero-up-next = Далее
 home-hero-downloading = Скачивается { $count ->
     [one] { $count } серия
     [few] { $count } серии
@@ -395,6 +393,11 @@ home-hero-resume = Продолжить серию { $number }
 home-hero-play = Смотреть серию { $number }
 home-hero-resume-unnumbered = Продолжить серию
 home-hero-play-unnumbered = Смотреть серию
+home-hero-previous = Предыдущий сериал
+home-hero-next = Следующий сериал
+home-card-episode = Серия { $number }
+home-card-episode-season = С{ $season } серия { $number }
+home-card-episode-titled = { $episode } · { $title }
 home-downloaded = Недавно скачано
 home-downloaded-fact = С новыми файлами за последние 2 недели: { $count }
 home-week = Эта неделя
