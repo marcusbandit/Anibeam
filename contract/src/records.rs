@@ -302,6 +302,11 @@ pub struct Episode {
     /// (ani.zip, #1036); None without one.
     #[serde(default)]
     pub still: Option<String>,
+    /// A frame of interest from the episode's own file, a local path, where
+    /// it has no still (#1469). Laid only on the episode a Continue card for
+    /// the series shows, and only once the frame is cached; None otherwise.
+    #[serde(default)]
+    pub frame: Option<String>,
     /// What the episode is about, plain text: ani.zip's, else the franchise
     /// fallback's (#1461); None without one.
     #[serde(default)]

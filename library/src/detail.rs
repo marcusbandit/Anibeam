@@ -148,6 +148,7 @@ impl Snapshot {
                 fixed: f.fixed,
                 versions: versions.get(&version_key(f)).cloned().unwrap_or_default(),
                 still: detail.and_then(|d| d.still.clone()),
+                frame: None,
                 synopsis: detail.and_then(|d| d.synopsis.clone()),
             }
         };

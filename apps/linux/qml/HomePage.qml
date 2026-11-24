@@ -947,8 +947,9 @@ Item {
         readonly property var card: entry ? entry.card : ({})
         readonly property var ep: entry ? entry.episode : null
         readonly property string still: ep && ep.still ? ep.still : ""
-        // Without a still, the show's own art in the same frame
-        readonly property string art: still || (entry && entry.detail && entry.detail.banner ? entry.detail.banner : "") || card.poster || ""
+        // Without a still, a frame from the episode's own file (#1469); never the show's
+        // banner or poster, so with neither the card keeps its plain face
+        readonly property string art: still || (ep && ep.frame ? ep.frame : "")
         readonly property real frac: page.resumeFrac(entry)
         height: thumb.height + theme.space(2.5) + text.height
         activeFocusOnTab: true
