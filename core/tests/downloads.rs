@@ -404,6 +404,15 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         done.body
     );
     assert_ne!(captured(capture.path(), "pid").trim(), pid.trim());
+    // The shells hear it: the open settings page drops its dot on this event
+    common::wait_for(
+        &c,
+        |e| {
+            matches!(&e.body, EventBody::DownloadsStatusChanged { status }
+                if status.endpoints.iter().any(|e| e.name == "from-config"))
+        },
+        Duration::from_secs(10),
+    );
     let status = downloads_status(&core);
     assert_eq!(status.anirss.state, AnirssState::Ready);
     let names: Vec<&str> = status.endpoints.iter().map(|e| e.name.as_str()).collect();
