@@ -1181,6 +1181,7 @@ core-downloads-no-default-folder = qBittorrent n'a aucun dossier d'enregistremen
 core-downloads-save-folder-not-absolute = { $folder } n'est pas un chemin complet vers un dossier
 # $folder is the folder given
 core-downloads-save-folder-unusable = { $folder } ne peut pas servir aux téléchargements : choisissez un dossier existant qui n'est pas votre dossier personnel
+core-downloads-library-not-connected = Le dossier de la bibliothèque { $folder } n'est pas connecté : connectez son disque, puis ajoutez à nouveau
 core-downloads-name-empty = le nom ne peut pas être vide
 core-downloads-name-slash = le nom ne doit contenir ni / ni \
 core-downloads-name-not-folder = { $name } n'est pas un nom de dossier
