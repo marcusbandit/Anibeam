@@ -2,6 +2,8 @@
 
 Issue #143. Written 2026-10-24.
 
+Since #1417 (2026-11-22) Anibeam has no official list and links to none. The `marcusbandit/anibeam-endpoints` repo this spec names is no longer linked; `marcusbandit/anibeam-endpoints-template` holds the tooling with example definitions only.
+
 ## Why
 
 The phone app is headed for the Play Store, and a store build must ship with no
