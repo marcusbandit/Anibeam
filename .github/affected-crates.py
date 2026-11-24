@@ -73,8 +73,6 @@ NO_CRATE = [
     "*.md",
     "docs/",
     "site/",
-    "mockups/",
-    "spikes/",
     "assets/",
     "Casks/",
     "relay/",

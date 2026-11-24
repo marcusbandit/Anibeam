@@ -1,427 +1,124 @@
 # Contributing
 
-One naming scheme runs through the whole path from idea to main: the issue,
-the branch, every commit, the PR title and the squash commit it becomes.
+Welcome! New to the codebase? Start with [ARCHITECTURE.md](ARCHITECTURE.md) for a map of where everything lives and [docs/build-from-source.md](docs/build-from-source.md) to get a local build running.
+
+One naming scheme runs from issue to branch, commits, PR title, and the squash commit on `main`.
 
 ## The flow
 
-1. **Issue first.** Every change starts as a GitHub issue, except a typo-sized
-   one (see "The PR body"). The
-   title states the outcome, the body says what done looks like. What happens
-   to an issue once it is filed is in
-   [`docs/agents/triage.md`](docs/agents/triage.md). Every issue sits on the
-   [Anibeam project board](https://github.com/users/marcusbandit/projects/1),
-   and its card moves as the work does. A security problem never goes in an
-   issue: [`SECURITY.md`](SECURITY.md) says where to report it privately.
-   Before your first card, ask the owner for board access and run
-   `gh auth refresh -s project`.
+1. **Issue first.** Every change starts as a GitHub issue, except typo-sized edits (see "The PR body"). State the user-visible outcome in the title and what "done" looks like in the body. Report security issues privately per [SECURITY.md](SECURITY.md).
 2. **Branch** off `main` as `<type>/<issue>-<slug>`.
-3. **Commit** as you go, each message `<type>(<scope>): <outcome>`.
-4. **Try it live** in a sandbox run of the branch's own build. See below.
-5. **Open a PR** whose title follows the same pattern and whose body ends in
-   `Closes #<issue>`.
-6. **Review and checks.** Review comments answered, each fix as a new commit
-   on the branch, and every check green. Never amend and force-push a pushed
-   branch.
-7. **Squash merge** with `gh pr merge --squash --delete-branch`. The PR title
-   becomes the one commit on main, with `(#N)` appended by GitHub. The owner's
-   PRs can merge themselves instead: see "Merging on its own" below.
+3. **Commit** as you go with `<type>(<scope>): <outcome>`.
+4. **Try it live** in an isolated `--root` sandbox (see below).
+5. **Open a PR** whose title follows the same convention and whose body ends with `Closes #<issue>`.
+6. **Review and checks.** Address review feedback as new commits (do not amend/force-push a pushed branch) and make sure all checks pass.
+7. **Squash merge** onto `main` and delete the branch.
 
 ## Types
 
-| Type       | Use it for                                          |
-| ---------- | --------------------------------------------------- |
-| `feat`     | something new the app can do                        |
-| `fix`      | something broken now works                          |
-| `perf`     | same behaviour, less CPU, memory or frame time      |
-| `refactor` | code moves or changes shape, behaviour stays        |
-| `docs`     | README, CONTEXT, CONTRIBUTING, `docs/`              |
-| `test`     | tests only                                          |
-| `chore`    | dependencies, tooling, cleanup                      |
-| `ci`       | `.github/workflows`                                 |
+| Type | Use it for |
+| --- | --- |
+| `feat` | something new the app can do |
+| `fix` | something broken now works |
+| `perf` | same behaviour, less CPU, memory or frame time |
+| `refactor` | code moves or changes shape, behaviour stays |
+| `docs` | README, ARCHITECTURE, CONTEXT, CONTRIBUTING, `docs/` |
+| `test` | tests only |
+| `chore` | dependencies, tooling, cleanup |
+| `ci` | `.github/workflows` |
 
 ## Scopes
 
-The scope is the crate the change belongs to: `core`, `shell` for
-`apps/linux`, `cli` for `apps/cli`. A shell change that lives on one page or
-in one part of the window can name it instead: `home`, `library`, `series`,
-`feed`, `watching`, `downloads`, `metadata`, `tokens`, `settings`, `player`.
+Name the crate or area the change belongs to: `core`, `library`, `metadata`, `trackers`, `downloads`, `playback`, `releases`, `host`, `net`, `foundation`, `contract`, `shell` (for `apps/linux`), `cli` (for `apps/cli`), or `relay`. Desktop UI changes scoped to one screen may name it directly: `home`, `library`, `series`, `feed`, `watching`, `downloads`, `metadata`, `tokens`, `settings`, `player`.
 
-`apps/phone` is the phone app for Android and the iPhone alike, so its scope
-says whose code a change touches. `android` covers Android's own files only:
-`android/` and `src/platform/android.rs`. `ios` covers the iPhone's own only:
-`ios/`, `src/platform/ios.rs` and the `*ios*` scripts. Anything else in
-`apps/phone` builds into both phones and is `phone core`, even when only one
-phone shows the difference: `feat(phone core): the phone app builds and opens
-on the iPhone simulator`.
+For `apps/phone` (Android and iOS):
+- `android` — Android-only files (`android/`, `src/platform/android.rs`)
+- `ios` — iOS-only files (`ios/`, `src/platform/ios.rs`, `*ios*` scripts)
+- `phone core` — shared mobile code built into both platforms
 
-A `docs` change names the document: `readme`, `contributing`, `context`,
-`spec`. Outside the crates and the docs use `packaging` or `ci`. A change that
-genuinely spans two scopes lists both, comma separated:
-`fix(core,shell): ...`. More than two usually means the PR should split.
+For documentation changes, name the document (`readme`, `architecture`, `contributing`, `context`). Outside crates and docs, use `packaging`, `site`, or `ci`. Comma-separate two scopes when genuinely spanning both (`fix(core,shell): ...`); more than two usually means the PR should be split.
 
 ## Branch names
 
-    <type>/<issue>-<slug>
+```text
+<type>/<issue>-<slug>
+```
 
-- `feat/69-downloads-redesign`
-- `perf/64-shared-cargo-target`
-- `docs/contributing-naming` for a `no issue` PR, the one kind without an issue
-
-The slug is a few lowercase hyphenated words naming the outcome.
+Examples: `feat/69-downloads-redesign`, `perf/64-shared-cargo-target`, `docs/contributing-naming` (for a `no issue` typo PR).
 
 ## Trying a branch live
 
-The launcher entry runs the main checkout's `target/release/anibeam`, so a
-release build in the main checkout replaces what the launcher starts. Work on
-a branch in a worktree under `~/Projects/_wt/` and run that worktree's own
-build:
+Always run development builds against a sandbox `--root` directory so they stay isolated from any installed copy and never touch your real library database, secrets, or torrent client:
 
-    cargo build --release -p anibeam
-    ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
-      target/release/anibeam --root /tmp/anibeam-dev
+```bash
+cargo build --release -p anibeam
+ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
+  target/release/anibeam --root /tmp/anibeam-dev
+```
 
-`--root` keeps the database, config, cache and secrets in that directory, and
-gives the run its own bus names, so it opens beside the installed app instead
-of handing off to it and never touches its data. anirss gets a home of its own
-there too, `<root>/state/home`: the run reads anirss's config from
-`<root>/state/home/.config/anirss/config.toml`, the anirss it starts keeps its
-state there, and a fresh run sets up Anibeam's own qBittorrent rather than
-taking one it finds on the machine. Point it at your own qBittorrent in
-Settings when you want that. For a picture without a
-window, `apps/linux/scripts/shoot.sh` captures a page offscreen and
-`apps/linux/scripts/drive.sh` clicks through a script first, and shoots a set
-of pages in one run with a `pages` step; see `apps/linux/README.md`.
+`--root` isolates the database, config, cache, secrets, single-instance bus names, and managed `anirss`/qBittorrent state inside one folder. For headless captures and scripted UI checks, see `apps/linux/README.md` (`scripts/shoot.sh`, `scripts/drive.sh`, and `anibeam ctl`).
 
 ## Commit and PR titles
 
-    <type>(<scope>): <what is different now>
+```text
+<type>(<scope>): <what is different now>
+```
 
-Write the outcome a user would notice, in plain words, lowercase after the
-colon, no trailing full stop. Say what changed for the person, not which file
-moved.
+Describe the outcome a user would notice, lowercase after the colon, no trailing period.
 
-Good:
-
-- `fix(shell): the wheel scrolls like a browser`
-- `feat(downloads): a provider switch on the search bar`
-- `perf(shell): one drive run captures several pages`
-
-Not:
-
-- `Fix bug` says nothing
-- `shell: update WheelStep.qml` names a file, not an outcome
-- `Merge pull request #59 from marcusbandit/docs/readme-native-line` is a
-  merge commit; squash instead
+- **Good:** `fix(shell): the wheel scrolls like a browser`
+- **Good:** `feat(downloads): a provider switch on the search bar`
+- **Avoid:** `Fix bug`, `shell: update WheelStep.qml`, or raw merge commits
 
 ## The PR body
 
+Include:
 - What changed, in a few lines.
-- Why, linking the issue.
-- How it was verified: a screenshot or recording for anything visible,
-  test output otherwise.
+- Why, referencing the issue.
+- How you verified it (screenshot/recording for visible changes, test output otherwise).
 - `Closes #<issue>` on its own line.
 
-Every PR closes an issue, and the `PR issue` check fails one that does not.
-Only a closing keyword (`Closes`, `Fixes`, `Resolves`) in the body attaches it:
-GitHub then lists the PR under the issue's Development section, and tools that
-look work up by issue number can find it. These do not count:
-
-- `Part of #<issue>`, `See #<issue>` or a bare mention
-- a keyword in the title, a code span or a quote
-- a keyword pointing at an issue that is already closed, such as the one a
-  follow-up PR came from; a follow-up gets its own new issue
-
-When a PR does only part of an issue, file a sub-issue for that part and close
-the sub-issue. A typo-sized PR is the one exception: a maintainer gives it the
-`no issue` label instead. Do not add that label to your own PR to get past the
-check. When the check fails, its message says what to write; fix the body and
-saving it reruns the check.
+Every PR closes an open issue (`Closes`, `Fixes`, or `Resolves`), enforced by the `PR issue` check. Bare mentions (`Part of #N`, `See #N`) or links to already-closed issues do not satisfy the check—file a sub-issue or follow-up issue instead. Maintainers may apply the `no issue` label for typo-sized PRs.
 
 ## Patch notes
 
-Each app keeps its own `CHANGELOG.md`: `apps/linux/CHANGELOG.md` for the desktop,
-`apps/phone/CHANGELOG.md` for the phone. Both apps compile it in for What's new after an
-update, and `anibeam.app/whats-new/` builds from the same files. Write for people using the
-app, not as an exhaustive commit log. GitHub Releases already lists every PR via
-`--generate-notes` for anyone who wants every small detail.
+Each app maintains its own curated `CHANGELOG.md` (`apps/linux/CHANGELOG.md` for desktop, `apps/phone/CHANGELOG.md` for phone). Both apps embed it for "What's new", and `anibeam.app/whats-new/` builds from the same files.
 
-- **Regular PRs do not touch `CHANGELOG.md`.** Writing a line per PR causes merge conflicts
-  and turns releases into unreadable 100-bullet dumps. Clear PR titles are enough.
-- **Curate before shipping (or update a living draft for major milestones).** Run
-  `.github/changelog-draft.sh desktop` or `.github/changelog-draft.sh phone` to see every
-  commit merged since the last stable tag, then write a concise, natural entry under the
-  newest heading in `CHANGELOG.md`. The Release workflow checks that the promoted commit has
-  notes written under its heading before shipping.
-- **Write naturally, highlights first.** Open a release with a warm, freeform intro (1-2
-  sentences) saying what we're happy to bring to the app, followed by a short bullet list of
-  the real features and changes users will notice (`- **Feature.** Natural description.`),
-  an optional `### Heads up` when users need to know or do something, and a 1-2 line
-  `### Fixes & polish` roundup summarizing smaller bug fixes and tweaks. Tiny patch or
-  hotfix releases can simply be a single clear paragraph.
-- **Keep it focused.** Group related work into one clear highlight instead of listing every
-  tweak or PR separately, and skip fixes for bugs in features that never shipped yet. Aim
-  for 3-8 bullets on a normal release (`core/src/changelog.rs` caps lists at 15 items per
-  version). Use plain English, no internal jargon, no issue numbers, and no em or en dashes.
-- **Headings match the version.** The newest heading is the app's version with the date:
-  `## 2.5.0 · 2026-11-21`, or with an optional short title of at most 40 characters:
-  `## 2.5.0 · Watch together · 2026-11-21`. What's new and update notices show the title,
-  and the release goes out named "Anibeam 2.5.0 · Watch together". Bumping the version adds
-  a new heading, and a new heading bumps the version in the same PR.
+- **Regular PRs do not touch `CHANGELOG.md`.** Per-PR edits cause merge conflicts and noisy dumps; GitHub Releases already lists every PR via `--generate-notes`.
+- **Maintainers curate entries before shipping** using `.github/changelog-draft.sh desktop|phone`: a short, warm 1–2 sentence intro, 3–8 user-focused highlight bullets (`- **Feature.** Description.`), an optional `### Heads up`, and a concise `### Fixes & polish` summary. Use plain English, no issue numbers, and no em/en dashes.
+- **Headings match the version:** `## 2.5.0 · 2026-11-21` or `## 2.5.0 · Short title · 2026-11-21` (title max 40 chars).
 
-Good:
+CI checks both changelogs via `cargo test -p anibeam-core --test changelog` and `.github/changelog-newest.sh`.
 
-    ## 2.5.0 · Watch together · 2026-11-21
+## Words (i18n)
 
-    We're happy to bring Watch together to Anibeam, along with 13 languages and a simpler
-    layout across the app.
+Every user-visible string lives in the Fluent catalog under `i18n/`: `i18n/<lang>/core.ftl` for core messages, `desktop.ftl` for desktop, and `android.ftl` for phone. English (`i18n/en/`) is the source; missing IDs in other languages fall back to English.
 
-    - **Watch together.** Start a room before or during an episode and invite friends with a
-      code, link, QR code, or Discord.
-    - **13 languages.** Pick your language during setup or in Settings > Appearance.
+- Use stable, descriptive message IDs (`player-skip-intro`, `downloads-empty`), prefixed by the file/feature name, with Fluent plurals and arguments rather than concatenating strings in code.
+- Look up messages via `anibeam_core::i18n::tr(...)` in Rust, `words.t(...)` or component `msg:` props in QML (never name a QML element `id: words`), and `Tr` in Slint.
+- Add new English IDs in the same PR; translations may land in the same PR or follow later.
+- Check layout overflow across languages after copy/layout changes with `apps/linux/scripts/layout-check.py --root <sandbox>`.
 
-    ### Fixes & polish
-
-    Fixes for multi-season tracking, long-running shows on Jikan, casting, and narrow-window
-    layouts.
-
-Not:
-
-    ### Fixed
-    - Fixed a bug where the seek bar would jump back after release (#160)
-    - Tooltips no longer blink and vanish when moving between cards
-    - A toast moves clear of the update island on a narrow window
-    ... (60 more single-PR bullets)
-
-`cargo test -p anibeam-core --test changelog` checks both files (valid headings, dates,
-version match, no em dashes, no dangling subheadings, and the item cap); CI runs it on every
-pull request. CI also runs `.github/changelog-newest.sh` against the PR's base, which refuses
-new lines added under any heading other than the newest. Run it by hand with
-`.github/changelog-newest.sh origin/main`. The phone's `build.sh` refuses an APK whose newest
-heading is not its version.
-
-## Words
-
-Every word a person reads lives in one catalog, the Fluent files under `i18n/` at the repo
-root: `i18n/<lang>/core.ftl` for what the core says, `desktop.ftl` for the desktop and
-`android.ftl` for the phone. English is the source; the other 12 languages translate it, and
-an ID a language lacks shows in English. All of a language's files load as one, so a
-`-term` or a shared message in `core.ftl` works from the others.
-
-- A message has a stable ID naming where it shows and what it says, never the English:
-  `player-skip-intro`, `downloads-empty`. Counts use Fluent's plurals, never a word picked
-  in code.
-- The code asks for the ID: `anibeam_core::i18n::tr("player-skip-intro", &[])` in Rust, and
-  through the shell's own lookup in QML and Slint. No shell writes a word of its own.
-- In QML, `words.t("library-empty", { count: n })` gives the words, and a binding that calls it
-  follows a language switch. `Label`, `Button`, `Chip`, `Tooltip`, `Notice` and `ErrorLine`
-  take the ID itself: `Button { msg: "action-cancel" }`, with `msgArgs: ({ count: n })`. An ID
-  starts with its file's name: `library-` in `LibraryPage.qml`, `settings-playback-` in
-  `SettingsPlaybackTab.qml`. Words every screen shares, such as `action-cancel` and
-  `status-watching`, live in `core.ftl`.
-- One message per sentence, its numbers and names as arguments. A sentence glued together in
-  code cannot be translated, and a count picks its plural in the message, never in code.
-- Never give an element `id: words`: it hides the global lookup from everything inside it.
-- A message added or changed in English shows in English in the other languages until it is
-  translated; add its translations in the same PR when you can, keeping the IDs, the
-  attributes and the variables exactly as English has them.
-- Labels must not grow. `apps/linux/scripts/layout-check.py --root <sandbox with a library>`
-  shoots every page and Settings tab in every language at a wide and a narrow window and lists
-  each piece of text that wraps onto more lines than in English or is cut off. Run it after a
-  change to a label's words or to the layout around one.
-- A new message goes in English in the same PR. A translation can follow later.
-
-`.github/strings-check.py` runs on every pull request. It fails a raw string added to a
-shell's UI files and an ID missing from `i18n/en/`. The files that held raw strings before
-the catalog are listed in `.github/strings-baseline.txt`; a file may hold no more than its
-count there, and a PR that moves strings out has to lower it in the same PR with
-`.github/strings-check.py --update`. A line that holds no words for a person, such as a
-format string, ends in `// i18n: none`.
+CI runs `.github/strings-check.py` to reject raw user-facing UI strings and missing English IDs. Add `// i18n: none` to non-text literals (format strings, etc.). If your PR removes legacy strings listed in `.github/strings-baseline.txt`, update the baseline with `.github/strings-check.py --update`.
 
 ## Sources
 
-Anibeam ships no download sources, and this repo takes no PR that adds one. Nothing in
-the app points at a site: no address, no host, no default, no onboarding link, and no code,
-test or fixture that names one. A PR that adds a site gets closed, however well it is built.
-CI keeps it that way: `.github/no-site-names.sh` greps the tree, file names included, for
-the known site names and fails on any hit. It skips what is kept as history (the changelogs
-and dated plans), applied SQL migrations, lockfiles, and `releases/src/kinds.rs`, the one
-module that holds the kinds' old names to rename them.
+Anibeam ships **no download sources** and accepts **no PR or issue that names or links a download site or source list**. CI enforces this across file contents and filenames via `.github/no-site-names.sh`.
 
-What the core does hold is endpoint kinds. A kind is a type of input the core knows how to
-read and handle well: an RSS feed, a torznab API, a JSON search API, a feed that needs a key.
-It is named for that shape, never for a site, and it knows nothing about which sites use it.
-A new kind is welcome when no existing one can read a source; open an issue for it first.
+- The core implements generic **endpoint kinds** (RSS, Torznab, JSON feeds) named for their input shape, never for a site. PRs adding a new generic kind are welcome (open an issue first).
+- Actual sources live in user-attached signed endpoint repos; see [anibeam-endpoints-template](https://github.com/marcusbandit/anibeam-endpoints-template) for the schema and signing workflow.
+- Anibeam never bundles, starts, or special-cases third-party proxy services for a specific site.
 
-The site itself comes from an endpoint repo the user attaches by URL
-(the template repo's README below has the format). Its definition says
-which kind to use and where to point it, and installing it is what tells the app how to handle
-that site. Anibeam has no official list of sources and links to none, here, on the website
-or in the app. A new source goes in a repo of your own, signed with your own key, that anyone
-can add in Anibeam by its URL.
-[`marcusbandit/anibeam-endpoints-template`](https://github.com/marcusbandit/anibeam-endpoints-template)
-holds the schema, the checks and the signing workflow to start from, with example definitions
-only. Don't open a PR or issue here that links to a list of sources.
+## Before you open a PR
 
-Endpoints are not part of this project, and that is final. No PR here decides which sources
-exist, whether one is hidden or shown, or how a particular one is handled. A source that only
-works with something else running, such as an indexer proxy or a challenge solver, is still
-just a definition in an endpoint repo: it uses an existing kind, and its definition or that
-repo's README says what has to be running and how to set it up. The app never bundles,
-starts or special-cases a service for one source. If a source seems to need app code beyond a
-kind, open an issue about the kind and leave the source out.
-
-## Before you open it
-
-- `.github/local-ci.sh` passes on your machine. It runs the Linux checks: fmt, the patch note
-  heading, strings, site names, clippy, the tests and a tester build to try by hand.
-- A visible change has a capture in the PR body, taken against a sandbox root.
-- A new word for something in the domain has its entry in `CONTEXT.md`.
-- Nothing in the diff names a download site. See Sources.
-- `.github/strings-check.py` passes: new words go in `i18n/en/` under an ID. See Words.
+- `.github/local-ci.sh` passes (fmt, changelog heading, strings, no-site-names, spelling, clippy, tests, and tester build).
+- Visible UI changes include a capture taken against a `--root` sandbox.
+- New domain concepts are defined in [CONTEXT.md](CONTEXT.md).
+- No download site names appear anywhere in the diff.
+- New user-facing text lives in `i18n/en/`.
 
 ## Checks on GitHub
 
-A push to a pull request runs only the fast checks: CI (fmt, clippy and the tests),
-Strings, No sites, the PR checks and the Android check when the phone or the core changed,
-about seven minutes. The iOS check (fmt, clippy and the simulator build on macOS) runs when
-the phone's code changed, and a PR that only touches iPhone files skips the Android check.
-Work on one platform at a time and check it locally with
-`.github/local-ci.sh`.
+Pull requests run fast affected-crate checks (`.github/affected-crates.py`), fmt, strings, no-sites, PR checks, and mobile checks when phone or core code changes. Installing [cargo-nextest](https://nexte.st) (`cargo install --locked cargo-nextest`) speeds up `.github/local-ci.sh` to match CI.
 
-CI and `.github/local-ci.sh` clippy and test only the crates a change touches and every
-crate that builds on them; `.github/affected-crates.py` prints what it picked and why. A
-patch note edit checks no crate of its own: it runs the core's changelog test, plus the app
-that builds it in (local-ci checks the Qt shell for `apps/linux/CHANGELOG.md`). A lock file change
-checks the crates that use a package it changed, where the history is at hand; a copy without
-`.git` checks every crate for it. A change to the root manifest or the toolchain checks every
-crate, as `.github/local-ci.sh --all` or a CI run by hand does too.
-
-The tests run under [cargo-nextest](https://nexte.st), which runs every test binary at once;
-install it (`cargo install --locked cargo-nextest`) and local-ci uses it too, or it falls back
-to `cargo test`.
-
-When the PR works on Linux and is ready, put the `full ci` label on it. Full CI then builds
-and tests its head on Linux with the AppImage and distro smoke tests, Windows, macOS, the
-Arch tarball and the iPhone IPA. A push while the label is on builds again, so put it on
-last; take it off to push without a rebuild. Merge when Full CI is green on the head commit.
-
-### Merging on its own
-
-A PR from the owner's account with both the `automerge` and the `full ci` labels merges
-itself. `.github/workflows/ios-automerge.yml` runs `.github/ios-automerge.sh` from main
-whenever a PR workflow finishes or the `automerge` label lands. It squash merges the PR, titled
-with the PR title and `(#N)`, once:
-
-- it is ready for review and aimed at main;
-- every check and workflow run on its head commit has passed or skipped, counting only the
-  newest run of each workflow;
-- Full CI has built that head and passed. A Full CI run whose jobs all skipped, such as the
-  one another label starts, proves nothing; the newest run that built decides, and a Full CI
-  run still going means wait. PR build, which the `test build` label gates, counts the same
-  way, so a red test build still blocks after another label lands.
-
-The order for a PR that should merge itself: `.github/local-ci.sh` passes, the PR opens with
-its category label, the code review pass (`code-review --comment`) runs and its findings are
-fixed or answered, and only then do `full ci` and `automerge` go on. Nothing has to watch it
-after that.
-
-A red check leaves the PR open, with no comment. Push a fix as a new commit: with `full ci`
-still on, the push builds the new head and the PR merges once that is green. Take `automerge`
-off to stop it merging.
-
-The merge uses the `NIGHTLY_TOKEN` secret when it is set: a fine-grained token on this repo
-with Contents and Workflows write, the same token the nightly publishes with. A merge made
-with it starts main's push workflows, the Site deploy and the nightly's build. Without it the
-workflow's own token merges, and GitHub starts no workflows for a push made with that token,
-so the site waits for the next deploy and the build for the next nightly. The workflow's own
-token also may not merge a PR that changes a file under `.github/workflows`; such a PR stays
-open until someone merges it by hand.
-
-The same workflow merges the iPhone and Mac contributors' PRs that only touch iPhone or Mac
-files (#909), without any label; the repo variable `IOS_AUTOMERGE_AUTHORS` lists them.
-
-## Releases
-
-Every build ships from main. What tells them apart is the version, and the app reads its
-update track from that version:
-
-| Build | Version | Comes from | Who gets it |
-| --- | --- | --- | --- |
-| Stable | `2.5.0` | Release workflow, promoting a nightly | everyone; the Latest release |
-| Nightly | `2.5.0-nightly.20261102.40` | a merge to main builds it, `nightly.yml` publishes it | the Nightly track in Settings |
-| PR test build | `2.5.0-pr.280.3` | `pr-build.yml`, the `test build` label | whoever the PR comment reaches |
-| Phone stable | `android-v2.4.3` | Release workflow with app `phone`, promoting a phone nightly | everyone with the phone app |
-| Phone nightly | `android-v2.4.3-nightly.20261113.41` | a merge to main builds it, `nightly.yml` publishes it | whoever installs it |
-
-The workspace version in `Cargo.toml` is always the next stable version, and every build
-between two releases carries it as its base. The phone has a number of its own, the
-`version` in `apps/phone/Cargo.toml`, and the same rule holds for it. Its APK's
-versionCode follows from the version (`apps/phone/scripts/build.sh`), so a nightly
-installs over the stable version before it, the stable version over its nightlies, and the
-next version's nightlies over both. Nobody bumps a versionCode by hand.
-
-Every release also gets its page on the website:
-[anibeam.app/whats-new](https://anibeam.app/whats-new/) lists every shipped version, newest
-first, with a page each, and shows any curated notes drafted under an unshipped heading as
-Coming next. The site builds them straight from `apps/linux/CHANGELOG.md` and
-`apps/phone/CHANGELOG.md` (`site/whats-new.py`), and `site.yml`, `nightly.yml` and the
-Release workflow deploy the site automatically. Nobody writes these pages by hand.
-
-- **Nightly.** The less polished, frontier build, not a daily one. Every merge to main
-  builds the apps that changed since their last nightly and keeps the files on its run.
-  Run `nightly.yml` from the Actions tab when main holds something worth trying; it
-  publishes the newest of those builds as its own pre-release, built from the commit the
-  release names, and builds main itself only when no finished build covers it yet or
-  `force` is ticked. A run started while a build of main is still going waits for it. A
-  merge never builds again what the last build of main failed on with the same files; Run
-  workflow does. It skips the run when the app has not changed since the last nightly.
-  The ten newest are kept. The phone's APK and IPA ride the same way, when the phone or
-  what it builds on changed since the phone's last nightly, and publish as their own
-  `android-v*-nightly.*` pre-release. Publishing uses the `NIGHTLY_TOKEN` secret, a
-  fine-grained token with Contents and Workflows write, since the workflow's own token may
-  not tag a commit once a workflow file changed.
-- **PR test build.** Put the `test build` label on a PR to get installers for it on the
-  `pr-builds` pre-release, linked from a comment on the PR. Every push rebuilds them;
-  closing the PR or taking the label off removes them. Use it to have someone try a
-  branch before it merges, a Mac change for Liam for example.
-- **Stable.** When the newest nightly has been run for a while and is good, first make sure
-  its curated notes are written under its heading in `apps/linux/CHANGELOG.md` (use
-  `.github/changelog-draft.sh desktop` to review everything merged since the last stable
-  release), then run the Release workflow on main from the Actions tab. It promotes that
-  nightly's commit, so what ships is a build people have already used: nightly
-  `2.5.0-nightly.20261102.40` ships as `v2.5.0`.
-  If a workflow file changed on main since that nightly, GitHub will not let the workflow
-  tag it, so it stops and asks for a forced Nightly first.
-  It builds every platform, publishes the release once every file is on it, and moves main
-  to `2.6.0` with a new heading in `apps/linux/CHANGELOG.md`. Then update the AUR packages
-  (`anibeam` and `anibeam-bin`, one command) and the brew cask:
-  `apps/linux/packaging/aur/publish.sh 2.5.0` and
-  `apps/linux/packaging/brew/bump.sh 2.5.0`.
-- **Phone stable.** Curate its notes under the newest heading in `apps/phone/CHANGELOG.md`
-  (`.github/changelog-draft.sh phone`), then run the same Release workflow with app set to
-  `phone`: it promotes the newest phone nightly, so `android-v2.4.3-nightly.20261113.41`
-  ships as `android-v2.4.3`, an APK built from that commit. It is never the Latest release,
-  which stays the desktop's for the site and `install.sh`. Then it moves the phone to
-  `2.5.0` with a new heading in `apps/phone/CHANGELOG.md`. A phone version that needs a fix
-  gets it on main and ships in the next phone version.
-- **Hotfix.** A shipped version that needs a fix gets a branch from its tag, only then:
-  `git push origin v2.5.0^{commit}:refs/heads/release/2.5`. The fix lands on main first
-  through the usual PR, then is cherry-picked onto the branch with `git cherry-pick -x` in
-  a PR against `release/2.5`. That PR bumps the version to `2.5.1` and adds a short `2.5.1`
-  entry at the top of `apps/linux/CHANGELOG.md`. Tag it to ship:
-  `git tag v2.5.1 origin/release/2.5 && git push origin v2.5.1`. The Release workflow refuses
-  a tag that is not on its own branch. The branch is never merged back, since everything on
-  it came from main.
-
-Every Release run, by hand or from a tag, waits for the repo owner to approve it in the
-`release` environment before any job starts. Only an admin can move or delete a shipped
-`v*` or `android-v*` tag.
-
-Every phone APK on a release is signed with one key, the `ANIBEAM_ANDROID_KEYSTORE`
-secret (a base64 keystore), because Android installs an update only over an install signed
-with the same key. A phone build is never published by hand: run the Nightly workflow.
-
-A build made outside CI (a checkout, the AUR) names itself after the newest stable tag in
-its history plus commits, `2.4.0.r12.gabc1234`, and counts as the workspace version for
-updates.
+When a PR is ready for full cross-platform verification (Linux AppImage/distro smoke tests, Windows, macOS, Arch tarball, iOS IPA), maintainers apply the `full ci` label. For release promotion, hotfixes, and automerge details, see [docs/releasing.md](docs/releasing.md).

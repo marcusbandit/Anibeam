@@ -5,14 +5,18 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 tag="1.41.0"
 out="$here/assets/icons"; mkdir -p "$out"
-cp -n "$here/../../spikes/home-grid-qml/assets/icons/"*.svg "$out"/ 2>/dev/null || true
-cp "$here/../../spikes/home-grid-qml/assets/icons/LICENSE" "$out/LICENSE" 2>/dev/null || true
-names=(search arrow-left arrow-right arrow-down arrow-up chevron-down chevron-up chevron-left chevron-right chevrons-right
-  external-link link star eye-off plus pause skip-back skip-forward volume-2 volume-x maximize minimize rotate-ccw rotate-cw
-  audio-lines languages clock film tv layers list-filter keyboard scan ban circle-check circle-x clapperboard image
-  sliders-horizontal triangle-alert square-check square calendar-clock book-open users case-sensitive chart-pie check-check
-  badge-check bell circle-question-mark step-back step-forward file-down file-up circle-play list-video bookmark sparkles
-  cast radio folder-search check pencil trash thumbs-up bug gauge timer memory-stick scan-search recycle toggle-right ellipsis lock calendar)
+names=(
+  activity archive arrow-down arrow-down-wide-narrow arrow-left arrow-right arrow-up arrow-up-narrow-wide arrow-up-right
+  audio-lines badge-check ban bell book-open bookmark bug calendar calendar-clock captions case-sensitive cast chart-pie
+  check check-check chevron-down chevron-left chevron-right chevron-up chevrons-right circle-alert circle-check circle-play
+  circle-question-mark circle-x clapperboard clock copy crown database download ellipsis external-link eye eye-off
+  file-down file-up film folder folder-open folder-plus folder-search folder-x gauge git-branch globe hard-drive heart
+  house image info keyboard languages layers layout-grid link list list-filter list-video loader-circle lock log-in
+  log-out maximize memory-stick minimize minus monitor moon palette pause pencil play plus radio recycle refresh-cw
+  rotate-ccw rotate-cw rss scan scan-search search settings shapes skip-back skip-forward sliders-horizontal sparkles
+  square square-check star step-back step-forward sun thumbs-up timer toggle-right trash trash-2 triangle-alert tv type
+  upload user-check users volume-2 volume-x wrench x
+)
 # Fetched to a temporary file and moved into place only on success: a 404 or a dropped
 # connection must not leave a zero-byte SVG behind, because a blank icon is not a build error.
 for n in "${names[@]}"; do

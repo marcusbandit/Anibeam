@@ -326,7 +326,7 @@ Ask questions in [Q&A](https://github.com/marcusbandit/Anibeam/discussions/categ
 
 ## Build from source
 
-Run `./build.sh` from a checkout to build the desktop app. See [docs/build-from-source.md](docs/build-from-source.md) for dependencies, dev runs, and the CLI. Logos live in [assets/logo/](assets/logo/), and [CONTRIBUTING.md](CONTRIBUTING.md) covers issues, pull requests, and releases.
+Run `./build.sh` from a checkout to build the desktop app. See [ARCHITECTURE.md](ARCHITECTURE.md) for a map of the codebase, [docs/build-from-source.md](docs/build-from-source.md) for dependencies, dev runs, and the CLI, and [CONTRIBUTING.md](CONTRIBUTING.md) for issues, pull requests, and workflow conventions. Logos live in [assets/logo/](assets/logo/).
 
 ## Support
 

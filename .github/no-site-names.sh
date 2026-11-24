@@ -4,9 +4,8 @@
 # list of sources Anibeam no longer links (#1417); the template repo is fine. CONTRIBUTING.md has the
 # rule under Sources.
 #
-# Skipped, as the owner decided on 2026-11-06: what is written history (each app's
-# CHANGELOG.md and the dated plans and specs under docs/superpowers/), the SQL migrations
-# already applied, lockfiles, and the one core module that maps the kinds' old names.
+# Skipped: written history (each app's CHANGELOG.md), the SQL migrations already applied,
+# lockfiles, and the one core module that maps the kinds' old names.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -19,7 +18,6 @@ pattern="(?<!(?-i:[a-z0-9]))(${names})(?!(?-i:[a-z0-9]))"
 skip=(
   ':(exclude)**/CHANGELOG.md'
   ':(exclude)CHANGELOG.md'
-  ':(exclude)docs/superpowers/'
   ':(exclude)foundation/src/store/sql/'
   ':(exclude)releases/src/kinds.rs'
   ':(exclude)*.lock'

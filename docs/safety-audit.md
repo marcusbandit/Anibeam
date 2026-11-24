@@ -111,7 +111,7 @@ Every hardcoded external host in non-test source code belongs to one of these ca
 
 ## 10. Build scripts, `unsafe` Rust, and tracked binaries
 
-- **Cargo build scripts:** `core/build.rs`, `net/build.rs`, `library/build.rs`, `trackers/build.rs`, `playback/build.rs`, `apps/linux/build.rs`, `apps/phone/build.rs`, and the shared helper `trackers/env_local.rs`. None access the network or download code; they set version/target cfgs, optionally read OAuth/Discord public client IDs from env or `.env.local`, and link Qt/MpvQt/Slint/libmpv. (`host/src/build.rs` is a regular snapshot-builder module, not a build script; `spikes/` are non-workspace prototypes.)
+- **Cargo build scripts:** `core/build.rs`, `net/build.rs`, `library/build.rs`, `trackers/build.rs`, `playback/build.rs`, `apps/linux/build.rs`, `apps/phone/build.rs`, and the shared helper `trackers/env_local.rs`. None access the network or download code; they set version/target cfgs, optionally read OAuth/Discord public client IDs from env or `.env.local`, and link Qt/MpvQt/Slint/libmpv. (`host/src/build.rs` is a regular snapshot-builder module, not a build script.)
 - **`unsafe` Rust:** Across all 14 core library crates, there is a single `unsafe` call (`PeekNamedPipe` for Windows Discord IPC in `playback/src/presence/discord.rs`). All remaining `unsafe` blocks are FFI boundaries in the desktop and phone shells (`cxx-qt` bridges in `apps/linux/src/bridge/` and `apps/linux/build.rs`, macOS Now Playing/IOKit in `apps/linux/src/macnp.rs` and `iokit.rs`, Windows power APIs in `apps/linux/src/winpower.rs`, pre-thread `std::env::set_var` at startup in `apps/linux/src/main.rs` and `paths.rs`, and Android/iOS JNI, Metal/OpenGL, and `libmpv` FFI in `apps/phone/src/{mpv.rs,thumbs.rs,video/,platform/,control/android.rs}`).
 - **Compiled binaries in git:** Only two small Qt shader bytecode files (`apps/linux/shaders/poster.vert.qsb`, `poster.frag.qsb`), compiled from `poster.vert` and `poster.frag` beside them by `apps/linux/shaders/build.sh`.
 
@@ -121,17 +121,17 @@ Run these from the repository root to verify nothing relevant exists outside the
 
 ```bash
 # 1. Every process spawn in Rust source (excluding integration tests)
-git grep -n -E 'Command::new|process::shell' -- '*.rs' ':!*tests*' ':!spikes/*'
+git grep -n -E 'Command::new|process::shell' -- '*.rs' ':!*tests*'
 
 # 2. Every network listener or socket bind
-git grep -n -E 'TcpListener|UdpSocket|UnixListener|axum::serve' -- '*.rs' ':!*tests*' ':!spikes/*'
+git grep -n -E 'TcpListener|UdpSocket|UnixListener|axum::serve' -- '*.rs' ':!*tests*'
 
 # 3. Every hardcoded URL in non-test Rust source (inspect alongside net/src/ and core/src/update.rs)
-git grep -n -E 'https?://|wss?://' -- '*.rs' ':!*tests*' ':!spikes/*'
+git grep -n -E 'https?://|wss?://' -- '*.rs' ':!*tests*'
 
 # 4. Every Cargo build script and every unsafe block in Rust source
 git ls-files '*build.rs'
-git grep -n 'unsafe ' -- '*.rs' ':!*tests*' ':!spikes/*'
+git grep -n 'unsafe ' -- '*.rs' ':!*tests*'
 
 # 5. Any compiled or archive binaries tracked in git
 git ls-files | grep -iE '\.(so|dll|dylib|exe|apk|ipa|jar|bin|o|a|qsb|wasm|pyc|zip|tar|gz|7z|deb|rpm|dmg|AppImage)$'

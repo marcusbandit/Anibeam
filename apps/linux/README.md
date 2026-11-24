@@ -1,7 +1,6 @@
-# Anibeam Linux shell
+# Anibeam Desktop Shell
 
-Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone. Spec: chapters 4 and 5 of
-`docs/superpowers/specs/2026-09-04-native-line-design.md`; plan: `docs/superpowers/plans/2026-09-05-shell-phase-2.md`.
+Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone (supports Linux, macOS, and Windows). See [ARCHITECTURE.md](../../ARCHITECTURE.md) and [CONTEXT.md](../../CONTEXT.md) for the overall design and shared vocabulary.
 
     cargo build -p anibeam                          # needs qmake6 on PATH, lld, mpvqt, qt6-svg
     target/debug/anibeam --root /tmp/sandbox        # a sandboxed run; without --root the real XDG dirs

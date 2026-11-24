@@ -5,8 +5,7 @@
 //! machine a relay drives, [`code`] the room codes and keys, [`limit`] the
 //! limits both relays apply, and [`page`] the join page a shared link opens.
 //! The clock and the randomness come from the caller, so the same code runs in
-//! the native relay, the Cloudflare Worker and the core. The design is
-//! `docs/superpowers/specs/2026-11-13-watch-together-rooms.md`.
+//! the native relay, the Cloudflare Worker and the core.
 
 pub mod code;
 pub mod limit;
