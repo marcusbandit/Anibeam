@@ -11,7 +11,9 @@ name: CI
 # rust-toolchain.toml, which every workflow reads (#526).
 # A change that only touches markdown or docs/ skips it (#428). The two CHANGELOG.md files
 # still run it: the apps compile them in and core/tests/changelog.rs checks them. Later
-# patterns win, so those lines have to stay after the markdown exclusion.
+# patterns win, so those lines have to stay after the markdown exclusion. A pull request
+# always starts the workflow and the `changes` job makes the same call, so the `ci` job
+# at the end reports on every pull request: main's ruleset requires it to pass.
 on:
   push:
     branches: [main]
@@ -21,11 +23,6 @@ on:
       - '!docs/**'
       - '**/CHANGELOG.md'
   pull_request:
-    paths:
-      - '**'
-      - '!**.md'
-      - '!docs/**'
-      - '**/CHANGELOG.md'
   workflow_dispatch:
 
 permissions:
@@ -39,7 +36,40 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Whether this run touches anything but markdown and docs/, by the same rule as the push
+  # paths above. Only a pull request can skip; main and a run by hand always check.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.pick.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+
+      - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          code=true
+          if [ "$EVENT" = pull_request ]; then
+            code=false
+            while IFS= read -r f; do
+              case "$f" in
+                */CHANGELOG.md|CHANGELOG.md) code=true ;;
+                *.md|docs/*) ;;
+                *) code=true ;;
+              esac
+            done < <(git diff --name-only HEAD^1 HEAD)
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "code: $code"
+
   fmt:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -58,7 +88,8 @@ jobs:
   # that went green before main moved to a new heading can still squash its line under the
   # old one, so main runs it too, against the commit before: then main goes red instead.
   changelog:
-    if: github.event_name != 'workflow_dispatch'
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -69,6 +100,8 @@ jobs:
       - run: .github/changelog-newest.sh HEAD^1
 
   check:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -124,3 +157,19 @@ jobs:
         env:
           PICK: ${{ steps.affected.outputs.pick }}
         run: .github/local-ci.sh --cargo --no-build --skip "$SKIP" $PICK
+
+  # The one check main's ruleset requires. It passes when every job above passed or was
+  # skipped as docs-only, and fails when any failed or was cancelled.
+  ci:
+    if: always()
+    needs: [changes, fmt, changelog, check]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*) exit 1 ;;
+          esac
