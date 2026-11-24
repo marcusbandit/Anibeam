@@ -448,6 +448,11 @@ pub struct SeriesDetail {
     pub characters: Vec<Person>,
     pub recommendations: Vec<Recommendation>,
     pub has_graph: bool,
+    /// The series' AniList node has had its relations fetched, so a series
+    /// with no graph has no franchise rather than one still being read
+    /// (#1454).
+    #[serde(default)]
+    pub relations_known: bool,
     /// A misreading of this series' files the core can see, with its fix.
     #[serde(default)]
     pub suggested_fix: Option<SuggestedFix>,

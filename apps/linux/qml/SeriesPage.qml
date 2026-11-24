@@ -36,6 +36,9 @@ Item {
     property bool spoilers: false
     // The body's tab: 0 the episodes, 1 the seasons and relations, 2 the artwork and music
     property int tab: 0
+    // Picking files to delete belongs to the Episodes tab and ends when it is left, or the
+    // next Escape would go to a bar nobody can see
+    onTabChanged: if (tab !== 0 && deleting) { deleting = false; deleteError = "" }
     property bool synopsisOpen: false
     property bool tagsOpen: false
     property real nowMs: Date.now()
@@ -284,7 +287,11 @@ Item {
         function onMatchApplied(series) { if (series === page.props.id) reloadDebounce.restart() }
         // The crawl fills the franchise in behind the first read; its root is an AniList id
         function onGraphChanged(root) { if (page.graph === null || page.graph.root === root) graphDebounce.restart() }
-        function onCrawlFinished(fetched, deferred) { if (page.detail && page.detail.has_graph) graphDebounce.restart() }
+        function onCrawlFinished(fetched, deferred) {
+            if (page.detail && page.detail.has_graph) graphDebounce.restart()
+            // A series whose franchise was still unread may have one now
+            else if (page.detail && !page.detail.relations_known && page.anilistUrl !== "") reloadDebounce.restart()
+        }
         // The core resolves card.title (and every other localised field) at query time,
         // so a title-language flip from the rail's JP/EN switch needs a fresh GetSeries;
         // Door reports every preference write here regardless of what changed, exactly
@@ -1583,10 +1590,17 @@ Item {
             }
         }
 
-        Caption { visible: !!page.graph && !page.graph.complete; msg: "series-related-filling" }
+        // Still being read: a graph the crawl is filling in, or an AniList match whose
+        // relations nobody has fetched yet
+        Caption {
+            visible: (!!page.graph && !page.graph.complete)
+                || (!!page.detail && !page.detail.has_graph && !page.detail.relations_known && page.anilistUrl !== "")
+            msg: "series-related-filling"
+        }
 
+        // Only a franchise known to be empty says so; while the graph loads, nothing
         Item {
-            visible: st.empty && !(page.graph && !page.graph.complete)
+            visible: st.empty && !!page.detail && !page.detail.has_graph && !!page.detail.relations_known
             width: parent.width
             height: theme.space(80)
             EmptyState { icon: "git-branch"; title: words.t("series-seasons-none") }
@@ -1831,11 +1845,20 @@ Item {
                 StatusDot { anchors.verticalCenter: parent.verticalCenter; status: rc.node.list_status || "" }
                 Label { text: page.nodeState(rc.node); role: "ledger"; color: rc.owned ? theme.accent : theme.textDim }
             }
-            // The season it hangs off, by its badge and its title
+            // The season it hangs off, by its badge and its title. The card's MouseArea takes
+            // the hover, so the tip here follows its pointer by hand
             Item {
+                id: rcSeasonRow
+                objectName: "relation-season-" + rc.node.anilist_id
                 visible: !!rc.season
                 width: parent.width
                 height: rcBadge.height
+                readonly property bool pointed: {
+                    if (!visible || !rcMouse.containsMouse) return false
+                    var p = mapFromItem(rcMouse, rcMouse.mouseX, rcMouse.mouseY)
+                    return p.x >= 0 && p.y >= 0 && p.x <= width && p.y <= height
+                }
+                onPointedChanged: pointed ? rcTip.show() : rcTip.release()
                 SeasonBadge { id: rcBadge; small: true; number: rc.seasonIndex + 1; here: !!rc.season && !!rc.season.current }
                 Label {
                     x: rcBadge.width + theme.space(1.5)
@@ -1846,7 +1869,7 @@ Item {
                     color: theme.textFaint
                     elide: Text.ElideRight
                 }
-                Tooltip { text: rc.season ? words.t("series-relations-joins", { title: rc.season.title }) : "" }
+                Tooltip { id: rcTip; manual: true; held: rcSeasonRow.pointed; text: rc.season ? words.t("series-relations-joins", { title: rc.season.title }) : "" }
             }
         }
         Rectangle {

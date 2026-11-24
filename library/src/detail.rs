@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use rusqlite::{Connection, params_from_iter};
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde_json::Value;
 
 use crate::cards::{next_up, upcoming};
@@ -14,7 +14,7 @@ use crate::labels;
 use crate::snapshot::{FileRow, MediaRow, Snapshot, season_of};
 use anibeam_contract::i18n::tr;
 use anibeam_contract::*;
-use anibeam_foundation::store::sql::placeholders;
+use anibeam_foundation::store::sql::{as_i64, placeholders};
 use anibeam_foundation::time;
 use anibeam_foundation::titles;
 use anibeam_foundation::watch::MARK_FRACTION;
@@ -254,6 +254,10 @@ impl Snapshot {
             has_graph: row
                 .anilist_id
                 .is_some_and(|a| self.graph_seeds.contains(&a)),
+            relations_known: match row.anilist_id {
+                Some(a) => relations_known(conn, a)?,
+                None => false,
+            },
             suggested_fix,
             card,
         }))
@@ -679,6 +683,20 @@ fn tags_of(raw: &Value) -> Vec<Tag> {
 
 fn json_array(v: &Value) -> &[Value] {
     v.as_array().map(Vec::as_slice).unwrap_or(&[])
+}
+
+/// Whether AniList's relations for this id have been fetched: by a full
+/// metadata fetch or by the crawl. Until then a node with no edges may
+/// only be a node whose edges nobody asked for yet.
+fn relations_known(conn: &Connection, anilist_id: u64) -> Result<bool, CoreError> {
+    let known: Option<bool> = conn
+        .query_row(
+            "SELECT relations_fetched_at IS NOT NULL FROM anilist_media WHERE id = ?1",
+            params![as_i64(anilist_id)],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(known.unwrap_or(false))
 }
 
 #[cfg(test)]
