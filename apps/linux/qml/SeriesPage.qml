@@ -884,14 +884,15 @@ Item {
                     TapHandler { enabled: aka.foldable; onTapped: aka.open = !aka.open }
                 }
 
-                // The show's logo when the record has one, drawn from its left edge and no
-                // taller than a few lines of the title; the title in the display cut otherwise
+                // The show's logo when the record has one, fitted into one box of a fixed height
+                // and a capped width, Home's hero's proportions, and sat on its bottom left, so a
+                // wide logo and a tall one line up (#1470); the title in the display cut otherwise
                 Item {
                     id: titleBlock
                     width: parent.width
                     readonly property bool logoShown: logo.status === Image.Ready && logo.implicitWidth > 0
                     readonly property real logoW: Math.min(width, theme.space(140))
-                    height: logoShown ? Math.min(theme.space(30), Math.round(logoW * logo.implicitHeight / logo.implicitWidth)) : titleLabel.height
+                    height: logoShown ? theme.space(26) : titleLabel.height
                     Image {
                         id: logo
                         objectName: "series-logo"

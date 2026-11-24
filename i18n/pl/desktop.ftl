@@ -3325,6 +3325,10 @@ settings-library-folder-added = Dodano folder, skanowanie
 settings-appearance-language = Język
 settings-appearance-title-language = Pokazuj tytuły w
 settings-appearance-series-logos = Pokazuj logo zamiast tytułów
+settings-appearance-logo-language = Język logo
+settings-appearance-logo-language-titles = Jak tytuły
+settings-appearance-logo-language-english = Angielski
+settings-appearance-logo-language-japanese = Japoński
 settings-appearance-title-language-english = Angielski
 # $language is the system's language in its own name ("Dansk")
 settings-appearance-language-system = Jak w systemie ({ $language })

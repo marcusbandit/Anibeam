@@ -442,6 +442,20 @@ pub enum TitleLanguage {
     Native,
 }
 
+/// Which language a series' logo is drawn in, where TheTVDB has it in more
+/// than one (#1470): the one the titles are read in, or one picked by name.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum,
+)]
+pub enum LogoLanguage {
+    /// English titles take the English logo; romaji and native ones the
+    /// Japanese logo.
+    #[default]
+    Titles,
+    English,
+    Japanese,
+}
+
 column_strings!(TitleLanguage {
     Romaji => "romaji",
     English => "english",

@@ -1248,6 +1248,11 @@ pub struct Preferences {
     /// (`SeriesDetail::logo_choice`) wins over it.
     #[serde(default = "default_true")]
     pub series_logos: bool,
+    /// Which language a logo is drawn in where a show has it in more than
+    /// one (#1470). Default `Titles`. `serde(default)` because older blobs
+    /// predate it.
+    #[serde(default, deserialize_with = "lenient::logo_language")]
+    pub logo_language: LogoLanguage,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -1308,6 +1313,9 @@ mod lenient {
     }
     pub fn recommended<'de, D: Deserializer<'de>>(d: D) -> Result<RecommendedScope, D::Error> {
         or(d, Preferences::default().home_recommended)
+    }
+    pub fn logo_language<'de, D: Deserializer<'de>>(d: D) -> Result<LogoLanguage, D::Error> {
+        or(d, Preferences::default().logo_language)
     }
 }
 
@@ -1420,6 +1428,7 @@ impl Default for Preferences {
             room_name: String::new(),
             room_relay: ROOM_RELAY.to_string(),
             series_logos: true,
+            logo_language: LogoLanguage::Titles,
         }
     }
 }

@@ -386,3 +386,65 @@ fn the_logo_walks_back_the_chain_before_forward() {
 
     core.shutdown();
 }
+
+/// A season whose own clear logo the image cache turned away as a card
+/// (#1470) has no logo of its own: it borrows the previous season's.
+#[test]
+fn a_season_whose_own_logo_is_a_card_borrows_the_previous_seasons() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = show(&core);
+    let now = time::now_secs();
+    const CARD: &str = "https://images.example.com/series/12/clearlogo/card.png";
+    for id in [S1, S2, S3] {
+        fixtures::media(id, &format!("Toudai {id}")).insert(&core);
+    }
+    fixtures::match_series(&core, series, Some(S3), None);
+    core.store()
+        .write(move |c| {
+            c.execute_batch(&format!(
+                "UPDATE anilist_media SET relations_fetched_at = {now};
+                 INSERT INTO relations (from_id, to_id, relation) VALUES
+                    ({S2}, {S1}, 'PREQUEL'), ({S3}, {S2}, 'PREQUEL');
+                 INSERT INTO anizip_shows (anilist_id, found, fetched_at) VALUES
+                    ({S1}, 1, {now}), ({S2}, 0, {now}), ({S3}, 1, {now});
+                 INSERT INTO anizip_images (anilist_id, kind, url, rank) VALUES
+                    ({S1}, 'Clearlogo', '{LOGO}', 0), ({S3}, 'Clearlogo', '{CARD}', 0);
+                 INSERT INTO logo_checks (url, verdict, checked_at) VALUES ('{CARD}', 0, {now});"
+            ))?;
+            Ok(())
+        })
+        .unwrap();
+    http.push_for(LOGO, 200, b"image".to_vec());
+
+    let job = anibeam_core::metadata::fallback::start(core.metadata()).expect("a logo wanted");
+    common::wait_job(&c, job);
+    let borrowed: Option<String> = core
+        .store()
+        .read(|c| {
+            Ok(c.query_row(
+                "SELECT logo_url FROM fallback_shows WHERE anilist_id = ?1",
+                [S3 as i64],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(borrowed.as_deref(), Some(LOGO));
+    let path: String = core
+        .store()
+        .read(|c| {
+            Ok(
+                c.query_row("SELECT path FROM images WHERE url = ?1", [LOGO], |r| {
+                    r.get(0)
+                })?,
+            )
+        })
+        .unwrap();
+    assert!(
+        detail(&core, series)
+            .logo
+            .is_some_and(|l| l.ends_with(&path))
+    );
+
+    core.shutdown();
+}

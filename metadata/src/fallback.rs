@@ -73,7 +73,9 @@ fn missing(conn: &Connection, anilist_id: u64) -> Result<(bool, bool), CoreError
         |r| r.get(0),
     )?;
     let logo: bool = conn.query_row(
-        "SELECT NOT EXISTS (SELECT 1 FROM anizip_images WHERE anilist_id = ?1 AND kind = 'Clearlogo')",
+        // A logo the image cache turned away as a card is none (#1470).
+        "SELECT NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = ?1 AND i.kind = 'Clearlogo'
+                AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0))",
         params![id],
         |r| r.get(0),
     )?;
@@ -305,7 +307,8 @@ fn neighbour(conn: &Connection, id: u64) -> Result<Neighbour, CoreError> {
     };
     let logo: Option<String> = conn
         .query_row(
-            "SELECT url FROM anizip_images WHERE anilist_id = ?1 AND kind = 'Clearlogo'
+            "SELECT url FROM anizip_images i WHERE anilist_id = ?1 AND kind = 'Clearlogo'
+               AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0)
              ORDER BY CASE WHEN lower(lang) LIKE 'en%' THEN 0 WHEN lang IS NULL THEN 1 ELSE 2 END, rank
              LIMIT 1",
             params![id],
@@ -498,7 +501,8 @@ struct Found {
 fn wants(conn: &Connection, anilist_id: u64) -> Result<(bool, bool), CoreError> {
     let (want_episodes, want_logo) = missing(conn, anilist_id)?;
     let borrowed: bool = conn.query_row(
-        "SELECT EXISTS (SELECT 1 FROM fallback_shows WHERE anilist_id = ?1 AND logo_url IS NOT NULL)",
+        "SELECT EXISTS (SELECT 1 FROM fallback_shows b WHERE b.anilist_id = ?1 AND b.logo_url IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = b.logo_url AND v.verdict = 0))",
         params![as_i64(anilist_id)],
         |r| r.get(0),
     )?;

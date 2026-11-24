@@ -139,10 +139,8 @@ pub async fn fetch_and_write(
         })
         .await?;
 
-    // A season ani.zip has not mapped yet takes its episode details and its
-    // logo from the franchise around it (#1461), in a job of its own that
-    // starts now, so the match never waits on the walk.
-    crate::fallback::follow_up(metadata, anilist_id);
+    // And which language each of its logos is in (#1470), the same way.
+    crate::logos::follow_up(metadata, anilist_id);
 
     // Waited for rather than fired off: a card that reports a match and
     // then draws a blank poster for the next few seconds is worse than a
@@ -158,6 +156,13 @@ pub async fn fetch_and_write(
             .unwrap_or_default(),
     );
     metadata.net.images.ensure(&urls).await;
+
+    // A season ani.zip has not mapped yet takes its episode details and its
+    // logo from the franchise around it (#1461), in a job of its own, so the
+    // match never waits on the walk. It starts once the images are in, so a
+    // logo of its own the image cache turned away as a card counts as none
+    // (#1470).
+    crate::fallback::follow_up(metadata, anilist_id);
     reread_after_record(metadata, series).await;
     Ok(())
 }
