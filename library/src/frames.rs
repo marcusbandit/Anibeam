@@ -11,7 +11,9 @@
 //! between 30 and 70 percent of it (clear of an opening and an ending) are
 //! decoded small and scored by [`interest`], and the best is written once as
 //! a JPEG under `<cache>/frames/`, named for the file's path, size and mtime,
-//! so a replaced file gets a new one. One ffmpeg runs at a time, at the lowest
+//! so a replaced file gets a new one. A video no frame comes of leaves an
+//! empty `.miss` beside that name instead, so it is not tried again on the
+//! next launch. One ffmpeg runs at a time, at the lowest
 //! priority, and a machine without ffmpeg says so once in the trace and
 //! takes no frames.
 
@@ -68,6 +70,14 @@ pub fn file_for(dir: &Path, path: &str, size: u64, mtime: i64) -> PathBuf {
     eat(&size.to_le_bytes());
     eat(&mtime.to_le_bytes());
     dir.join(format!("{h:016x}.jpg"))
+}
+
+/// The empty file beside a frame's name that says no frame came of that
+/// video: no sample scored, or ffmpeg could not read it. It keeps a dark or
+/// a broken episode from costing nine ffmpeg runs on every launch, and goes
+/// with its video's size and mtime the same as the frame.
+pub fn miss_for(frame: &Path) -> PathBuf {
+    frame.with_extension("miss")
 }
 
 /// How interesting a frame is, from its RGB bytes (`rgb24`, rows top to
@@ -181,7 +191,8 @@ pub struct Want {
 }
 
 /// Lays the cached frame on the episode Continue would show and says what it
-/// still wants: that episode, with no still and no frame on disk yet.
+/// still wants: that episode, with no still, no frame on disk yet and no miss
+/// remembered ([`miss_for`]).
 /// `stamps` holds each of the series' files' size and mtime by file id.
 pub fn lay_on(
     detail: &mut SeriesDetail,
@@ -198,6 +209,9 @@ pub fn lay_on(
     let out = file_for(dir, &e.path, size, mtime);
     if out.is_file() {
         e.frame = Some(out.to_string_lossy().into_owned());
+        return None;
+    }
+    if miss_for(&out).is_file() {
         return None;
     }
     Some(Want {
@@ -279,7 +293,8 @@ impl Frames {
             match extract(&want.source, &want.out).await {
                 Ok(Some(_)) => self.announce(want.series).await,
                 Ok(None) => {
-                    tracing::debug!("no frame of {} was worth keeping", want.source.display())
+                    tracing::debug!("no frame of {} was worth keeping", want.source.display());
+                    remember_miss(&want.out);
                 }
                 Err(Failed::Missing) => {
                     let mut state = recover(&self.state);
@@ -290,7 +305,8 @@ impl Frames {
                     return;
                 }
                 Err(Failed::Other(e)) => {
-                    tracing::debug!("no frame of {}: {e}", want.source.display())
+                    tracing::debug!("no frame of {}: {e}", want.source.display());
+                    remember_miss(&want.out);
                 }
             }
         }
@@ -316,6 +332,19 @@ impl Frames {
             }
             Err(e) => tracing::warn!("frame for series {series} not announced: {e}"),
         }
+    }
+}
+
+/// Writes the miss marker for `frame`, so later launches ask nothing of that
+/// video. A marker that cannot be written only costs a retry next launch.
+fn remember_miss(frame: &Path) {
+    let marker = miss_for(frame);
+    let wrote = marker
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| std::fs::write(&marker, []));
+    if let Err(e) = wrote {
+        tracing::debug!("miss for {} not kept: {e}", frame.display());
     }
 }
 
@@ -614,6 +643,18 @@ mod tests {
         let out = tmp.path().join("frames").join("x.jpg");
         assert_eq!(extract(&source, &out).await.unwrap(), None);
         assert!(!out.exists());
+    }
+
+    #[test]
+    fn a_miss_is_kept_beside_the_frames_name_and_never_taken_for_a_frame() {
+        let tmp = tempfile::tempdir().unwrap();
+        let out = file_for(&tmp.path().join("frames"), "/lib/Show/01.mkv", 100, 5);
+        remember_miss(&out);
+        let marker = miss_for(&out);
+        assert!(marker.is_file());
+        assert_eq!(std::fs::metadata(&marker).unwrap().len(), 0);
+        assert!(!out.exists());
+        assert_eq!(marker.parent(), out.parent());
     }
 
     #[test]
