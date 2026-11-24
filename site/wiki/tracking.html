@@ -1,49 +1,79 @@
 <section>
-  <h2 id="why">What connecting does</h2>
+  <h2 id="why">Why connect an anime list?</h2>
+  <p>Connecting <b>AniList</b> or <b>MyAnimeList</b> turns Anibeam into an automatic tracker, so you never have to remember which episode you stopped on.</p>
   <ul>
-    <li>Every episode you finish in Anibeam is marked on your list, with nothing to type.</li>
-    <li>Status, score and notes you set in Anibeam go to the list too.</li>
-    <li>Your progress shows on the cards, and <b>Library</b> lists what you watch on AniList.</li>
+    <li><b>Automatic progress updates:</b> Finish an episode in Anibeam and it is marked watched on your list right away.</li>
+    <li><b>Two-way sync:</b> Ratings, list status (Watching, Completed, On hold, Planning, Dropped), rewatches, and notes stay in sync between Anibeam and your account.</li>
+    <li><b>Smarter browsing:</b> See your Watching and Planning shows under <b>Library</b> &gt; <b>On my list</b>, see list badges on <b>Airing</b>, and unlock personalized <b>Recommended for you</b> picks on <b>Home</b>.</li>
   </ul>
-  <p>Without a list, Anibeam still remembers what you watched on this computer. Counts only ever go up: Anibeam never lowers an episode count on your list.</p>
+  <div class="callout">
+    <span class="callout-title">No account required</span>
+    <p>You never have to connect an account to use Anibeam. Without one, Anibeam tracks everything locally on your computer. And when you do connect, automatic playback updates only move your episode count forward unless you intentionally mark episodes unwatched by hand.</p>
+  </div>
 </section>
 
 <section>
   <h2 id="anilist">Connect AniList</h2>
-  <p>AniList signs Anibeam in through a small app of your own, which you make once. It takes about a minute, and Anibeam walks you through it.</p>
+  <p>In official Anibeam releases, connecting AniList takes just a few clicks:</p>
   <ol class="steps">
-    <li>Open <span class="where"><b>Settings</b><b>Accounts</b></span> and press <b class="ui">Connect AniList</b>.</li>
-    <li>Press <b class="ui">Open the developer page</b>. AniList's developer settings open in your browser. Create a new client, with any name.</li>
-    <li>In Anibeam, press <b class="ui">Copy the address</b> and paste it into the client's <b class="ui">Redirect URL</b> box on AniList exactly as it is. Save the client.</li>
-    <li>Copy the client's <b class="ui">Client ID</b>, a number, and paste it into Anibeam's <b class="ui">Client ID</b> field.</li>
-    <li>Press <b class="ui">Connect</b>. AniList asks you to sign in and approve Anibeam, and the sheet closes by itself.</li>
+    <li>Open <span class="where"><b>Settings</b><b>Accounts</b></span> (or the <b>Your list</b> step during first-time setup).</li>
+    <li>Click <b class="ui">Connect AniList</b>.</li>
+    <li>Your web browser opens AniList's approval page. Sign in to your AniList account if asked, then approve Anibeam.</li>
+    <li>Return to Anibeam. Your username appears under <b>Your anime lists</b> and your progress syncs automatically.</li>
   </ol>
-  <p>The sign-in happens in your browser, so Anibeam never sees your password.</p>
+  <p>Because sign-in happens directly on AniList's website in your browser, Anibeam never sees your password.</p>
+
+  <details class="wiki-fold">
+    <summary>Built Anibeam from source? Manual AniList setup</summary>
+    <div class="wiki-fold-body">
+      <p>Official installers include Anibeam's registered AniList app. If you compiled Anibeam yourself without bundled credentials, Anibeam will show a short setup dialog to register your own free AniList client once:</p>
+      <ol class="steps">
+        <li>Click <b class="ui">Open the developer page</b> to open AniList's developer settings in your browser, then create a new client with any name.</li>
+        <li>Back in Anibeam, click the redirect address chip (<b class="ui">Copy the address</b>) and paste it into AniList's <b>Redirect URL</b> box exactly as copied, then save the client.</li>
+        <li>Copy the numeric <b>Client ID</b> from AniList, paste it into Anibeam's <b>Client ID</b> box, and click <b class="ui">Connect</b>.</li>
+      </ol>
+    </div>
+  </details>
 </section>
 
 <section>
   <h2 id="myanimelist">Connect MyAnimeList</h2>
+  <p>Connecting MyAnimeList works the same way in official builds:</p>
   <ol class="steps">
-    <li>Open <span class="where"><b>Settings</b><b>Accounts</b></span> and press <b class="ui">Connect MyAnimeList</b>.</li>
-    <li>Press <b class="ui">Open the developer page</b>. MyAnimeList's API page opens in your browser. Create an ID with <b class="ui">App Type</b> set to <b class="ui">other</b>.</li>
-    <li>In Anibeam, press <b class="ui">Copy the address</b> and paste it into <b class="ui">App Redirect URL</b> on MyAnimeList exactly as it is. Fill in the other boxes the form needs and submit it.</li>
-    <li>Copy the app's <b class="ui">Client ID</b>, a long string, and paste it into Anibeam's <b class="ui">Client ID</b> field. Leave <b class="ui">Client secret</b> empty unless you picked the Web app type.</li>
-    <li>Press <b class="ui">Connect</b>, sign in on MyAnimeList and approve Anibeam.</li>
+    <li>Open <span class="where"><b>Settings</b><b>Accounts</b></span>.</li>
+    <li>Click <b class="ui">Connect MyAnimeList</b>.</li>
+    <li>Sign in to MyAnimeList in the browser tab that opens and approve Anibeam.</li>
+    <li>Return to Anibeam once the browser confirms you are connected.</li>
   </ol>
+
+  <details class="wiki-fold">
+    <summary>Built Anibeam from source? Manual MyAnimeList setup</summary>
+    <div class="wiki-fold-body">
+      <p>If you built Anibeam from source without bundled credentials, Anibeam walks you through creating your own MyAnimeList API ID once:</p>
+      <ol class="steps">
+        <li>Click <b class="ui">Open the developer page</b> to open MyAnimeList's API config page and create a new ID with <b>App Type</b> set to <code>other</code>.</li>
+        <li>Copy the redirect address from Anibeam and paste it into <b>App Redirect URL</b> on MyAnimeList exactly as copied, fill in the remaining required fields, and submit.</li>
+        <li>Copy the long <b>Client ID</b> into Anibeam's <b>Client ID</b> box. Leave <b>Client secret</b> empty unless you registered a <code>web</code> app type.</li>
+        <li>Click <b class="ui">Connect</b> and approve Anibeam in your browser.</li>
+      </ol>
+    </div>
+  </details>
 </section>
 
 <section>
-  <h2 id="both">Both at once</h2>
-  <p>Connect both and each gets every update. <b class="ui">Main list</b> under <span class="where"><b>Settings</b><b>Accounts</b></span> decides which one the cards show progress from.</p>
+  <h2 id="both">Using both at once</h2>
+  <p>You can connect both AniList and MyAnimeList at the same time. Whenever you finish an episode, rate a show, change a status, or save notes, Anibeam updates both accounts.</p>
+  <p>Use <b class="ui">Main list</b> under <span class="where"><b>Settings</b><b>Accounts</b></span> to choose which service's progress numbers appear on your library cards.</p>
 </section>
 
 <section>
-  <h2 id="settings">Other settings</h2>
+  <h2 id="settings">Everyday tracking settings</h2>
+  <p>Once at least one account is connected, a few helpful controls appear in <span class="where"><b>Settings</b><b>Accounts</b></span>:</p>
   <ul>
-    <li><b class="ui">Sync now</b> reads every connected list again. Anibeam also does this when it starts.</li>
-    <li><b class="ui">Move to On hold</b> moves a Watching show you have not played for a while to On hold. Playing it moves it back.</li>
-    <li><b class="ui">Lists on this computer</b> moves a status or score you set before connecting onto your list, with <b class="ui">Review and move</b>.</li>
-    <li><b class="ui">Disconnect</b> on a list's row removes the sign-in from this computer.</li>
+    <li><b>Sync now:</b> Pulls the latest progress from your connected lists immediately. Anibeam also refreshes automatically each time you open the app.</li>
+    <li><b>Move to On hold:</b> Automatically moves a <em>Watching</em> show to <em>On hold</em> if you haven't played an episode for a while (60 days by default; adjust with the slider). As soon as you watch another episode, Anibeam moves it right back to <em>Watching</em>.</li>
+    <li><b>Lists on this computer:</b> If you rated shows or set list statuses before signing in, click <b class="ui">Review and move</b> to preview and upload those local entries to your AniList or MyAnimeList account.</li>
+    <li><b>Pause syncing for one show:</b> Click <b class="ui">Hide</b> on any show's page to hide it from your library and stop syncing it to your online lists.</li>
+    <li><b>Disconnect:</b> Click <b class="ui">Disconnect</b> next to an account to remove its sign-in from this computer. Your online list is not affected.</li>
   </ul>
-  <p>Hiding a show in Anibeam also stops it syncing.</p>
 </section>

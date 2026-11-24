@@ -1,0 +1,1089 @@
+//! Endpoint repos on the phone (#143): the repo address pasted in, its fingerprint shown
+//! before it is trusted, and the endpoints it offers installed, switched and removed. Every
+//! call that may fetch runs on its own thread and lands back on the UI thread.
+
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+use anibeam_core::{
+    Call, CoreError, EndpointCatalog, EndpointCredential, EndpointRepoPreview, Reply,
+};
+use slint::{ComponentHandle, ModelRc, VecModel, Weak};
+
+use crate::{AppData, AppWindow, AuthRow, EndpointRow, Nav, RepoData, RepoRow, Settings};
+
+/// What a tap on a row of the endpoint list stands for.
+#[derive(Clone)]
+enum Row {
+    /// `fill` when it still needs a value of its own.
+    Installed {
+        install: String,
+        update: bool,
+        fill: bool,
+    },
+    Offered {
+        repo: String,
+        id: String,
+    },
+    /// The values an installed endpoint is missing, asked for.
+    Fill {
+        install: String,
+    },
+}
+
+/// What the form says above its fields. Kept as which line it is, so it can be worded again
+/// when the language changes.
+#[derive(Clone)]
+enum Note {
+    /// A value is kept on the phone, and a field left empty keeps what is stored.
+    KeptEmpty,
+    /// A value is kept on the phone, never in the library or an export.
+    KeptNever,
+    /// An update asks for the values again.
+    NewAsks,
+    /// An update that sends requests to another host asks again.
+    NewHost(String),
+}
+
+impl Note {
+    fn text(&self) -> String {
+        match self {
+            Note::KeptEmpty => tr!("repos-ask-kept-empty"),
+            Note::KeptNever => tr!("repos-ask-kept-never"),
+            Note::NewAsks => tr!("repos-ask-new"),
+            Note::NewHost(host) => tr!("repos-ask-new-host", host = host),
+        }
+    }
+}
+
+/// What the connection check found for one host.
+#[derive(Clone, Debug, PartialEq)]
+enum Health {
+    /// No step said anything yet; not kept.
+    Pending,
+    Answered {
+        ms: u64,
+    },
+    Failed {
+        step: String,
+        detail: String,
+    },
+}
+
+impl Health {
+    fn ok(&self) -> bool {
+        !matches!(self, Health::Failed { .. })
+    }
+
+    /// The line under the row.
+    fn line(&self) -> String {
+        match self {
+            Health::Pending => String::new(),
+            Health::Answered { ms } => tr!("repos-health-answered", ms = ms.to_string()),
+            Health::Failed { step, detail } => {
+                tr!("repos-health-failed", step = step, detail = detail)
+            }
+        }
+    }
+}
+
+/// The line under a repo waiting to be trusted: how many sites, and whether it is already.
+fn preview_line(preview: &EndpointRepoPreview) -> String {
+    let count = preview.endpoints.len();
+    if preview.trusted {
+        tr!("repos-preview-trusted", count = count)
+    } else {
+        tr!("repos-preview-line", count = count)
+    }
+}
+
+/// An install or update waiting for the person's values.
+struct Asking {
+    row: Row,
+    note: Note,
+    keys: Vec<String>,
+    values: Vec<String>,
+}
+
+struct Repos {
+    window: Weak<AppWindow>,
+    catalog: Option<EndpointCatalog>,
+    /// What the last check found, by host.
+    health: HashMap<String, Health>,
+    preview: Option<EndpointRepoPreview>,
+    /// Counts the previews asked for and cancelled: an answer to one asked before the last
+    /// Cancel, or Back from a link, is dropped rather than put up where nobody looks.
+    asked: u64,
+    /// The preview still being fetched, by its `asked` number: the busy state is its own
+    /// until its answer comes or a Cancel or a link drops it.
+    fetching: Option<u64>,
+    rows: Vec<Row>,
+    /// The endpoint list, kept and updated row by row: a row that did not change keeps its
+    /// element, so an open form's field keeps what was typed when the list is read again.
+    lines: std::rc::Rc<VecModel<EndpointRow>>,
+    asking: Option<Asking>,
+    /// The source added by hand that is open for editing, by install id.
+    editing: Option<String>,
+    /// An edit is on its way to the core; a second tap on Save waits for it.
+    saving: bool,
+    /// The saved catalog was read and the launch refresh sent.
+    opened: bool,
+}
+
+thread_local! {
+    static REPOS: RefCell<Option<Repos>> = const { RefCell::new(None) };
+}
+
+fn with(f: impl FnOnce(&mut Repos)) {
+    REPOS.with(|cell| {
+        if let Some(r) = cell.borrow_mut().as_mut() {
+            f(r);
+        }
+    });
+}
+
+/// Runs `call` on a thread and hands the answer to `done` on the UI thread.
+/// False when the core is not open yet: `done` never runs, so a caller that set itself busy
+/// sets itself free again.
+fn spawn(
+    call: Call,
+    done: impl FnOnce(&mut Repos, Result<Reply, CoreError>) + Send + 'static,
+) -> bool {
+    crate::local::call_off_thread("repos", call, move |answer| with(|r| done(r, answer)))
+}
+
+pub fn install(window: &AppWindow) {
+    REPOS.with(|cell| {
+        *cell.borrow_mut() = Some(Repos {
+            window: window.as_weak(),
+            catalog: None,
+            health: HashMap::new(),
+            preview: None,
+            asked: 0,
+            fetching: None,
+            rows: Vec::new(),
+            lines: std::rc::Rc::new(VecModel::default()),
+            asking: None,
+            editing: None,
+            saving: false,
+            opened: false,
+        })
+    });
+    let d = window.global::<RepoData>();
+    REPOS.with(|cell| {
+        if let Some(r) = cell.borrow().as_ref() {
+            d.set_endpoints(ModelRc::from(r.lines.clone()));
+        }
+    });
+    d.on_add(|url| with(|r| r.add(url.trim().to_string())));
+    d.on_trust(|| with(Repos::trust));
+    d.on_cancel(|| {
+        with(|r| {
+            r.asked += 1;
+            r.preview = None;
+            r.drop_fetch();
+            r.data(|d| {
+                d.set_previewing(false);
+                d.set_error("".into());
+            });
+        })
+    });
+    d.on_remove_repo(|i| with(|r| r.remove_repo(i)));
+    d.on_refresh(|| with(Repos::refresh));
+    d.on_check(|| with(Repos::check));
+    d.on_save_edit(|| with(Repos::save_edit));
+    d.on_close_edit(|| with(Repos::close_edit));
+    d.on_change_values(|| with(Repos::change_values));
+    d.on_act(|i| with(|r| r.act(i)));
+    d.on_remove_endpoint(|i| with(|r| r.remove_endpoint(i)));
+    d.on_toggle(|i| with(|r| r.toggle(i)));
+    d.on_open(|i| with(|r| r.open(i)));
+    d.on_set_value(|i, text| {
+        with(|r| {
+            if let Some(a) = r.asking.as_mut()
+                && let Some(v) = usize::try_from(i).ok().and_then(|i| a.values.get_mut(i))
+            {
+                *v = text.to_string();
+            }
+        })
+    });
+    d.on_confirm(|| with(Repos::confirm));
+    d.on_dismiss(|| with(Repos::dismiss));
+    d.on_open_link(|url| crate::platform::open_url(&url));
+    d.on_add_custom(|name, url| with(|r| r.add_custom(name.to_string(), url.to_string())));
+}
+
+/// An anibeam://add-repo link came (src/link.rs): Search sites opens, or onboarding's sites
+/// step during the first run, with the address filled in and its preview started, or with
+/// why the link was refused. Nothing is trusted until the person taps Trust. Where they were
+/// is kept, so Back goes there.
+pub fn open_link(link: Result<String, crate::link::Refusal>) {
+    with(|r| {
+        let Some(w) = r.window.upgrade() else {
+            return;
+        };
+        let nav = w.global::<Nav>();
+        let app = w.global::<AppData>();
+        let settings = w.global::<Settings>();
+        // A second link while the first is still up keeps the first one's way back, and one
+        // that comes while the person is on the page already has nowhere else to go back to.
+        let here = if app.get_onboarding() {
+            app.get_step() == app.get_onboarding_sites()
+        } else {
+            nav.get_page() == 3 && settings.get_section() == 3
+        };
+        if !nav.get_link_back() && !here {
+            nav.set_link_page(nav.get_page());
+            nav.set_link_section(settings.get_section());
+            nav.set_link_step(app.get_step());
+            nav.set_link_back(true);
+        }
+        if app.get_onboarding() {
+            app.set_step(app.get_onboarding_sites());
+        } else {
+            w.invoke_go(3);
+            settings.set_lit("".into());
+            // 3 is Search sites (more.slint's Settings.section).
+            settings.set_section(3);
+        }
+        r.asked += 1;
+        r.preview = None;
+        r.drop_fetch();
+        r.data(|d| d.set_previewing(false));
+        match link {
+            Ok(url) => {
+                r.data(|d| d.set_url(url.clone().into()));
+                r.add(url);
+            }
+            Err(refusal) => {
+                let text = refusal.text();
+                r.data(|d| {
+                    d.set_url("".into());
+                    d.set_error(text.into());
+                });
+            }
+        }
+    });
+}
+
+/// The language changed: the rows, the preview and the form's note are worded again.
+pub fn relocalize() {
+    with(|r| {
+        if let Some(catalog) = r.catalog.clone() {
+            r.show(catalog);
+        }
+        if let Some(p) = &r.preview {
+            let line = preview_line(p);
+            r.data(|d| d.set_preview_line(line.into()));
+        }
+        if let Some(a) = &r.asking {
+            let note = a.note.text();
+            r.data(|d| d.set_asking_note(note.into()));
+        }
+    });
+}
+
+/// The core is open: show what is saved, then fetch every repo again, as the core does at
+/// launch and nowhere else. Asked on every poll; acts once.
+pub fn opened() {
+    with(|r| {
+        if r.opened || crate::local::core().is_none() {
+            return;
+        }
+        r.opened = true;
+        r.load();
+        r.refresh();
+    });
+}
+
+/// Whether two rows stand for the same endpoint, whatever state each row is in.
+fn same(a: &Row, b: &Row) -> bool {
+    let install = |r: &Row| match r {
+        Row::Installed { install, .. } | Row::Fill { install } => Some(install.clone()),
+        Row::Offered { .. } => None,
+    };
+    match (a, b) {
+        (Row::Offered { repo, id }, Row::Offered { repo: r, id: i }) => repo == r && id == i,
+        _ => install(a).is_some() && install(a) == install(b),
+    }
+}
+
+/// Puts a list's rows in place, touching only the rows that changed.
+fn update_rows(model: &VecModel<EndpointRow>, rows: Vec<EndpointRow>) {
+    use slint::Model;
+    if model.row_count() != rows.len() {
+        model.set_vec(rows);
+        return;
+    }
+    for (i, row) in rows.into_iter().enumerate() {
+        if model.row_data(i).as_ref() != Some(&row) {
+            model.set_row_data(i, row);
+        }
+    }
+}
+
+impl Repos {
+    fn data(&self, f: impl FnOnce(RepoData)) {
+        if let Some(w) = self.window.upgrade() {
+            f(w.global::<RepoData>());
+        }
+    }
+
+    fn load(&mut self) {
+        let Some(core) = crate::local::core() else {
+            return;
+        };
+        if let Ok(Reply::EndpointCatalog { catalog }) = core.call(Call::ListRepoEndpoints) {
+            self.show(catalog);
+        }
+    }
+
+    fn busy(&self, busy: bool) {
+        self.data(|d| d.set_busy(busy));
+    }
+
+    /// Forgets the preview being fetched, if one is, and the busy state it held: its answer
+    /// is dropped when it comes.
+    fn drop_fetch(&mut self) {
+        if self.fetching.take().is_some() {
+            self.busy(false);
+        }
+    }
+
+    /// Takes a catalog answer, or puts its error up.
+    fn answer(&mut self, answer: Result<Reply, CoreError>) -> bool {
+        self.busy(false);
+        match answer {
+            Ok(Reply::EndpointCatalog { catalog }) => {
+                self.show(catalog);
+                self.data(|d| d.set_error("".into()));
+                // The search page reads its sources from the core again.
+                crate::local::touch();
+                crate::app::endpoints_changed();
+                true
+            }
+            Ok(_) => false,
+            Err(e) => {
+                let text = e.to_string();
+                self.data(|d| d.set_error(text.into()));
+                false
+            }
+        }
+    }
+
+    fn show(&mut self, catalog: EndpointCatalog) {
+        let repos: Vec<RepoRow> = catalog
+            .repos
+            .iter()
+            .map(|r| RepoRow {
+                name: r.name.clone().into(),
+                url: r.url.clone().into(),
+                fingerprint: r.fingerprint.clone().into(),
+                nsfw: r.nsfw,
+                error: r.error.clone().unwrap_or_default().into(),
+            })
+            .collect();
+        let mut rows = Vec::new();
+        let mut lines = Vec::new();
+        for i in &catalog.installed {
+            // The note under the row, and whether it is something to fix (yellow) or a hint.
+            let (note, warn) = if !i.missing.is_empty() {
+                let labels: Vec<&str> = i
+                    .auth
+                    .iter()
+                    .filter(|a| i.missing.contains(&a.key))
+                    .map(|a| a.label.as_str())
+                    .collect();
+                (
+                    tr!("repos-needs-before-search", labels = labels.join(", ")),
+                    true,
+                )
+            } else if let Some(note) = &i.desktop_note {
+                (note.clone(), true)
+            } else if !i.offered {
+                (tr!("repos-no-longer-offered"), true)
+            } else if let Some(host) = &i.update_host {
+                (tr!("repos-update-host", host = host), true)
+            } else if i.custom {
+                (tr!("repos-tap-change-custom"), false)
+            } else if !i.auth.is_empty() {
+                let labels: Vec<&str> = i.auth.iter().map(|a| a.label.as_str()).collect();
+                (
+                    tr!("repos-tap-change-keys", labels = labels.join(", ")),
+                    false,
+                )
+            } else {
+                (String::new(), false)
+            };
+            let health = self
+                .health
+                .get(&host_key(&i.host))
+                .map(|h| (h.line(), h.ok()))
+                .unwrap_or_default();
+            lines.push(EndpointRow {
+                name: i.name.clone().into(),
+                line: if i.custom {
+                    tr!(
+                        "repos-line-custom",
+                        host = &i.host,
+                        kind = i.kind.to_string()
+                    )
+                } else {
+                    format!("{}  {}  v{}", i.host, i.kind, i.version)
+                }
+                .into(),
+                installed: true,
+                enabled: i.enabled,
+                nsfw: i.nsfw,
+                note: note.into(),
+                health: health.0.into(),
+                health_ok: health.1,
+                update: match i.update {
+                    Some(v) => tr!("repos-update-to", version = v.to_string()),
+                    None if !i.missing.is_empty() => tr!("repos-add-its-value"),
+                    None => String::new(),
+                }
+                .into(),
+                editable: !i.auth.is_empty() || i.custom,
+                warn,
+            });
+            rows.push(Row::Installed {
+                install: i.install_id.clone(),
+                update: i.update.is_some(),
+                fill: !i.missing.is_empty(),
+            });
+        }
+        for o in catalog.offered.iter().filter(|o| o.installed.is_none()) {
+            let needs: Vec<&str> = o.auth.iter().map(|a| a.label.as_str()).collect();
+            lines.push(EndpointRow {
+                name: o.name.clone().into(),
+                line: format!("{}  {}  {}", o.host, o.kind, o.lang).into(),
+                installed: false,
+                enabled: false,
+                nsfw: o.nsfw,
+                note: if needs.is_empty() {
+                    String::new()
+                } else {
+                    tr!("repos-asks-for", labels = needs.join(", "))
+                }
+                .into(),
+                update: "".into(),
+                editable: false,
+                warn: !o.auth.is_empty(),
+                health: "".into(),
+                health_ok: false,
+            });
+            rows.push(Row::Offered {
+                repo: o.repo_url.clone(),
+                id: o.id.clone(),
+            });
+        }
+        // An open form follows its endpoint to wherever the list now has it, and closes when
+        // the endpoint is gone. A form that moved gets a new, empty field, so what was typed
+        // is dropped too, and what is sent always matches what is on screen.
+        if let Some(a) = &self.asking {
+            let target = match &a.row {
+                Row::Fill { install } | Row::Installed { install, .. } => rows
+                    .iter()
+                    .position(|r| matches!(r, Row::Installed { install: i, .. } if i == install)),
+                Row::Offered { repo, id } => rows.iter().position(
+                    |r| matches!(r, Row::Offered { repo: rr, id: ii } if rr == repo && ii == id),
+                ),
+            };
+            let before = self.rows.iter().position(|r| same(r, &a.row));
+            match target {
+                None => self.dismiss(),
+                Some(at) => {
+                    if Some(at) != before
+                        && let Some(a) = self.asking.as_mut()
+                    {
+                        a.values.iter_mut().for_each(String::clear);
+                    }
+                    self.data(|d| d.set_asking_index(at as i32));
+                }
+            }
+        }
+        // An open edit follows its source too, and closes when it is gone.
+        if let Some(install) = &self.editing {
+            match rows
+                .iter()
+                .position(|r| matches!(r, Row::Installed { install: i, .. } if i == install))
+            {
+                Some(at) => self.data(|d| d.set_editing_index(at as i32)),
+                None => self.close_edit(),
+            }
+        }
+        self.rows = rows;
+        let on = lines.iter().filter(|l| l.installed && l.enabled).count() as i32;
+        update_rows(&self.lines, lines);
+        self.data(|d| {
+            d.set_repos(ModelRc::new(VecModel::from(repos)));
+            d.set_on_count(on);
+        });
+        self.catalog = Some(catalog);
+    }
+
+    fn add(&mut self, url: String) {
+        if url.is_empty() {
+            return;
+        }
+        self.busy(true);
+        self.data(|d| d.set_error("".into()));
+        self.asked += 1;
+        let asked = self.asked;
+        let started = spawn(Call::AddEndpointRepo { url }, move |r, answer| {
+            // An answer to a preview a Cancel, a link or a newer Add replaced leaves the busy
+            // state to the one that replaced it
+            if r.asked != asked {
+                return;
+            }
+            r.fetching = None;
+            r.busy(false);
+            match answer {
+                Ok(Reply::EndpointRepoPreview { preview }) => {
+                    let line = preview_line(&preview);
+                    r.data(|d| {
+                        d.set_preview_name(preview.name.clone().into());
+                        d.set_preview_url(preview.url.clone().into());
+                        d.set_preview_fingerprint(preview.fingerprint.clone().into());
+                        d.set_preview_line(line.into());
+                        d.set_preview_nsfw(preview.nsfw);
+                        d.set_previewing(true);
+                    });
+                    r.preview = Some(preview);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    let text = e.to_string();
+                    r.data(|d| d.set_error(text.into()));
+                }
+            }
+        });
+        if started {
+            self.fetching = Some(asked);
+        } else {
+            self.busy(false);
+        }
+    }
+
+    /// Opens a source added by hand for editing: its name and address in its own row.
+    fn open_edit(&mut self, i: i32, e: &anibeam_core::InstalledEndpoint) {
+        self.dismiss();
+        self.editing = Some(e.install_id.clone());
+        let (name, address) = (e.name.clone(), e.address.clone().unwrap_or_default());
+        let keys: Vec<&str> = e.auth.iter().map(|a| a.label.as_str()).collect();
+        let keys = keys.join(", ");
+        self.data(|d| {
+            d.set_edit_name(name.into());
+            d.set_edit_url(address.into());
+            d.set_edit_keys(keys.into());
+            d.set_edit_error("".into());
+            d.set_editing_index(i);
+        });
+    }
+
+    /// From the edit form to the source's values: its keys and tokens, the form repo sources
+    /// open on, since a key is never typed into the address shown.
+    fn change_values(&mut self) {
+        let Some(install) = self.editing.clone() else {
+            return;
+        };
+        let Some(e) = self
+            .catalog
+            .as_ref()
+            .and_then(|c| c.installed.iter().find(|e| e.install_id == install))
+            .cloned()
+        else {
+            return;
+        };
+        let Some(i) = self
+            .rows
+            .iter()
+            .position(|r| matches!(r, Row::Installed { install: x, .. } if *x == install))
+        else {
+            return;
+        };
+        self.ask(
+            i as i32,
+            Row::Fill { install },
+            e.auth.clone(),
+            Note::KeptEmpty,
+        );
+    }
+
+    fn close_edit(&mut self) {
+        self.editing = None;
+        self.data(|d| {
+            d.set_editing_index(-1);
+            d.set_edit_error("".into());
+        });
+    }
+
+    fn save_edit(&mut self) {
+        let Some(install) = self.editing.clone() else {
+            return;
+        };
+        if self.saving || crate::local::core().is_none() {
+            return;
+        }
+        self.saving = true;
+        let (mut name, mut url) = (String::new(), String::new());
+        self.data(|d| {
+            name = d.get_edit_name().to_string();
+            url = d.get_edit_url().to_string();
+        });
+        let saved = install.clone();
+        let started = spawn(
+            Call::EditCustomEndpoint { install, name, url },
+            move |r, answer| {
+                r.saving = false;
+                // The answer is for the source that was saved; another may be open by now.
+                let still_open = r.editing.as_deref() == Some(saved.as_str());
+                match answer {
+                    Ok(Reply::EndpointCatalog { catalog }) => {
+                        if still_open {
+                            r.close_edit();
+                        }
+                        r.show(catalog);
+                        crate::local::touch();
+                        crate::app::endpoints_changed();
+                    }
+                    Ok(_) => {}
+                    Err(e) if still_open => {
+                        let text = e.to_string();
+                        r.data(|d| d.set_edit_error(text.into()));
+                    }
+                    Err(_) => {}
+                }
+            },
+        );
+        if !started {
+            self.saving = false;
+        }
+    }
+
+    fn add_custom(&mut self, name: String, url: String) {
+        self.data(|d| d.set_custom_error("".into()));
+        spawn(
+            Call::AddCustomEndpoint {
+                name,
+                url,
+                credentials: Vec::new(),
+            },
+            |r, answer| match answer {
+                Ok(Reply::EndpointCatalog { catalog }) => {
+                    r.show(catalog);
+                    crate::local::touch();
+                    crate::app::endpoints_changed();
+                    r.data(|d| {
+                        d.set_custom_name("".into());
+                        d.set_custom_url("".into());
+                    });
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    let text = e.to_string();
+                    r.data(|d| d.set_custom_error(text.into()));
+                }
+            },
+        );
+    }
+
+    fn trust(&mut self) {
+        let Some(p) = self.preview.clone() else {
+            return;
+        };
+        self.busy(true);
+        let started = spawn(
+            Call::TrustEndpointRepo {
+                url: p.url,
+                key: p.key,
+            },
+            |r, answer| {
+                if r.answer(answer) {
+                    r.preview = None;
+                    r.data(|d| {
+                        d.set_previewing(false);
+                        d.set_url("".into());
+                    });
+                }
+            },
+        );
+        if !started {
+            self.busy(false);
+        }
+    }
+
+    fn remove_repo(&mut self, i: i32) {
+        let Some(url) = self
+            .catalog
+            .as_ref()
+            .and_then(|c| usize::try_from(i).ok().and_then(|i| c.repos.get(i)))
+            .map(|r| r.url.clone())
+        else {
+            return;
+        };
+        spawn(Call::RemoveEndpointRepo { url }, |r, answer| {
+            r.answer(answer);
+        });
+    }
+
+    /// Asks each site this phone searches whether it answers, with the connection check's
+    /// steps, and writes what it found under each installed site.
+    fn check(&mut self) {
+        if self
+            .window
+            .upgrade()
+            .is_some_and(|w| w.global::<RepoData>().get_checking())
+        {
+            return;
+        }
+        let started = spawn(Call::PhoneNetCheck, |r, answer| {
+            r.data(|d| d.set_checking(false));
+            if let Ok(Reply::PhoneNetCheck { checks }) = answer {
+                r.health = health_of(&checks);
+                if let Some(catalog) = r.catalog.clone() {
+                    r.show(catalog);
+                }
+            }
+        });
+        // Set after the start, which answers on this thread later, never before it
+        if started {
+            self.data(|d| d.set_checking(true));
+        }
+    }
+
+    fn refresh(&mut self) {
+        spawn(Call::RefreshEndpointRepos, |r, answer| {
+            // A refresh that cannot reach anything is said on each repo's row; it is not an
+            // error of the page's.
+            if let Ok(Reply::EndpointCatalog { catalog }) = answer {
+                r.show(catalog);
+                crate::local::touch();
+                crate::app::endpoints_changed();
+            }
+        });
+    }
+
+    fn row(&self, i: i32) -> Option<Row> {
+        usize::try_from(i)
+            .ok()
+            .and_then(|i| self.rows.get(i))
+            .cloned()
+    }
+
+    /// Install, or take an update. Either asks for values first when the endpoint needs them.
+    fn act(&mut self, i: i32) {
+        let Some(row) = self.row(i) else { return };
+        let Some(catalog) = &self.catalog else { return };
+        let (fields, asks) = match &row {
+            Row::Offered { repo, id } => {
+                let Some(o) = catalog
+                    .offered
+                    .iter()
+                    .find(|o| &o.repo_url == repo && &o.id == id)
+                else {
+                    return;
+                };
+                (o.auth.clone(), !o.auth.is_empty())
+            }
+            Row::Fill { .. } => return,
+            Row::Installed {
+                install,
+                update: false,
+                fill: true,
+            } => {
+                let Some(e) = catalog.installed.iter().find(|e| &e.install_id == install) else {
+                    return;
+                };
+                let fields = e
+                    .auth
+                    .iter()
+                    .filter(|a| e.missing.contains(&a.key))
+                    .cloned()
+                    .collect();
+                let fill = Row::Fill {
+                    install: install.clone(),
+                };
+                self.ask(i, fill, fields, Note::KeptNever);
+                return;
+            }
+            Row::Installed {
+                install, update, ..
+            } => {
+                if !update {
+                    return;
+                }
+                let Some(e) = catalog.installed.iter().find(|e| &e.install_id == install) else {
+                    return;
+                };
+                // The update's own fields are the offered definition's.
+                let fields = catalog
+                    .offered
+                    .iter()
+                    .find(|o| o.repo_url == e.repo_url && o.id == e.id)
+                    .map(|o| o.auth.clone())
+                    .unwrap_or_default();
+                (fields, e.update_asks)
+            }
+        };
+        if !asks {
+            self.run(row, Vec::new());
+            return;
+        }
+        let note = match (
+            &row,
+            catalog.installed.iter().find(
+                |e| matches!(&row, Row::Installed { install, .. } if install == &e.install_id),
+            ),
+        ) {
+            (Row::Installed { .. }, Some(e)) => match &e.update_host {
+                Some(host) => Note::NewHost(host.clone()),
+                None => Note::NewAsks,
+            },
+            _ => Note::KeptNever,
+        };
+        self.ask(i, row, fields, note);
+    }
+
+    fn ask(&mut self, index: i32, row: Row, fields: Vec<anibeam_core::EndpointField>, note: Note) {
+        self.close_edit();
+        let rows: Vec<AuthRow> = fields
+            .iter()
+            .map(|f| AuthRow {
+                label: f.label.clone().into(),
+                help: f.help.clone().into(),
+                help_url: f.help_url.clone().unwrap_or_default().into(),
+                secret: f.secret,
+            })
+            .collect();
+        let kind = match &row {
+            Row::Offered { .. } => 0,
+            Row::Installed { .. } => 1,
+            Row::Fill { .. } => 2,
+        };
+        let text = note.text();
+        self.asking = Some(Asking {
+            row,
+            note,
+            keys: fields.iter().map(|f| f.key.clone()).collect(),
+            values: vec![String::new(); fields.len()],
+        });
+        self.data(|d| {
+            d.set_asking_kind(kind);
+            d.set_asking_index(index);
+            d.set_asking_note(text.into());
+            d.set_fields(ModelRc::new(VecModel::from(rows)));
+            d.set_asking(true);
+            d.set_asking_error("".into());
+        });
+    }
+
+    /// Opens an installed endpoint's values: every field, to add one that is missing or
+    /// change one that is stored. A field left empty keeps its value.
+    fn open(&mut self, i: i32) {
+        let Some(Row::Installed {
+            install,
+            update,
+            fill,
+        }) = self.row(i)
+        else {
+            return;
+        };
+        let Some(e) = self
+            .catalog
+            .as_ref()
+            .and_then(|c| c.installed.iter().find(|e| e.install_id == install))
+            .cloned()
+        else {
+            return;
+        };
+        // A source added by hand opens for editing, a missing value or not: its address
+        // may be what is wrong, and the form leads to its values too.
+        if e.custom {
+            self.open_edit(i, &e);
+            return;
+        }
+        // A row still missing a value asks for just that, as its button does.
+        if fill && !update {
+            self.act(i);
+            return;
+        }
+        if e.auth.is_empty() {
+            return;
+        }
+        self.ask(i, Row::Fill { install }, e.auth.clone(), Note::KeptEmpty);
+    }
+
+    fn confirm(&mut self) {
+        let Some(a) = &self.asking else { return };
+        if matches!(a.row, Row::Fill { .. }) && a.values.iter().all(|v| v.trim().is_empty()) {
+            self.data(|d| d.set_asking_error(tr!("repos-type-value").into()));
+            return;
+        }
+        let credentials = a
+            .keys
+            .iter()
+            .zip(&a.values)
+            .map(|(k, v)| EndpointCredential {
+                key: k.clone(),
+                value: v.clone(),
+            })
+            .collect();
+        self.run(a.row.clone(), credentials);
+    }
+
+    fn dismiss(&mut self) {
+        self.asking = None;
+        self.data(|d| {
+            d.set_asking(false);
+            d.set_fields(ModelRc::default());
+        });
+    }
+
+    fn run(&mut self, row: Row, credentials: Vec<EndpointCredential>) {
+        let call = match row {
+            Row::Offered { repo, id } => Call::InstallEndpoint {
+                repo,
+                id,
+                credentials,
+            },
+            Row::Installed { install, .. } => Call::UpdateEndpoint {
+                install,
+                credentials,
+            },
+            Row::Fill { install } => Call::SetEndpointCredentials {
+                install,
+                credentials,
+            },
+        };
+        self.busy(true);
+        let started = spawn(call, |r, answer| match answer {
+            Err(e) => {
+                r.busy(false);
+                let text = e.to_string();
+                r.data(|d| d.set_asking_error(text.into()));
+            }
+            ok => {
+                if r.answer(ok) {
+                    r.dismiss();
+                }
+            }
+        });
+        if !started {
+            self.busy(false);
+        }
+    }
+
+    fn remove_endpoint(&mut self, i: i32) {
+        let Some(Row::Installed { install, .. }) = self.row(i) else {
+            return;
+        };
+        spawn(Call::RemoveEndpoint { install }, |r, answer| {
+            r.answer(answer);
+        });
+    }
+
+    fn toggle(&mut self, i: i32) {
+        let Some(Row::Installed { install, .. }) = self.row(i) else {
+            return;
+        };
+        let enabled = !self
+            .catalog
+            .as_ref()
+            .and_then(|c| c.installed.iter().find(|e| e.install_id == install))
+            .is_some_and(|e| e.enabled);
+        spawn(
+            Call::SetEndpointEnabled { install, enabled },
+            |r, answer| {
+                r.answer(answer);
+            },
+        );
+    }
+}
+/// A host as the check names it, without its port and in lower case.
+fn host_key(host: &str) -> String {
+    host.rsplit_once(':')
+        .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()) && !port.is_empty())
+        .map_or(host, |(h, _)| h)
+        .to_lowercase()
+}
+
+/// What the connection check found for each host: the last step, a whole request, when
+/// every step went through, else the first step that failed and why.
+fn health_of(checks: &[anibeam_core::NetCheck]) -> HashMap<String, Health> {
+    let mut out: HashMap<String, Health> = HashMap::new();
+    for c in checks {
+        let Some((label, step)) = c.name.split_once(": ") else {
+            continue;
+        };
+        let key = host_key(label);
+        let entry = out.entry(key).or_insert(Health::Pending);
+        if !c.ok {
+            if entry.ok() {
+                *entry = Health::Failed {
+                    step: step.to_string(),
+                    detail: c.detail.clone(),
+                };
+            }
+        } else if entry.ok() && (step == "HTTPS" || step == "HTTP") {
+            *entry = Health::Answered { ms: c.ms };
+        }
+    }
+    out.retain(|_, h| *h != Health::Pending);
+    out
+}
+
+#[cfg(test)]
+mod health_tests {
+    use super::*;
+    use anibeam_core::NetCheck;
+
+    fn check(name: &str, ok: bool, detail: &str, ms: u64) -> NetCheck {
+        NetCheck {
+            name: name.into(),
+            ok,
+            detail: detail.into(),
+            ms,
+        }
+    }
+
+    #[test]
+    fn a_host_that_went_through_answers_in_the_time_of_its_request() {
+        let checks = [
+            check("site.example: finding its address", true, "1.2.3.4", 12),
+            check("site.example: HTTPS", true, "HTTP 200, 10 bytes", 240),
+            check("example.com: HTTPS", true, "HTTP 200, 10 bytes", 90),
+        ];
+        let h = health_of(&checks);
+        assert_eq!(h["site.example"], Health::Answered { ms: 240 });
+    }
+
+    #[test]
+    fn a_host_that_failed_says_the_first_step_that_did() {
+        let checks = [
+            check("site.example: finding its address", true, "1.2.3.4", 12),
+            check(
+                "site.example: reaching 1.2.3.4",
+                false,
+                "no answer (dropped)",
+                6000,
+            ),
+            check("site.example: HTTPS", false, "timed out", 6000),
+        ];
+        let h = health_of(&checks);
+        assert_eq!(
+            h["site.example"],
+            Health::Failed {
+                step: "reaching 1.2.3.4".into(),
+                detail: "no answer (dropped)".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_port_is_not_part_of_the_host() {
+        assert_eq!(host_key("Site.Example:9696"), "site.example");
+        assert_eq!(host_key("site.example"), "site.example");
+    }
+}
