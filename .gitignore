@@ -29,21 +29,26 @@ dist-ssr
 out/
 
 # Local data, settings and spike build output. Tracked JSON is force-added
-# (git add -f), such as apps/linux/scripts/drive/*.json.
+# (git add -f), such as apps/desktop/scripts/drive/*.json.
 *.json
 
 /target/
-!core/tests/fixtures/**/*.json
-!host-api/fixtures/*.json
+!crates/core/tests/fixtures/**/*.json
+!crates/host/fixtures/*.json
+!crates/host-api/fixtures/*.json
 # The website's translations, one file per language (site/tools/i18n.py)
 !site/i18n/*.json
 # What a poster in the home page's wall shows when clicked (site/tools/shows.py)
 !site/shows.json
-apps/linux/captures/
-apps/linux/.qmlls.ini
+apps/desktop/captures/
+apps/desktop/.qmlls.ini
 
 # Python bytecode from the packaging scripts
 __pycache__/
 
-# A checkout from before the phone app moved to apps/phone keeps its build output here (#1309).
+# Checkouts from before the app folder renames keep stale build output here.
+# For apps/linux/, only ignore generated output so uncommitted source files on
+# pre-move branches stay visible to git status and git add.
 /apps/android/
+/apps/linux/captures/
+/apps/linux/.qmlls.ini

@@ -3119,7 +3119,7 @@ error-line-details = 세부 정보
 error-line-details-tip = 무엇이 잘못됐는지 그대로 보여 주고 복사해요
 error-line-copied = 복사했어요.
 
-## Readouts (apps/linux/src/format.rs): times, countdowns and lengths
+## Readouts (apps/desktop/src/format.rs): times, countdowns and lengths
 
 fmt-just-now = 방금
 fmt-now = 지금
@@ -3148,7 +3148,7 @@ fmt-size-gb = { $size } GB
 fmt-size-tb = { $size } TB
 fmt-episode-span = { $first }~{ $through }화
 
-## apps/linux/src/problem.rs: every call error in a person's words, what happened and what to do
+## apps/desktop/src/problem.rs: every call error in a person's words, what happened and what to do
 
 problem-report = 다시 시도하세요. 계속 일어나면 활동 로그에서 신고하세요.
 problem-try-later = 나중에 다시 시도하세요.
@@ -3216,7 +3216,7 @@ problem-refused-unmatched = 이 파일은 에피소드와 연결되지 않았어
 problem-refused-unmatched-next = 작품 페이지의 수정에서 고치세요.
 problem-refused-on-disk = 이 컴퓨터에만 있는 파일이에요.
 
-## apps/linux/src/library_view.rs: the library page's section titles and the one fact under each
+## apps/desktop/src/library_view.rs: the library page's section titles and the one fact under each
 
 library-view-airing = 방영 중
 library-view-no-date = 날짜 없음
@@ -3244,22 +3244,22 @@ library-view-dropped-on-disk =
        *[other] 파일 { $count }개
     }
 
-## apps/linux/src/dbus/notify.rs: the desktop notification for a new episode
+## apps/desktop/src/dbus/notify.rs: the desktop notification for a new episode
 
 notify-episode-out = { $title } { $episode }화가 공개됐어요
 notify-click-open = 클릭하면 { -app-name }에서 열려요
 notify-click-get = 클릭하면 { -app-name }에서 에피소드를 받아요
 notify-get-episodes = 에피소드 받기
 
-## apps/linux/src/nowplaying.rs: the second line a media widget shows while an episode plays
+## apps/desktop/src/nowplaying.rs: the second line a media widget shows while an episode plays
 
 now-playing-show-episode = { $show }, { $episode }
 
-## apps/linux/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
+## apps/desktop/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
 
 inhibit-reason = 에피소드 재생 중
 
-## apps/linux/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
+## apps/desktop/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
 
 door-not-a-choice = { $value }은(는) 올바른 선택이 아니에요
 door-tokens-op-empty = tokens op에는 tokens가 필요해요
@@ -3267,7 +3267,7 @@ door-not-a-refine-op = { $value }은(는) refine op가 아니에요
 door-limit-too-low = 1 이상이어야 해요. 받은 값: { $limit }
 door-not-a-torrent-action = { $value }은(는) 토렌트 동작이 아니에요
 
-## apps/linux/src/bridge/shell.rs: the first-run starter folder and the update notice
+## apps/desktop/src/bridge/shell.rs: the first-run starter folder and the update notice
 
 shell-starter-folder-failed = { $folder }을(를) 만들지 못했어요: { $error }
 shell-update-gone = { -app-name } { $version }은(는) 더 이상 제공되지 않아요

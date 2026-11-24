@@ -3360,7 +3360,7 @@ error-line-details = Detalles
 error-line-details-tip = Muestra qué falló, palabra por palabra, y cópialo
 error-line-copied = Copiado.
 
-## Readouts (apps/linux/src/format.rs): times, countdowns and lengths
+## Readouts (apps/desktop/src/format.rs): times, countdowns and lengths
 
 fmt-just-now = justo ahora
 fmt-now = ahora
@@ -3389,7 +3389,7 @@ fmt-size-gb = { $size } GB
 fmt-size-tb = { $size } TB
 fmt-episode-span = Episodios { $first } a { $through }
 
-## apps/linux/src/problem.rs: every call error in a person's words, what happened and what to do
+## apps/desktop/src/problem.rs: every call error in a person's words, what happened and what to do
 
 problem-report = Inténtalo de nuevo. Si sigue pasando, notifícalo desde el registro de actividad.
 problem-try-later = Inténtalo más tarde.
@@ -3457,7 +3457,7 @@ problem-refused-unmatched = Ese archivo no está asociado a ningún episodio.
 problem-refused-unmatched-next = Corrígelo desde la página de la serie, en Corregir.
 problem-refused-on-disk = Ese archivo solo está en este ordenador.
 
-## apps/linux/src/library_view.rs: the library page's section titles and the one fact under each
+## apps/desktop/src/library_view.rs: the library page's section titles and the one fact under each
 
 library-view-airing = En emisión
 library-view-no-date = Sin fecha
@@ -3487,22 +3487,22 @@ library-view-dropped-on-disk =
        *[other] { $count } archivos
     } aún en el disco
 
-## apps/linux/src/dbus/notify.rs: the desktop notification for a new episode
+## apps/desktop/src/dbus/notify.rs: the desktop notification for a new episode
 
 notify-episode-out = Ya está disponible el episodio { $episode } de { $title }
 notify-click-open = Haz clic para abrirlo en { -app-name }
 notify-click-get = Haz clic para obtener los episodios en { -app-name }
 notify-get-episodes = Obtener episodios
 
-## apps/linux/src/nowplaying.rs: the second line a media widget shows while an episode plays
+## apps/desktop/src/nowplaying.rs: the second line a media widget shows while an episode plays
 
 now-playing-show-episode = { $show }, { $episode }
 
-## apps/linux/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
+## apps/desktop/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
 
 inhibit-reason = Reproduciendo un episodio
 
-## apps/linux/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
+## apps/desktop/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
 
 door-not-a-choice = { $value } no es una opción válida
 door-tokens-op-empty = una op tokens necesita tokens
@@ -3510,7 +3510,7 @@ door-not-a-refine-op = { $value } no es una op de filtrado
 door-limit-too-low = debe ser al menos 1, se recibió { $limit }
 door-not-a-torrent-action = { $value } no es una acción de torrent
 
-## apps/linux/src/bridge/shell.rs: the first-run starter folder and the update notice
+## apps/desktop/src/bridge/shell.rs: the first-run starter folder and the update notice
 
 shell-starter-folder-failed = No se pudo crear { $folder }: { $error }
 shell-update-gone = { -app-name } { $version } ya no está disponible

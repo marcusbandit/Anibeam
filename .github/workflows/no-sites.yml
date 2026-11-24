@@ -24,6 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - run: .github/no-site-names.sh
+      - run: scripts/ci/no-site-names.sh
 
-      - run: .github/one-spelling.sh
+      - run: scripts/ci/one-spelling.sh

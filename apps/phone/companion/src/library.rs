@@ -213,7 +213,10 @@ mod tests {
     use crate::api::Snapshot;
 
     fn fixture() -> Snapshot {
-        serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json")).unwrap()
+        serde_json::from_str(include_str!(
+            "../../../../crates/host-api/fixtures/snapshot.json"
+        ))
+        .unwrap()
     }
 
     /// The fixture's Frieren, found by title so a reordered fixture cannot swap the series

@@ -1,0 +1,36 @@
+// The Calendar tab's head: its name and how it stands, and one switch for what it shows:
+// this phone's schedule, the computer's once it has answered, or Airing now. Unfolded, a
+// second switch picks the week as a board or as days.
+
+import { Theme } from "../core/theme.slint";
+import { AppData } from "../core/data.slint";
+import { PageTitle, Segmented } from "../core/widgets.slint";
+import { Fold } from "../core/fold.slint";
+import { Tr } from "../core/tr.slint";
+
+export component CalendarHead inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    PageTitle {
+        title: Tr.t("cal-title");
+        note: AppData.airing-view ? "" : AppData.cal-note;
+    }
+    property <int> airing-index: AppData.devices.length;
+    Segmented {
+        options: AppData.cal-views;
+        picked: AppData.airing-view ? root.airing-index : AppData.cal-device;
+        pick(i) => {
+            if (i == root.airing-index) {
+                AppData.open-airing();
+            } else {
+                AppData.airing-view = false;
+                AppData.pick-cal-device(i);
+            }
+        }
+    }
+    // Unfolded, the week as a board or as days; half folded it is always days.
+    if Fold.posture == 1 && !AppData.airing-view && !AppData.series-open: Segmented {
+        options: [Tr.t("cal-week"), Tr.t("cal-days")];
+        picked: AppData.cal-days ? 1 : 0;
+        pick(i) => { AppData.set-cal-days(i == 1); }
+    }
+}

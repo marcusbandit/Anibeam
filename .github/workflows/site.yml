@@ -15,15 +15,17 @@ on:
       - site/**
       - assets/logo/**
       - .github/workflows/site.yml
-      - apps/linux/CHANGELOG.md
+      - apps/desktop/CHANGELOG.md
       - apps/phone/CHANGELOG.md
-      - apps/linux/packaging/linux/repos.sh
-      - apps/linux/packaging/linux/publish-repos.sh
+      - apps/desktop/packaging/linux/repos.sh
+      - apps/desktop/packaging/linux/publish-repos.sh
   pull_request:
     paths:
       - site/**
       - assets/logo/**
       - .github/workflows/site.yml
+      - apps/desktop/CHANGELOG.md
+      # PRs opened before the move (#1477) still list apps/linux; drop once they merge main.
       - apps/linux/CHANGELOG.md
       - apps/phone/CHANGELOG.md
   workflow_dispatch:
@@ -65,7 +67,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ANIBEAM_REPO_GPG_KEY: ${{ secrets.ANIBEAM_REPO_GPG_KEY }}
-        run: apps/linux/packaging/linux/publish-repos.sh "$RUNNER_TEMP/site"
+        run: apps/desktop/packaging/linux/publish-repos.sh "$RUNNER_TEMP/site"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ${{ runner.temp }}/site

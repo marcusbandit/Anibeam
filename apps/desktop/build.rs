@@ -1,0 +1,398 @@
+// One build script, no CMake. cxx-qt-build finds Qt through qmake6, runs moc, rcc,
+// qmlcachegen and qmltyperegistrar, compiles the C++ beside the generated bridge and
+// links the pacman Qt. MpvQt has no .pc file, so its two libraries are named here.
+//
+// On Arch both live under /usr. Elsewhere (the macOS workflow builds MpvQt from source
+// into its own prefix and takes mpv from Homebrew) MPVQT_PREFIX and MPV_PREFIX say where.
+use cxx_qt_build::{CxxQtBuilder, QmlModule};
+
+fn main() {
+    let app_icon_file = app_icon();
+    let icon = format!("assets/{app_icon_file}");
+    println!("cargo:rerun-if-env-changed=MPVQT_PREFIX");
+    println!("cargo:rerun-if-env-changed=MPV_PREFIX");
+    let mpvqt_prefix = std::env::var("MPVQT_PREFIX").unwrap_or_else(|_| "/usr".to_string());
+    // The prefixes the system does not already search. /usr is never named: -I/usr/include
+    // breaks libstdc++'s #include_next, and /usr/lib is on the linker's path anyway.
+    let mut extra: Vec<String> = [Some(mpvqt_prefix.clone()), std::env::var("MPV_PREFIX").ok()]
+        .into_iter()
+        .flatten()
+        .filter(|p| p != "/usr")
+        .collect();
+    extra.dedup();
+    let mut builder = CxxQtBuilder::new_qml_module(
+        QmlModule::new("com.marcusrosado.Anibeam")
+            .version(1, 0)
+            .qml_file("qml/Main.qml")
+            .qml_file("qml/dev/Driver.qml")
+            .qml_file("qml/dev/Control.qml")
+            .qml_file("qml/ui/Tokens.qml")
+            .qml_file("qml/ui/Words.qml")
+            .qml_file("qml/dev/TokensPage.qml")
+            .qml_file("qml/ui/Corner.qml")
+            .qml_file("qml/ui/Frost.qml")
+            .qml_file("qml/ui/Blocker.qml")
+            .qml_file("qml/ui/WheelStep.qml")
+            .qml_file("qml/ui/Label.qml")
+            .qml_file("qml/ui/Icon.qml")
+            .qml_file("qml/ui/Chip.qml")
+            .qml_file("qml/ui/Seg.qml")
+            .qml_file("qml/pages/LibraryTabs.qml")
+            .qml_file("qml/pages/SeasonPicker.qml")
+            .qml_file("qml/ui/Switch.qml")
+            .qml_file("qml/ui/Button.qml")
+            .qml_file("qml/ui/Field.qml")
+            .qml_file("qml/ui/CodeInput.qml")
+            .qml_file("qml/ui/Dropdown.qml")
+            .qml_file("qml/ui/Swatches.qml")
+            .qml_file("qml/ui/SliderRow.qml")
+            .qml_file("qml/settings/SettingRow.qml")
+            .qml_file("qml/ui/Panel.qml")
+            .qml_file("qml/shell/Frame.qml")
+            .qml_file("qml/shell/Nav.qml")
+            .qml_file("qml/ui/Menu.qml")
+            .qml_file("qml/ui/Tooltip.qml")
+            .qml_file("qml/ui/InlineConfirm.qml")
+            .qml_file("qml/shell/WhatsNew.qml")
+            .qml_file("qml/shell/ScanSummary.qml")
+            .qml_file("qml/shell/Onboarding.qml")
+            .qml_file("qml/shell/UpdateNotice.qml")
+            .qml_file("qml/shell/DiscordAsk.qml")
+            .qml_file("qml/ui/EmptyState.qml")
+            .qml_file("qml/pages/LibraryEmpty.qml")
+            .qml_file("qml/ui/ErrorLine.qml")
+            .qml_file("qml/ui/PagePlaceholder.qml")
+            .qml_file("qml/ui/ThinScrollBar.qml")
+            .qml_file("qml/ui/GridKeys.qml")
+            .qml_file("qml/ui/PageScroll.qml")
+            .qml_file("qml/shell/Rail.qml")
+            .qml_file("qml/shell/StatusStrip.qml")
+            .qml_file("qml/ui/SearchField.qml")
+            .qml_file("qml/ui/Card.qml")
+            .qml_file("qml/pages/LibraryPage.qml")
+            .qml_file("qml/pages/HomePage.qml")
+            .qml_file("qml/ui/PosterTone.qml")
+            .qml_file("qml/pages/FeedPage.qml")
+            .qml_file("qml/pages/WatchingPage.qml")
+            .qml_file("qml/pages/StatsPage.qml")
+            .qml_file("qml/pages/AiringPage.qml")
+            .qml_file("qml/pages/MetadataPage.qml")
+            .qml_file("qml/series/MatchPanel.qml")
+            .qml_file("qml/series/ScheduleSheet.qml")
+            .qml_file("qml/series/NotesSheet.qml")
+            .qml_file("qml/series/FixSheet.qml")
+            .qml_file("qml/series/EpisodesPane.qml")
+            .qml_file("qml/ui/ConnectSheet.qml")
+            .qml_file("qml/ui/TrackerNudge.qml")
+            .qml_file("qml/ui/ConnectButton.qml")
+            .qml_file("qml/ui/PosterPool.qml")
+            .qml_file("qml/ui/StatusDot.qml")
+            .qml_file("qml/series/ScorePicker.qml")
+            .qml_file("qml/shell/ActivityColumn.qml")
+            .qml_file("qml/series/GetShow.qml")
+            .qml_file("qml/series/EpisodeCubes.qml")
+            .qml_file("qml/series/EpisodeRow.qml")
+            .qml_file("qml/series/PersonCard.qml")
+            .qml_file("qml/pages/RecommendationCard.qml")
+            .qml_file("qml/pages/RecommendedCard.qml")
+            .qml_file("qml/pages/RecommendedHover.qml")
+            .qml_file("qml/pages/RecommendedPage.qml")
+            .qml_file("qml/series/ShowPage.qml")
+            .qml_file("qml/series/SeriesPage.qml")
+            .qml_file("qml/player/PlayerButton.qml")
+            .qml_file("qml/player/SeekBar.qml")
+            .qml_file("qml/player/TrackPicker.qml")
+            .qml_file("qml/player/PlayerDelays.qml")
+            .qml_file("qml/room/Room.qml")
+            .qml_file("qml/room/RoomPanel.qml")
+            .qml_file("qml/room/RoomGate.qml")
+            .qml_file("qml/ui/Notice.qml")
+            .qml_file("qml/player/KeyHelp.qml")
+            .qml_file("qml/player/PlayerChrome.qml")
+            .qml_file("qml/player/PlayerKeys.qml")
+            .qml_file("qml/player/PlayerPage.qml")
+            .qml_file("qml/shell/ActivityDrawer.qml")
+            .qml_file("qml/ui/Note.qml")
+            .qml_file("qml/ui/Tile.qml")
+            .qml_file("qml/ui/Tiles.qml")
+            .qml_file("qml/ui/ToggleChip.qml")
+            .qml_file("qml/ui/UsageBar.qml")
+            .qml_file("qml/settings/SettingsTab.qml")
+            .qml_file("qml/settings/SettingsPair.qml")
+            .qml_file("qml/settings/SourceRow.qml")
+            .qml_file("qml/settings/TrackerRow.qml")
+            .qml_file("qml/settings/SettingsPage.qml")
+            .qml_file("qml/settings/SettingsLibraryTab.qml")
+            .qml_file("qml/settings/SettingsHiddenAiringTab.qml")
+            .qml_file("qml/settings/LookPane.qml")
+            .qml_file("qml/settings/LookPreview.qml")
+            .qml_file("qml/settings/SettingsAppearanceTab.qml")
+            .qml_file("qml/settings/SubtitlePreview.qml")
+            .qml_file("qml/settings/SettingsPlaybackTab.qml")
+            .qml_file("qml/settings/SettingsAccountsTab.qml")
+            .qml_file("qml/settings/SettingsKeysTab.qml")
+            .qml_file("qml/settings/SettingsAboutTab.qml")
+            .qml_file("qml/settings/SettingsDownloadsTab.qml")
+            .qml_file("qml/downloads/EndpointReposPanel.qml")
+            .qml_file("qml/downloads/SourceAttach.qml")
+            .qml_file("qml/downloads/DownloadsPage.qml")
+            .qml_file("qml/downloads/ReleaseTable.qml")
+            .qml_file("qml/downloads/SearchProgress.qml")
+            .qml_file("qml/downloads/ShowCard.qml")
+            .qml_file("qml/downloads/ShowRow.qml")
+            .qml_file("qml/downloads/ShowDetail.qml")
+            .qml_file("qml/downloads/RemoveSheet.qml")
+            .qml_file("qml/ui/MoveListsSheet.qml")
+            .qml_file("qml/downloads/StartSourceSheet.qml")
+            .qml_file("qml/downloads/TorrentRow.qml")
+            .qml_file("qml/downloads/RollControls.qml")
+            .qml_file("qml/dev/DevRecorder.qml")
+            .qml_file("qml/dev/DevHud.qml")
+            .qml_file("qml/settings/SettingsDeveloperTab.qml")
+            .qml_file("qml/ui/LazyTile.qml"),
+    )
+    .qt_module("Quick")
+    .files([
+        "src/bridge/dev.rs",
+        "src/bridge/door.rs",
+        "src/bridge/fmt.rs",
+        "src/bridge/helpers.rs",
+        "src/bridge/player.rs",
+        "src/bridge/shell.rs",
+        "src/bridge/theme.rs",
+        "src/bridge/tr.rs",
+    ])
+    .include_dir("cpp")
+    // mpvqt_export.h includes mpvqt_version.h bare; CMake's target used to supply this.
+    .include_dir(format!("{mpvqt_prefix}/include/MpvQt"))
+    .cpp_files([
+        "cpp/helpers.cpp",
+        "cpp/devtools.cpp",
+        "cpp/cardface.h",
+        "cpp/cardface.cpp",
+        "cpp/videoitem.h",
+        "cpp/videoitem.cpp",
+        "cpp/keyboard.h",
+        "cpp/keyboard.cpp",
+    ])
+    // qrc:/qt/qml/com/marcusrosado/Anibeam/assets/...; a name left out of this list is a
+    // blank icon at runtime, not a build error, so it is generated:
+    // ls apps/desktop/assets/icons/*.svg | sed 's|apps/desktop/||;s|.*|        "&",|'
+    .qrc_resources([
+        "shaders/poster.vert.qsb",
+        "shaders/poster.frag.qsb",
+        // The Default icon this kind of build shows, and Dark.
+        icon.as_str(),
+        "assets/icon-dark.png",
+        "assets/fonts/Archivo-Variable-Regular.ttf",
+        "assets/fonts/Archivo-Variable-SemiBold.ttf",
+        "assets/fonts/Archivo-Variable-ExtraBold.ttf",
+        "assets/fonts/B612-Regular.ttf",
+        "assets/fonts/B612-Bold.ttf",
+        "assets/icons/activity.svg",
+        "assets/icons/anilist.svg",
+        "assets/icons/archive.svg",
+        "assets/icons/arrow-down.svg",
+        "assets/icons/arrow-down-wide-narrow.svg",
+        "assets/icons/arrow-left.svg",
+        "assets/icons/arrow-right.svg",
+        "assets/icons/arrow-up-right.svg",
+        "assets/icons/arrow-up.svg",
+        "assets/icons/arrow-up-narrow-wide.svg",
+        "assets/icons/audio-lines.svg",
+        "assets/icons/badge-check.svg",
+        "assets/icons/ban.svg",
+        "assets/icons/bell.svg",
+        "assets/icons/book-open.svg",
+        "assets/icons/bookmark.svg",
+        "assets/icons/bug.svg",
+        "assets/icons/calendar.svg",
+        "assets/icons/calendar-clock.svg",
+        "assets/icons/captions.svg",
+        "assets/icons/cast.svg",
+        "assets/icons/case-sensitive.svg",
+        "assets/icons/chart-pie.svg",
+        "assets/icons/check-check.svg",
+        "assets/icons/check.svg",
+        "assets/icons/chevron-down.svg",
+        "assets/icons/chevron-left.svg",
+        "assets/icons/chevron-right.svg",
+        "assets/icons/chevron-up.svg",
+        "assets/icons/chevrons-right.svg",
+        "assets/icons/circle-alert.svg",
+        "assets/icons/circle-check.svg",
+        "assets/icons/circle-play.svg",
+        "assets/icons/circle-question-mark.svg",
+        "assets/icons/circle-x.svg",
+        "assets/icons/clapperboard.svg",
+        "assets/icons/clock.svg",
+        "assets/icons/copy.svg",
+        "assets/icons/crown.svg",
+        "assets/icons/database.svg",
+        "assets/icons/download.svg",
+        "assets/icons/ellipsis.svg",
+        "assets/icons/external-link.svg",
+        "assets/icons/eye-off.svg",
+        "assets/icons/eye.svg",
+        "assets/icons/file-down.svg",
+        "assets/icons/file-up.svg",
+        "assets/icons/film.svg",
+        "assets/icons/folder-open.svg",
+        "assets/icons/folder-plus.svg",
+        "assets/icons/folder-search.svg",
+        "assets/icons/folder-x.svg",
+        "assets/icons/folder.svg",
+        "assets/icons/gauge.svg",
+        "assets/icons/git-branch.svg",
+        "assets/icons/globe.svg",
+        "assets/icons/hard-drive.svg",
+        "assets/icons/heart.svg",
+        "assets/icons/house.svg",
+        "assets/icons/image.svg",
+        "assets/icons/info.svg",
+        "assets/icons/keyboard.svg",
+        "assets/icons/languages.svg",
+        "assets/icons/layers.svg",
+        "assets/icons/link.svg",
+        "assets/icons/lock.svg",
+        "assets/icons/layout-grid.svg",
+        "assets/icons/list-filter.svg",
+        "assets/icons/list-video.svg",
+        "assets/icons/list.svg",
+        "assets/icons/loader-circle.svg",
+        "assets/icons/log-in.svg",
+        "assets/icons/log-out.svg",
+        "assets/icons/maximize.svg",
+        "assets/icons/memory-stick.svg",
+        "assets/icons/minimize.svg",
+        "assets/icons/minus.svg",
+        "assets/icons/monitor.svg",
+        "assets/icons/moon.svg",
+        "assets/icons/myanimelist.svg",
+        "assets/icons/palette.svg",
+        "assets/icons/pause.svg",
+        "assets/icons/pencil.svg",
+        "assets/icons/play.svg",
+        "assets/icons/plus.svg",
+        "assets/icons/radio.svg",
+        "assets/icons/recycle.svg",
+        "assets/icons/refresh-cw.svg",
+        "assets/icons/rotate-ccw.svg",
+        "assets/icons/rotate-cw.svg",
+        "assets/icons/rss.svg",
+        "assets/icons/scan-search.svg",
+        "assets/icons/scan.svg",
+        "assets/icons/search.svg",
+        "assets/icons/settings.svg",
+        "assets/icons/shapes.svg",
+        "assets/icons/skip-back.svg",
+        "assets/icons/skip-forward.svg",
+        "assets/icons/sliders-horizontal.svg",
+        "assets/icons/sparkles.svg",
+        "assets/icons/square-check.svg",
+        "assets/icons/square.svg",
+        "assets/icons/star.svg",
+        "assets/icons/step-back.svg",
+        "assets/icons/step-forward.svg",
+        "assets/icons/sun.svg",
+        "assets/icons/thumbs-up.svg",
+        "assets/icons/timer.svg",
+        "assets/icons/toggle-right.svg",
+        "assets/icons/trash-2.svg",
+        "assets/icons/trash.svg",
+        "assets/icons/triangle-alert.svg",
+        "assets/icons/tv.svg",
+        "assets/icons/type.svg",
+        "assets/icons/upload.svg",
+        "assets/icons/user-check.svg",
+        "assets/icons/users.svg",
+        "assets/icons/volume-2.svg",
+        "assets/icons/volume-x.svg",
+        "assets/icons/wrench.svg",
+        "assets/icons/x.svg",
+    ]);
+    // The Mac's Now Playing and media keys are Objective-C++ (cpp/nowplaying.mm), a library
+    // of its own because ARC is a flag for a whole build: on cxx-qt's it would reach every
+    // .cpp too. clang takes the language from the extension; the C++ side is set as
+    // cxx-qt sets its own, which also links libc++. The cc::Build is cloned from cxx-qt's,
+    // still untouched here, which is how this script reaches the cc crate with no
+    // dependency of its own. The frameworks are linked from src/macnp.rs.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        // The icons on the Mac grid, for the Dock and the Dark bundle icon: the other
+        // platforms keep the full-bleed ones above.
+        builder = builder.qrc_resources([
+            format!("assets/mac/{app_icon_file}").as_str(),
+            "assets/mac/icon-dark.png",
+        ]);
+        println!("cargo:rerun-if-changed=cpp/nowplaying.mm");
+        // SAFETY: only copies cxx-qt's cc::Build; the original is left as it was.
+        builder = unsafe {
+            builder.cc_builder(|cc| {
+                cc.clone()
+                    .cpp(true)
+                    .std("c++17")
+                    .file("cpp/nowplaying.mm")
+                    .flag("-fobjc-arc")
+                    .compile("anibeam_nowplaying");
+            })
+        };
+    }
+    // include_dir() copies a directory's headers into the build rather than adding a -I, and
+    // skips names with no extension (MpvQt/MpvAbstractItem), so a prefix the compiler does
+    // not search already goes in as a real -I.
+    for prefix in &extra {
+        let dir = format!("{prefix}/include");
+        // SAFETY: only adds an include path to cxx-qt's own cc::Build.
+        builder = unsafe {
+            builder.cc_builder(|cc| {
+                cc.include(&dir);
+            })
+        };
+    }
+    // Printed before build() prints Qt's, because the linker and dyld both take the first
+    // match: Qt's directory on a Mac is Homebrew's lib, and a Mac with Homebrew's mpv
+    // installed would otherwise link and load that libmpv rather than the prefix's.
+    for prefix in &extra {
+        println!("cargo:rustc-link-search=native={prefix}/lib");
+        // Both install names are @rpath/... on a Mac; the bundle step rewrites them to the
+        // app's own Frameworks, and this rpath is how a bare cargo run finds them.
+        if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+            println!("cargo:rustc-link-arg=-Wl,-rpath,{prefix}/lib");
+        }
+    }
+    builder.build();
+
+    println!("cargo:rustc-link-lib=MpvQt");
+    println!("cargo:rustc-link-lib=mpv");
+}
+
+/// Which logo the window, the Rail and Appearance's Default tile show, as ANIBEAM_ICON_FILE
+/// under assets/ (the one of the three that is in the qrc; a Mac also carries its Mac-grid
+/// twin under assets/mac/): the release mark, the nightly's graph paper, or the dev blueprint,
+/// so a nightly or a build from a checkout is never mistaken for a release (assets/logo/). A build
+/// CI ships names its version in ANIBEAM_RELEASE_VERSION: 2.5.0 is a release, 2.5.0-nightly.*
+/// a nightly, and a pull request's 2.5.0-pr.* is unmerged code, so dev. Without one it is a
+/// build from source, dev too. ANIBEAM_ICON=release, nightly or dev picks by hand, which the
+/// AUR's source package does.
+fn app_icon() -> String {
+    println!("cargo:rerun-if-env-changed=ANIBEAM_ICON");
+    println!("cargo:rerun-if-env-changed=ANIBEAM_RELEASE_VERSION");
+    let version = std::env::var("ANIBEAM_RELEASE_VERSION").unwrap_or_default();
+    let version = version.trim();
+    let icon = match std::env::var("ANIBEAM_ICON").unwrap_or_default().trim() {
+        "" if version.is_empty() || version.contains("-pr.") => "dev",
+        "" if version.contains("-nightly") => "nightly",
+        "" => "release",
+        pick @ ("release" | "nightly" | "dev") => pick,
+        other => panic!("ANIBEAM_ICON is {other:?}; it takes release, nightly or dev"),
+    }
+    .to_string();
+    let file = match icon.as_str() {
+        "release" => "icon.png".to_string(),
+        kind => format!("icon-{kind}.png"),
+    };
+    println!("cargo:rustc-env=ANIBEAM_ICON_FILE={file}");
+    // The channel itself, which the Mac bundle step reads back out of the binary.
+    println!("cargo:rustc-env=ANIBEAM_ICON_KIND={icon}");
+    file
+}

@@ -11,8 +11,7 @@ name: Nightly
 # (the day and the number of the run that built it), and published as the pre-release
 # v2.5.0-nightly.20261030.12 once every platform's files are on it. An app on the Nightly
 # track hears about it; the Stable track never does. release.yml promotes the newest nightly
-# to a stable version. The ten newest nightlies are kept. CONTRIBUTING.md, under Releases,
-# has the whole line.
+# to a stable version. The ten newest nightlies are kept. docs/releasing.md has the whole line.
 #
 # The phone rides the same train under its own number: when the phone or what it builds on
 # changed since its last nightly, a build of its APK from apps/phone/Cargo.toml's version,
@@ -82,9 +81,9 @@ jobs:
           # means a build of main no longer covers main.
           # `affected-crates.py --self-test` in ci.yml fails when a crate an app builds on is missing
           # from these (#974).
-          desktop_paths=(contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n apps/linux apps/cli Cargo.toml Cargo.lock rust-toolchain.toml)
+          desktop_paths=(crates i18n apps/desktop apps/cli Cargo.toml Cargo.lock rust-toolchain.toml)
           desktop_build=(.github/workflows/nightly.yml .github/workflows/macos.yml .github/workflows/linux.yml .github/workflows/windows.yml .github/workflows/arch.yml)
-          phone_paths=(apps/phone contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n Cargo.toml Cargo.lock rust-toolchain.toml)
+          phone_paths=(apps/phone crates i18n Cargo.toml Cargo.lock rust-toolchain.toml)
           phone_build=(.github/workflows/nightly.yml .github/workflows/android-apk.yml .github/workflows/ios-ipa.yml)
           sha="$(git rev-parse HEAD)"
           day="$(date -u +%Y%m%d)"
@@ -351,7 +350,7 @@ jobs:
           start=()
           if [ -n "$PREVIOUS" ]; then start=(--notes-start-tag "$PREVIOUS"); fi
           gh release create "$tag" dist/* --draft --prerelease --latest=false --target "$SHA" \
-            --title "$(.github/release-name.sh "$VERSION")" --notes-file notes.md --generate-notes "${start[@]}"
+            --title "$(scripts/ci/release-name.sh "$VERSION")" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --prerelease --latest=false
 
       - name: Keep the ten newest nightlies
@@ -424,7 +423,7 @@ jobs:
           shopt -s nullglob
           files=(dist/*.apk dist/*.aab dist/*.ipa)
           gh release create "$tag" "${files[@]}" --draft --prerelease --latest=false --target "$SHA" \
-            --title "$(.github/release-name.sh "$VERSION" phone)" --notes-file notes.md --generate-notes "${start[@]}"
+            --title "$(scripts/ci/release-name.sh "$VERSION" phone)" --notes-file notes.md --generate-notes "${start[@]}"
           gh release edit "$tag" --draft=false --prerelease --latest=false
 
       - name: Keep the ten newest phone nightlies

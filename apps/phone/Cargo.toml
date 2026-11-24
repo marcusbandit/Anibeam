@@ -24,7 +24,7 @@ path = "src/main.rs"
 
 [dependencies]
 anibeam-companion = { path = "companion" }
-anibeam-core = { path = "../../core", features = ["phone", "cast"] }
+anibeam-core = { path = "../../crates/core", features = ["phone", "cast"] }
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "renderer-skia"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

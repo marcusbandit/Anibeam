@@ -1,0 +1,145 @@
+import { Theme } from "../core/theme.slint";
+import { Ask } from "more.slint";
+import { AppData, Nav } from "../core/data.slint";
+import { Fold } from "../core/fold.slint";
+import { Leaf, Scroll } from "../core/panes.slint";
+import { CalRow } from "calendar.slint";
+import { FeedBlock } from "feed.slint";
+import { Button, ClampedText, EmptyNote, PageTitle, Poster, SectionHead, TileRow } from "../core/widgets.slint";
+import { Tr } from "../core/tr.slint";
+
+// The next episode to air, set like the head of the desktop's show view: the poster, the
+// title in the display cut, the episode, and the countdown as a figure in the poster's ink.
+component NextUp inherits Rectangle {
+    height: body.preferred-height;
+    border-radius: Theme.radius;
+    background: touch.pressed ? Theme.raised : Theme.surface;
+    border-width: 1px;
+    border-color: Theme.line;
+    body := HorizontalLayout {
+        padding: Theme.unit * 3;
+        spacing: Theme.unit * 4;
+        Poster {
+            width: 24 * Theme.unit;
+            height: self.width * Theme.poster-ratio;
+            source: AppData.hero.poster;
+            has-image: AppData.hero.has-poster;
+            initials: AppData.hero.initials;
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.unit * 2;
+            Text {
+                text: Tr.t("home-next-to-air");
+                color: Theme.dim;
+                font-size: Theme.small;
+            }
+            ClampedText {
+                text: AppData.hero.title;
+                font-size: Theme.section - 2px;
+                face: Theme.display-face;
+                lines: 3;
+                leading: 1.05;
+            }
+            Text {
+                text: AppData.hero.episode;
+                color: Theme.dim;
+                font-size: Theme.small;
+                font-family: Theme.figure;
+                wrap: word-wrap;
+            }
+            Text {
+                text: AppData.hero.countdown;
+                color: AppData.hero.ink;
+                font-size: Theme.large + 2px;
+                font-family: Theme.figure;
+            }
+        }
+    }
+    touch := TouchArea {
+        clicked => { AppData.open-series(AppData.hero.id); }
+    }
+}
+
+// The next few episodes to air, and the way into the calendar.
+component ComingUp inherits VerticalLayout {
+    spacing: Theme.unit * 2.5;
+    HorizontalLayout {
+        spacing: Theme.unit * 3;
+        SectionHead {
+            horizontal-stretch: 1;
+            title: AppData.hero.show ? Tr.t("home-after-that") : Tr.t("home-coming-up");
+            note: AppData.coming.length == 0 ? Tr.t("home-nothing-week") : "";
+        }
+        VerticalLayout {
+            alignment: end;
+            Button {
+                text: Tr.t("cal-title");
+                icon: @image-url("../icons/calendar-days.svg");
+                has-icon: true;
+                small: true;
+                clicked => {
+                    AppData.close-series();
+                    Nav.page = 4;
+                }
+            }
+        }
+    }
+    for item in AppData.coming: CalRow {
+        item: item;
+        poster-width: 10 * Theme.unit;
+    }
+}
+
+// What there is to look at: the next to air and the shelves.
+component Showcase inherits VerticalLayout {
+    in property <bool> titled: true;
+    spacing: Theme.unit * 4;
+    if root.titled: PageTitle {
+        title: Tr.t("phone-home-title");
+        note: AppData.home-note;
+    }
+    if AppData.hero.show: NextUp { }
+    for shelf in AppData.home-shelves: VerticalLayout {
+        spacing: Theme.unit * 3;
+        SectionHead {
+            title: shelf.title;
+            note: shelf.count;
+        }
+        TileRow {
+            tiles: shelf.tiles;
+            holdable: true;
+            open(id) => { AppData.open-series(id); }
+            held(id, title) => {
+                Ask.menu-id = id;
+                Ask.menu-title = title;
+            }
+        }
+    }
+    FeedBlock { }
+    if AppData.ready && !AppData.hero.show && AppData.home-shelves.length == 0: EmptyNote {
+        title: Tr.t("phone-home-empty-title");
+        body: Tr.t("phone-home-empty-body");
+    }
+}
+
+// Folded, one column. Open and half folded, the next to air and the shelves get the left
+// and wider side, Coming up the right.
+export component HomePage inherits Rectangle {
+    if !Fold.split: Scroll {
+        Showcase { }
+        if AppData.coming.length > 0: ComingUp { }
+    }
+    if Fold.split: Leaf {
+        area: Fold.pick(0.6);
+        Scroll {
+            Showcase { }
+        }
+    }
+    if Fold.split: Leaf {
+        area: Fold.show(0.6);
+        Scroll {
+            ComingUp { }
+        }
+    }
+}

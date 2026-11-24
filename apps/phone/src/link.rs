@@ -34,7 +34,7 @@ pub fn parse(link: &str) -> Result<String, Refusal> {
     if !link.scheme().eq_ignore_ascii_case("anibeam") || link.host_str() != Some("add-repo") {
         return Err(Refusal::Unreadable);
     }
-    // Percent-decoded the way the desktop reads it (apps/linux/src/args.rs), not form
+    // Percent-decoded the way the desktop reads it (apps/desktop/src/args.rs), not form
     // decoded, so a literal + stays a + and both apps get the same address from one link.
     let Some(raw) = link
         .query()

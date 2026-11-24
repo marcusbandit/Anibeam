@@ -954,7 +954,7 @@ mod tests {
     #[test]
     fn every_word_the_sheet_asks_for_is_in_the_catalog() {
         let source = include_str!("schedule.rs");
-        let slint = include_str!("../ui/show-dates.slint");
+        let slint = include_str!("../ui/show/show-dates.slint");
         let ids: Vec<&str> = source
             .split('"')
             .chain(slint.split('"'))

@@ -96,7 +96,7 @@ jobs:
       - name: Dependency cache key
         id: depkey
         run: |
-          key="$( { cat apps/linux/packaging/linux/deps.sh
+          key="$( { cat apps/desktop/packaging/linux/deps.sh
                     dpkg-query -W nasm libdav1d-dev libgnutls28-dev libwebp-dev libbz2-dev zlib1g-dev libffmpeg-nvenc-dev \
                       libplacebo-dev libass-dev liblcms2-dev libuchardet-dev libzimg-dev libdrm-dev libwayland-dev
                     "$QT_ROOT_DIR/bin/qmake" -query QT_VERSION
@@ -112,7 +112,7 @@ jobs:
 
       - name: Build libva, FFmpeg, libmpv and MpvQt
         if: steps.deps.outputs.cache-hit != 'true'
-        run: apps/linux/packaging/linux/deps.sh "$DEPS_PREFIX"
+        run: apps/desktop/packaging/linux/deps.sh "$DEPS_PREFIX"
 
       # Saved here rather than at the end, so a run that fails later keeps them.
       - name: Save libva, FFmpeg, libmpv and MpvQt
@@ -164,7 +164,7 @@ jobs:
           LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$LD_LIBRARY_PATH" cargo test --locked -p anibeam
 
       - name: AppImage
-        run: apps/linux/packaging/linux/appimage.sh dist
+        run: apps/desktop/packaging/linux/appimage.sh dist
 
       # The same bundle as a .deb and an .rpm for the apt and dnf repos on anibeam.app (#788).
       # The version is the AppImage's own, so a release, a nightly and a PR build all match.
@@ -173,7 +173,7 @@ jobs:
         run: |
           image="$(ls dist/Anibeam-*-x86_64.AppImage)"
           version="$(basename "$image" | sed -E 's/^Anibeam-(.*)-x86_64\.AppImage$/\1/')"
-          apps/linux/packaging/linux/packages.sh "$image" "$version" dist
+          apps/desktop/packaging/linux/packages.sh "$image" "$version" dist
           ls -la dist/*.deb dist/*.rpm
 
       # The dnf repo points at the release's own .rpm, so a nightly or a release signs it before
@@ -185,12 +185,12 @@ jobs:
           ANIBEAM_REPO_GPG_KEY: ${{ secrets.ANIBEAM_REPO_GPG_KEY }}
         run: |
           sudo apt-get install -y -qq rpm > /dev/null
-          apps/linux/packaging/linux/sign-rpm.sh dist/*.rpm
+          apps/desktop/packaging/linux/sign-rpm.sh dist/*.rpm
 
       # The host's Qt variables are scrubbed inside smoke.sh, so a plugin the bundle forgot
       # cannot hide behind the Qt that install-qt-action put on the runner.
       - name: Smoke test on the runner
-        run: SMOKE_DOWNLOADS=1 SMOKE_CLI=target/release/anibeam-cli apps/linux/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage smoke/ubuntu
+        run: SMOKE_DOWNLOADS=1 SMOKE_CLI=target/release/anibeam-cli apps/desktop/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage smoke/ubuntu
 
       - name: Smoke test on Debian 13
         if: always()
@@ -205,7 +205,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
-            apps/linux/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage "smoke/$NAME"
+            apps/desktop/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage "smoke/$NAME"
             code=$?
             chown -R '"$(id -u):$(id -g)"' smoke
             exit $code'
@@ -222,7 +222,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
-            apps/linux/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage "smoke/$NAME"
+            apps/desktop/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage "smoke/$NAME"
             code=$?
             chown -R '"$(id -u):$(id -g)"' smoke
             exit $code'
@@ -238,7 +238,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
-            apps/linux/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage "smoke/$NAME"
+            apps/desktop/packaging/linux/smoke.sh dist/Anibeam-*-x86_64.AppImage "smoke/$NAME"
             code=$?
             chown -R '"$(id -u):$(id -g)"' smoke
             exit $code'
@@ -256,7 +256,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the .deb"; exit 1; }
-            SMOKE_INSTALLED_DIR=/opt/anibeam apps/linux/packaging/linux/smoke.sh /usr/bin/anibeam "smoke/$NAME"
+            SMOKE_INSTALLED_DIR=/opt/anibeam apps/desktop/packaging/linux/smoke.sh /usr/bin/anibeam "smoke/$NAME"
             code=$?
             chown -R '"$(id -u):$(id -g)"' smoke
             exit $code'
@@ -272,7 +272,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the .rpm"; exit 1; }
-            SMOKE_INSTALLED_DIR=/opt/anibeam apps/linux/packaging/linux/smoke.sh /usr/bin/anibeam "smoke/$NAME"
+            SMOKE_INSTALLED_DIR=/opt/anibeam apps/desktop/packaging/linux/smoke.sh /usr/bin/anibeam "smoke/$NAME"
             code=$?
             chown -R '"$(id -u):$(id -g)"' smoke
             exit $code'

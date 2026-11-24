@@ -33,7 +33,7 @@ run straight from the checkout points at the checkout's copies instead. `--root`
 its data in one directory, so it never touches a real install's:
 
 ```bash
-ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
+ANIBEAM_THEMES_DIR=apps/desktop/themes ANIBEAM_MPV_CONF=apps/desktop/mpv.conf \
   target/release/anibeam --root /tmp/anibeam-dev
 ```
 
@@ -46,20 +46,18 @@ It also has no AniList or MyAnimeList app registration of its own, so the Tracke
 for a client ID the first time you connect. To bundle your own, copy `.env.example` to
 `.env.local` and fill it in before building; it explains where to register.
 
-On a Mac, `apps/linux/packaging/macos/deps.sh` builds libmpv and MpvQt, and `bundle.sh` turns
-the binary into `Anibeam.app` and a dmg. On Windows, `apps/linux/packaging/windows/deps.sh`
+On a Mac, `apps/desktop/packaging/macos/deps.sh` builds libmpv and MpvQt, and `bundle.sh` turns
+the binary into `Anibeam.app` and a dmg. On Windows, `apps/desktop/packaging/windows/deps.sh`
 and `bundle.sh` do the same for the installer and the zip. `.github/workflows/macos.yml` and
 `windows.yml` run them.
 
 ## Working on it
 
-The Rust core lives in `core/`, the Qt shell in `apps/linux/` (it builds for the Mac and
-Windows too), the phone app in `apps/phone/`, and a terminal shell over the same core in
-`apps/cli/`.
+The Rust core crates live under `crates/` (with `crates/core/` as the top-level facade), the Qt shell in `apps/desktop/` (it builds for macOS and Windows too), the phone app in `apps/phone/`, and a terminal shell over the same core in `apps/cli/`. See [ARCHITECTURE.md](../ARCHITECTURE.md) for the full map.
 
 ```bash
 cargo build --release -p anibeam-cli   # target/release/anibeam-cli
-cargo test --workspace                 # unit tests plus core/tests/
+cargo test --workspace                 # unit tests plus crates/core/tests/
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
@@ -82,7 +80,7 @@ rustc-wrapper = "sccache"
 Then keep `CARGO_TARGET_DIR` out of the environment. Cargo's default is the checkout's own
 `target/` already, and sccache keys every compile on the `CARGO_*` variables it sees, so one
 that differs per worktree turns every crate into a miss. Pass `--target-dir` when you need
-another dir; `apps/linux/scripts/shoot.sh` and `drive.sh` do that themselves. Crates that read
+another dir; `apps/desktop/scripts/shoot.sh` and `drive.sh` do that themselves. Crates that read
 a build script's output (`OUT_DIR`) and the C++ the Qt bridge compiles still rebuild in each
 worktree, since their paths name the target dir. Your own crates always rebuild, so an edit in
 the worktree is what runs.
@@ -102,14 +100,14 @@ anibeam-cli list --tab all --sort alpha --direction asc
 
 With Share over Tailscale on, Anibeam listens on port 8790 on this computer's Tailscale
 addresses only. See what it serves with `curl http://<address>:8790/api/v1/hello` and
-`/api/v1/snapshot`; `host-api/src/lib.rs` describes the JSON. `ANIBEAM_HOST_BIND=127.0.0.1:8790`
+`/api/v1/snapshot`; `crates/host-api/src/lib.rs` describes the JSON. `ANIBEAM_HOST_BIND=127.0.0.1:8790`
 picks the address by hand, and `0.0.0.0:8790` lets an Android emulator reach it at
 `10.0.2.2`.
 
 ## Where to read next
 
-- `CONTRIBUTING.md`: issues, branch and commit names, the PR flow, patch notes and releases.
-- `apps/linux/README.md`: sandboxed runs, offscreen captures with `scripts/shoot.sh` and
-  scripted drives with `scripts/drive.sh`.
+- `CONTRIBUTING.md`: issues, branch and commit names, the PR flow, and patch notes (`docs/releasing.md` covers releases).
+- `apps/desktop/README.md`: sandboxed runs, offscreen captures with `apps/desktop/scripts/shoot.sh`, and
+  scripted drives with `apps/desktop/scripts/drive.sh`.
 - `apps/phone/README.md`: building and sideloading the phone app.
 - `CONTEXT.md`: the vocabulary the code and the docs share.

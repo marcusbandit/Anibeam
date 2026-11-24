@@ -46,7 +46,7 @@ cat <<EOF
 
 Built target/release/anibeam. Run it from here with its themes and mpv.conf:
 
-  ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf target/release/anibeam
+  ANIBEAM_THEMES_DIR=apps/desktop/themes ANIBEAM_MPV_CONF=apps/desktop/mpv.conf target/release/anibeam
 
 Add --root <dir> to keep its data apart from an installed Anibeam.
 EOF

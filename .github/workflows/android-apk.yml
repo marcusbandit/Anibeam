@@ -52,7 +52,7 @@ jobs:
           KEYSTORE: ${{ secrets.ANIBEAM_ANDROID_KEYSTORE }}
         run: |
           if [ -z "$KEYSTORE" ]; then
-            echo "::error::The ANIBEAM_ANDROID_KEYSTORE secret is not set. An APK signed with any other key will not install over the Anibeam already on a phone; see CONTRIBUTING.md, Releases."
+            echo "::error::The ANIBEAM_ANDROID_KEYSTORE secret is not set. An APK signed with any other key will not install over the Anibeam already on a phone; see docs/releasing.md."
             exit 1
           fi
           base64 -d <<<"$KEYSTORE" > "$RUNNER_TEMP/anibeam.keystore"

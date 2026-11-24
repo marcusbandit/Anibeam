@@ -2821,7 +2821,7 @@ error-line-details = 詳細
 error-line-details-tip = 問題の内容をそのまま表示してコピー
 error-line-copied = コピーしました。
 
-## Readouts (apps/linux/src/format.rs): times, countdowns and lengths
+## Readouts (apps/desktop/src/format.rs): times, countdowns and lengths
 
 fmt-just-now = たった今
 fmt-now = 今
@@ -2852,7 +2852,7 @@ fmt-size-gb = { $size } GB
 fmt-size-tb = { $size } TB
 fmt-episode-span = 第{ $first }〜{ $through }話
 
-## apps/linux/src/problem.rs: every call error in a person's words, what happened and what to do
+## apps/desktop/src/problem.rs: every call error in a person's words, what happened and what to do
 
 problem-report = もう一度お試しください。繰り返し起きる場合は、動作履歴から報告してください。
 problem-try-later = あとでもう一度お試しください。
@@ -2922,7 +2922,7 @@ problem-refused-unmatched = そのファイルはエピソードと結び付い�
 problem-refused-unmatched-next = 作品ページの「修正」から直してください。
 problem-refused-on-disk = そのファイルはこのパソコンにしかありません。
 
-## apps/linux/src/library_view.rs: the library page's section titles and the one fact under each
+## apps/desktop/src/library_view.rs: the library page's section titles and the one fact under each
 ## (Dropped, On hold and Watching reuse status-* from core.ftl)
 
 library-view-airing = 放送中
@@ -2947,7 +2947,7 @@ library-view-all-watched = すべて視聴済み
 library-view-on-disk = ディスク上に{ $count }話
 library-view-dropped-on-disk = ディスクに残っているファイル{ $count }個
 
-## apps/linux/src/dbus/notify.rs: the desktop notification for a new episode
+## apps/desktop/src/dbus/notify.rs: the desktop notification for a new episode
 ## (its Open button reuses action-open from core.ftl)
 
 # $episode is the episode's number, $title the show's.
@@ -2956,16 +2956,16 @@ notify-click-open = クリックで{ -app-name }で開きます
 notify-click-get = クリックで{ -app-name }でエピソードを入手します
 notify-get-episodes = エピソードを入手
 
-## apps/linux/src/nowplaying.rs: the second line a media widget shows while an episode plays
+## apps/desktop/src/nowplaying.rs: the second line a media widget shows while an episode plays
 
 # $episode is episode-number from core.ftl ("Episode 12").
 now-playing-show-episode = { $show }、{ $episode }
 
-## apps/linux/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
+## apps/desktop/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
 
 inhibit-reason = エピソードを再生中
 
-## apps/linux/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
+## apps/desktop/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
 
 door-not-a-choice = { $value }は有効な選択肢ではありません
 door-tokens-op-empty = tokens操作にはtokensが必要です
@@ -2973,7 +2973,7 @@ door-not-a-refine-op = { $value }は絞り込み操作ではありません
 door-limit-too-low = 1以上にしてください。指定値は{ $limit }です
 door-not-a-torrent-action = { $value }はトレント操作ではありません
 
-## apps/linux/src/bridge/shell.rs: the first-run starter folder and the update notice
+## apps/desktop/src/bridge/shell.rs: the first-run starter folder and the update notice
 
 # $folder is a path, $error the system's own reason.
 shell-starter-folder-failed = { $folder }を作成できませんでした: { $error }

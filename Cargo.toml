@@ -1,6 +1,24 @@
 [workspace]
 resolver = "3"
-members = ["contract", "foundation", "net", "library", "releases", "metadata", "trackers", "downloads", "playback", "host", "core", "recs", "host-api", "room", "apps/cli", "apps/linux", "apps/relay"]
+members = [
+    "crates/contract",
+    "crates/foundation",
+    "crates/net",
+    "crates/library",
+    "crates/releases",
+    "crates/metadata",
+    "crates/trackers",
+    "crates/downloads",
+    "crates/playback",
+    "crates/host",
+    "crates/core",
+    "crates/recs",
+    "crates/host-api",
+    "crates/room",
+    "apps/cli",
+    "apps/desktop",
+    "relay/server",
+]
 
 [workspace.package]
 version = "2.6.0"
@@ -10,20 +28,20 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/marcusbandit/Anibeam"
 
 [workspace.dependencies]
-anibeam-contract = { path = "contract" }
-anibeam-core = { path = "core" }
-anibeam-downloads = { path = "downloads" }
-anibeam-foundation = { path = "foundation" }
-anibeam-host = { path = "host" }
-anibeam-host-api = { path = "host-api" }
-anibeam-library = { path = "library" }
-anibeam-metadata = { path = "metadata" }
-anibeam-net = { path = "net" }
-anibeam-playback = { path = "playback" }
-anibeam-recs = { path = "recs" }
-anibeam-releases = { path = "releases" }
-anibeam-room = { path = "room" }
-anibeam-trackers = { path = "trackers" }
+anibeam-contract = { path = "crates/contract" }
+anibeam-core = { path = "crates/core" }
+anibeam-downloads = { path = "crates/downloads" }
+anibeam-foundation = { path = "crates/foundation" }
+anibeam-host = { path = "crates/host" }
+anibeam-host-api = { path = "crates/host-api" }
+anibeam-library = { path = "crates/library" }
+anibeam-metadata = { path = "crates/metadata" }
+anibeam-net = { path = "crates/net" }
+anibeam-playback = { path = "crates/playback" }
+anibeam-recs = { path = "crates/recs" }
+anibeam-releases = { path = "crates/releases" }
+anibeam-room = { path = "crates/room" }
+anibeam-trackers = { path = "crates/trackers" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

@@ -86,7 +86,7 @@ jobs:
       - name: Dependency cache key
         id: depkey
         run: |
-          key="$(cat apps/linux/packaging/windows/deps.sh | sha256sum | cut -c1-16)"
+          key="$(cat apps/desktop/packaging/windows/deps.sh | sha256sum | cut -c1-16)"
           echo "key=windows-2025-qt$QT_VERSION-deps-$key" >> "$GITHUB_OUTPUT"
 
       - name: Restore libmpv, MpvQt and qbittorrent-nox
@@ -98,7 +98,7 @@ jobs:
 
       - name: Build libmpv, MpvQt and qbittorrent-nox
         if: steps.deps.outputs.cache-hit != 'true'
-        run: apps/linux/packaging/windows/deps.sh "$DEPS_PREFIX"
+        run: apps/desktop/packaging/windows/deps.sh "$DEPS_PREFIX"
 
       # Saved here rather than at the end, so a run that fails later keeps them.
       - name: Save libmpv, MpvQt and qbittorrent-nox
@@ -185,13 +185,13 @@ jobs:
         run: cargo test --locked --no-fail-fast -p anibeam-contract -p anibeam-foundation -p anibeam-net -p anibeam-library -p anibeam-releases -p anibeam-metadata -p anibeam-trackers -p anibeam-downloads -p anibeam-playback -p anibeam-host -p anibeam-core -p anibeam
 
       - name: Bundle
-        run: apps/linux/packaging/windows/bundle.sh dist
+        run: apps/desktop/packaging/windows/bundle.sh dist
 
       # The Qt and deps directories leave PATH first, so a DLL the bundle forgot fails here.
       - name: Smoke test
         run: |
           export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -i -E 'anibeam-deps|/Qt/' | paste -sd: -)"
-          apps/linux/packaging/windows/smoke.sh dist/Anibeam target/release/anibeam-cli.exe smoke
+          apps/desktop/packaging/windows/smoke.sh dist/Anibeam target/release/anibeam-cli.exe smoke
 
       - name: Upload the build
         if: always()

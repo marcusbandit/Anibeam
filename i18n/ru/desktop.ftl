@@ -3686,7 +3686,7 @@ error-line-details = Подробности
 error-line-details-tip = Показать, что пошло не так, дословно, и скопировать
 error-line-copied = Скопировано.
 
-## Readouts (apps/linux/src/format.rs): times, countdowns and lengths
+## Readouts (apps/desktop/src/format.rs): times, countdowns and lengths
 
 fmt-just-now = только что
 fmt-now = сейчас
@@ -3717,7 +3717,7 @@ fmt-size-gb = { $size } ГБ
 fmt-size-tb = { $size } ТБ
 fmt-episode-span = Серии с { $first } по { $through }
 
-## apps/linux/src/problem.rs: every call error in a person's words, what happened and what to do
+## apps/desktop/src/problem.rs: every call error in a person's words, what happened and what to do
 
 problem-report = Попробуйте снова. Если повторяется, сообщите об этом из журнала.
 problem-try-later = Попробуйте позже.
@@ -3787,7 +3787,7 @@ problem-refused-unmatched = Этот файл не привязан к сери�
 problem-refused-unmatched-next = Исправьте это на странице сериала, в разделе «Правки».
 problem-refused-on-disk = Этот файл есть только на этом компьютере.
 
-## apps/linux/src/library_view.rs: the library page's section titles and the one fact under each
+## apps/desktop/src/library_view.rs: the library page's section titles and the one fact under each
 ## (Dropped, On hold and Watching reuse status-* from core.ftl)
 
 library-view-airing = В эфире
@@ -3824,7 +3824,7 @@ library-view-dropped-on-disk =
        *[other] { $count } файла ещё на диске
     }
 
-## apps/linux/src/dbus/notify.rs: the desktop notification for a new episode
+## apps/desktop/src/dbus/notify.rs: the desktop notification for a new episode
 ## (its Open button reuses action-open from core.ftl)
 
 # $episode is the episode's number, $title the show's.
@@ -3833,16 +3833,16 @@ notify-click-open = Нажмите, чтобы открыть в { -app-name }
 notify-click-get = Нажмите, чтобы скачать серии в { -app-name }
 notify-get-episodes = Скачать серии
 
-## apps/linux/src/nowplaying.rs: the second line a media widget shows while an episode plays
+## apps/desktop/src/nowplaying.rs: the second line a media widget shows while an episode plays
 
 # $episode is episode-number from core.ftl ("Episode 12").
 now-playing-show-episode = { $show }, { $episode }
 
-## apps/linux/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
+## apps/desktop/src/dbus/inhibit.rs: why the screen stays on, as the desktop's power panel shows it
 
 inhibit-reason = Воспроизведение серии
 
-## apps/linux/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
+## apps/desktop/src/bridge/door.rs: why a value a page sent cannot be used (an error's detail line)
 
 door-not-a-choice = { $value } не является допустимым вариантом
 door-tokens-op-empty = операции tokens нужны токены
@@ -3850,7 +3850,7 @@ door-not-a-refine-op = { $value } не является операцией ут�
 door-limit-too-low = должно быть не меньше 1, получено { $limit }
 door-not-a-torrent-action = { $value } не является действием с торрентом
 
-## apps/linux/src/bridge/shell.rs: the first-run starter folder and the update notice
+## apps/desktop/src/bridge/shell.rs: the first-run starter folder and the update notice
 
 # $folder is a path, $error the system's own reason.
 shell-starter-folder-failed = Не удалось создать { $folder }: { $error }

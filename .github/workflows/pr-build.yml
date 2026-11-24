@@ -30,7 +30,7 @@ env:
   PR: ${{ github.event.pull_request.number }}
 
 jobs:
-  # The one job that always runs. .github/ios-automerge.sh counts a run as one that built or
+  # The one job that always runs. scripts/ci/ios-automerge.sh counts a run as one that built or
   # removed something when any job besides this one ran, so keep its name and keep every
   # other job behind it.
   gate:

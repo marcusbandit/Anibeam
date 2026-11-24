@@ -1,6 +1,6 @@
 //! The watch together relay (#846) as a Cloudflare Worker on the free plan.
 //!
-//! The same routes as the native relay in `apps/relay`:
+//! The same routes as the native relay in `relay/server`:
 //!
 //! - `POST /rooms` with `{"episode": EpisodeRef}`, or `{}` for a room with
 //!   nothing picked yet (#922), makes a room: `201` with

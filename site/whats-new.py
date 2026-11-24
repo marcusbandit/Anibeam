@@ -5,7 +5,7 @@
   <out>/whats-new/<version>/index.html          one page per desktop release
   <out>/whats-new/android-<version>/index.html  one page per phone release
 
-The desktop's apps/linux/CHANGELOG.md and the phone's apps/phone/CHANGELOG.md hold every
+The desktop's apps/desktop/CHANGELOG.md and the phone's apps/phone/CHANGELOG.md hold every
 release's curated notes. When an app's newest heading has not shipped as a stable release yet
 and already has notes drafted under it, those show as "Coming next"; once the release ships,
 they become its own release page automatically.
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 root, out = Path(sys.argv[1]), Path(sys.argv[2])
-APPS = [("desktop", "Desktop", root / "apps/linux"), ("phone", "Phone", root / "apps/phone")]
+APPS = [("desktop", "Desktop", root / "apps/desktop"), ("phone", "Phone", root / "apps/phone")]
 HEAD = re.compile(r"^## (\d+\.\d+\.\d+)(?: · (.+?))? · (\d{4}-\d{2}-\d{2})\s*$")
 REPO = "https://github.com/marcusbandit/Anibeam"
 

@@ -1,0 +1,16 @@
+// The shell's one vertical scroll bar: a thin square thumb, visible only while there
+// is more to scroll. Attach with `QC.ScrollBar.vertical: ThinScrollBar {}` on any Flickable
+// or view (a QtQuick.Controls.Basic import as QC is still needed for the attached property
+// itself, just not for this type).
+import QtQuick
+import QtQuick.Controls.Basic as QC
+import com.marcusrosado.Anibeam
+
+QC.ScrollBar {
+    policy: QC.ScrollBar.AsNeeded
+    visible: size < 1
+    contentItem: Corner {
+        implicitWidth: theme.space(1)
+        color: parent.active ? theme.textFaint : theme.line
+    }
+}

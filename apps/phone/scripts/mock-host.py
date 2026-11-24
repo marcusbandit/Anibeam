@@ -2,8 +2,8 @@
 """
 mock-host.py: a dev-only fake of the Anibeam desktop's read-only JSON API.
 
-It serves the routes described in host-api/src/lib.rs (hello, snapshot and
-posters) from host-api/fixtures/snapshot.json, and takes download calls (logged,
+It serves the routes described in crates/host-api/src/lib.rs (hello, snapshot and
+posters) from crates/host-api/fixtures/snapshot.json, and takes download calls (logged,
 never acted on), so the Android app can be built
 and run against something without the desktop app being up. It never reads or
 writes a real library. Standard library only.
@@ -39,7 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
-FIXTURE = os.path.join(REPO_ROOT, "host-api", "fixtures", "snapshot.json")
+FIXTURE = os.path.join(REPO_ROOT, "crates", "host-api", "fixtures", "snapshot.json")
 BUILD_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "build", "mock"))
 DEMO_CACHE = os.path.join(BUILD_DIR, "demo.json")
 POSTER_DIR = os.path.join(BUILD_DIR, "posters")

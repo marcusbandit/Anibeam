@@ -1,0 +1,415 @@
+# The Linux shell's design direction: flat, home first
+
+Anibeam is one person's anime library on their own desktop: a 5120x1440 ultrawide and a
+portrait panel, a local folder of series, mpv in the window, AniList on the side. Its first job
+is getting from launch to the next episode in one click. Its second is keeping the library
+tidy.
+
+The direction is a glass mosaic, aired out: futuristic, quiet, with room between the panes.
+Every surface in the app is a rounded pane, set into one grid with one constant joint (the
+grout, 12 px at normal density) that is also the page's margin. Three things carry it:
+
+- **The posters are the colour, and the titles live on them.** A series is its poster,
+  full-bleed and cropped to the tile, with the title and one ledger line written on a dark
+  scrim that rises from the poster's foot. Nothing sits under a poster and no surface takes a
+  poster's colour.
+- **Everything else is glass.** The chrome is translucent panes over a near-black slate
+  ground: a faint white fill, a 1 px edge and a 1 px top highlight. No colour of its own.
+- **A tile's size says how much it matters right now.** What you are mid-way through and what
+  airs this week sit as large tiles at the head of the library; the rest of the shelf is the
+  small module.
+
+**Flat home pass, 2026-10-13.** The owner found the glass half-shaded and the poster wall hard
+to digest, and asked for flat, modern and clean. What changed, and it outranks the glass text
+below where they disagree:
+
+- **Flat surfaces.** Panes are one solid step up from the ground. No top highlight, no sheen,
+  hairline edges only where a control needs one. The library header's controls sit on the
+  ground in a two-row toolbar, not in boxes.
+- **Home first.** The app opens on Home: the series to go on with (an episode left half-way, or
+  the next one on disk, never a caught-up show), then Airing now, Catch up, Start something
+  new, and the genres as a way into the library. Airing comes first because airing is what the
+  app is mostly used for.
+- **A slim sidebar.** Home and Library are the two places; Feed, Watching, Show info and
+  Settings are quiet round glyphs at the foot.
+- **A width cap.** Pages sit in a centred column no wider than `theme.contentMax`, so an
+  ultrawide window shows a readable page instead of an endless wall.
+- **The series' own colour.** The home band takes the tone of its poster (`PosterTone.qml`,
+  the most saturated common hue, read off a thumbnail) as its wash, its Resume button and a
+  glow into the page's head. The one place the chrome takes a colour, and it changes with
+  what you are watching.
+- **The week.** Airing series sit in seven day columns from today, on the day their next
+  episode lands, with a Later column for the rest. A card with an episode out and unseen
+  carries a "New" tag in the accent.
+- **The library is sections of one grid.** A title with its count, the search, one line of
+  pill controls, then sections (franchises, or the chosen arrangement's groups) each a heading
+  in the display cut with one fact and a count over uniform cards. No heroes, no framed boxes,
+  no packing. The lone airing series lead under Airing; the rest close the page under
+  Everything else.
+- **The week is rows, not columns.** One row per day that has an episode landing, today always
+  first and marked in the accent, every day's posters in one line so nothing hides below the
+  fold; the series without a date yet close the list.
+- **The wheel scrolls like a browser.** `WheelStep` adds 100 px a notch to a target and glides
+  there, because Qt's own wheel moves 72 px and drops the rest of a notch when the next one
+  comes. The arrow keys share that target. A touchpad's pixels go on 1:1.
+- **The series page is a band and two columns.** The head is Home's hero again: a band in
+  the poster's tone with the banner art fading in from the right, the poster, the title in
+  the display cut, the other titles on one quiet line, the facts as one ledger line, Continue
+  in the band's ink accent with the progress beside it, and the actions as ghost pills on
+  the band. Under it the episodes as flat rows at the left (the next one up on a filled row,
+  a thin resume bar under a half-watched one, the air date at the right), and the synopsis
+  at a readable measure, round character portraits, small recommendation cards, the tags
+  and the franchise at the right; one column under about 1100 px. An unmatched series
+  draws the same band off its folder name, with the match where the synopsis would be.
+- **Feed and Watching are the library's sections too.** Each is a head row
+  (the title in the display cut, one line of fact beside it in dim ui text, the page's
+  control at the right: the feed's sort, Refresh) over sections of uniform cards in the
+  library's column math, no heroes and no packing. The feed cuts This week and Earlier
+  (Recently released) or Coming soon and Everything else (Coming soon); Watching cuts
+  Airing, Episodes waiting, Up to date and Not in the library (the ghosts), and without
+  AniList is one empty state with the connect button. `MosaicWall.qml` is gone, and so
+  is the read-only Subscriptions page: Downloads took its place.
+- **Downloads is anirss's front, in the same column math.** The head row (the title,
+  one line saying how anirss and the torrent client stand, the two as chips that open
+  the Downloads settings), the search row (the field, the endpoint, Search), and with a
+  search up: the query line (Back, the query, the count, what anirss said); while it runs,
+  a panel naming the phase (Starting <endpoint>, Searching <endpoint>), the seconds, why it takes that
+  long, a bar (filling toward an on-demand endpoint's start ceiling, else a sweep), Cancel
+  and the other endpoints to try; anirss's groups as filter rows (Release group, Quality,
+  the rest behind More filters); Narrow and Best match; the library series the query names,
+  with its poster, what is on disk, and Tick the missing episodes (the best-seeded release
+  per episode the library lacks); then the releases as a sortable table (`ReleaseTable.qml`:
+  the cleaned name with its group, resolution, episode or Batch and On disk as chips, then
+  size, seeders, leechers, downloads and when posted), and beside it a pane that keeps in
+  view while the table scrolls (what is ticked and its size, Download, Download as a movie,
+  Subscribe with its name and the rule it makes, what the last action
+  did) at the right. With no search up the page is three bands, each a grid of posters
+  (`ShowCard.qml`) or a list of rows with thumbnails (`ShowRow.qml`), switched in the
+  band's head: Downloading, only while something moves; Subscriptions in sections by
+  where the show stands (Complete, Airing, Incomplete, and Not in the library as short
+  text tiles), each section a dot in its colour, its title, count and one line; Downloaded
+  in sections by what the client is doing (Seeding, Done, Stopped, Files missing). State
+  tags are dark glass with a coloured dot and light writing, never white on a colour. A
+  poster or a row opens the show inside the page (`ShowDetail.qml`): the poster with Open
+  in library, where the show stands in one sentence, every episode as a cell, Unsubscribe
+  and Remove torrents, the subscription's facts, then the feed as it reads now beside the
+  folder's torrents. Subscribing opens that view on the new subscription: for a minute and
+  a half the page reads the torrents every two seconds and the rule every four, one line
+  says what qBittorrent is doing (reading the feed, how many of the feed's releases the
+  rule takes, how many are downloading), and each feed release is marked Downloading,
+  Downloaded, Taken by the rule or Left out by the rule. A feed that comes back empty gets
+  an orange panel saying why and a Repair button. Nothing on the page sends the person to
+  a browser. Every removal goes
+  through one sheet by the button that asked (`RemoveSheet.qml`): what always goes, then
+  up to two ticks, the torrents and the files (ticking the files ticks the torrents);
+  files go to the trash. Complete has Unsubscribe all, Files missing has Remove all, and a
+  run of removals goes one at a time. The rail's Downloads glyph carries a red count of
+  complete subscriptions.
+- **Show info and Settings are flat too, and `mosaic.js` is gone.** Show info is the head
+  row (the title in the display cut, the count, the filter, Find the rest and Refresh
+  all as flat pills, the search at the right) over a flat list: a poster thumbnail, the
+  title, the kind and the record as pills, the files against the expected count on a
+  thin line, Match and Refresh as small flat buttons, a hairline under each row, two to
+  a line on a wide window. Settings is the head row (the title, the section switch at the
+  right) over each tab's sections: `Panel.qml` is now a flat section, a heading in the
+  display cut at `typeLarge` with its glyph before it and the rows under it, each
+  `SettingRow` closed by a hairline, no tile around any of it; the stat figures
+  (`Tiles.qml`) stand on the ground as a figure over its caption. The Appearance previews
+  keep their panes inside their section. A card without a poster (`Card.qml`) is a plain
+  pane with no scrim and the theme's own inks, so it reads in light mode.
+- **Settings is an index and one section (2026-10-31, experimental).** The head row is the
+  title alone. Under it, at the left, the search and the index: one entry per section, a
+  glyph, the name and one live line on how it stands ("Syncing to AniList", "qBittorrent
+  answered"), in four runs (library and accounts; look and play; downloads and the phone;
+  the app). Beside it the open section at a readable measure: its name in the display cut,
+  one plain sentence, then groups. A group (`Panel.qml`) is a heading in the display cut at
+  `typeLarge` over one flat pane of rows with hairlines between them, never a pane in a
+  pane. Subtitles leads with its preview; Appearance sets it right under Colors, so the
+  knobs people reach for most stay at the top and the preview stays in view of them. Search swaps the section for the matching settings; picking one opens its section,
+  scrolls to the row and lights it in the soft accent. Ledgers that belong to other pages
+  (the on-disk list, recent scans, the poster wall) are gone from Settings.
+- **Show info answers the librarian's questions before it lists.** The head is the title
+  with its count and the search; under it one line of pills (the filter with its counts,
+  Find the rest, Refresh all) that wraps on a narrow window. Then the figures on the
+  ground (`Tiles.qml`), which are the sections' own counts off the whole library whatever
+  the filter, so they agree with what is below: Not recognized, Folder not found, Missing
+  episodes, Airing, Complete, and the files on disk against the expected total (a zero is
+  a fact here; 0 need a match is the good news). The series are cut into those sections in
+  the order a person works them, each a heading in the display cut at `typeLarge` with its
+  count and nothing else, over small poster tiles in the library's column math (columns
+  from the width, tiles widened to fill the line), so a narrow window has fewer columns
+  and never a row that overlaps. One tile idiom everywhere, no rows: the poster at 2:3,
+  the title on one line, a state line that says the section's fact for this series ("No
+  record yet", "Folder not found", "9 of 12", "5 of 7 aired", "12 of 12 +2"), and a dim
+  line with the season, or on an airing series the countdown to the next episode ("Next in
+  1d 23h"). Both lines are one line that elides, never two: the section already says the
+  episodes are missing, the tile only has to say how many. An airing series is measured
+  against what has aired so far (one short of the next episode's number), never the
+  record's total, and is never under Missing episodes or Complete. There is no Match
+  button: a click on a matched tile opens the episodes pane (`EpisodesPane.qml`), a compact
+  popover in the match panel's idiom that says what is actually there: the title with the
+  full state line under it ("9 of 12 on disk, 3 missing"), then one square number chip per
+  expected episode, filled in the soft accent when the file is on disk and a quiet outline
+  when it is missing, a row per season when the files carry one ("S2"), a line for the
+  extras and unmatched files when there are any, and Open, Change match and Refresh as
+  flat pills at the foot; a film says On disk or Not on disk. A tile with no record opens
+  the match panel instead, and Change match goes there from the pane. Hover shows one glyph
+  on the poster's foot, Refresh, or Forget on a gone folder. Complete has the one sort on
+  the page, at its heading's right and kept in shell.conf: Added (the folder first seen,
+  newest first, the default), Season, A to Z; the other sections keep their order. An
+  empty section is not shown and the filter still applies on top.
+- **The library cuts by season, and the two controls are Order and Sort.** The lone series
+  under Related no longer pile up as Everything else: they are sections per anime season
+  ("Fall 2025", "Summer 2025"), newest first, Fall before Summer before Spring before Winter
+  within a year, the series without a date closing the page under No date. Season is a cut
+  of its own in the same control, over the whole library. The control that orders the cards
+  (A to Z, Last viewed, ...) is labelled Order and the one that cuts the sections is
+  labelled Sort, each with a dim word before it so they read as a pair. One helper
+  (`seasonSections`) makes the cut for both, so they never drift. Group franchises is a
+  switch over any cut, and Airing is its own section before everything: a series airing
+  now sits there and also under its franchise or its cut, the one exception being the
+  current season's section, which holds only what is done airing, so nothing repeats on
+  the same ground.
+
+This supersedes Tesserae (rounded tiles on poster-toned plates), which superseded "the lobby".
+The killed idioms (below) still hold.
+
+- **Episode cubes, not bars (2026-10-19, #69).** Wherever the shell shows how far along a
+  series is, it draws one small rounded cube per episode (`EpisodeCubes.qml`), its colour its
+  state, from `SeriesCard.cubes` (one code per episode, built in `library::cards::cubes`). The
+  colours are `Tokens.cubeStates`, taken from the theme's own hues: green watched and tracked
+  online, cyan watched here and not tracked, white on disk, purple downloading, yellow missing
+  (a hole before an episode that is there), red error, grey not downloaded, an outline not
+  aired. A new state is one code in the core and one entry in the table. A run longer than the
+  room folds several episodes into a cube that keeps the most urgent state, so a gap is never
+  averaged away. Progress that is not episodes (bytes, a job) draws as step cubes
+  (`theme.cubeSteps`). Numbers stand in B612, the `figure` role; page titles are `typePage`
+  (4x) and section headings `typeHeading` (2.2x).
+- **Downloads is shows first (#69).** The field suggests shows as you type and searches release
+  names on Return, asking every source that is on; a Sources row of chips (lit on, grey off)
+  switches providers, and a site reached through a search proxy is on only while it runs. Clicking it while it is down opens a
+  sheet asking whether to start Jackett, and Anibeam starts it only on that confirm. A release
+  list opened from a show's grid has Back to the grid (and Escape). Four lenses (Gaps, Airing, Following, Downloaded) and
+  an Activity column at the right. A show opens `GetShow.qml`: its providers, a click fetches
+  one, the releases as a grid of cubes a group to a row under the library's own row, and a plan
+  that gets the picks and can follow the group as a feed. Opening a show downloads nothing.
+
+## Tokens
+
+Palette (dark flagship `themes/tesserae-dark.yaml`, light companion `tesserae-light.yaml`; the
+file names stayed so existing `theme.toml` files keep resolving). The glass values are derived
+in `qml/Tokens.qml` from the theme's ground and text, so any base16 theme takes the same glass.
+
+| Role | Value | Use |
+|---|---|---|
+| Ground `base00` | `#0e1013` | the ground and every joint between panes |
+| Glass `theme.glass` | white at 0.035 | the resting pane (`theme.tile`) |
+| Raised `theme.glassRaised` | white at 0.06 | hovered and selected panes (`theme.raised`) |
+| Pressed `theme.glassPressed` | white at 0.09 | pressed, a selected cell |
+| Edge `theme.glassEdge` | white at 0.08 | the 1 px edge of every pane (`theme.line`) |
+| Strong edge `theme.glassEdgeStrong` | white at 0.16 | hover edges, floating panes |
+| Highlight `theme.glassHighlight` | white at 0.14 | the 1 px top line, the glassy cue |
+| Float `theme.glassFloat` | ground lifted 7 percent, at 0.96 | menus, tips, sheets, popups |
+| Video glass `theme.glassVideo` | near-black at 0.55 | the player's islands, both modes |
+| Poster scrim `theme.posterScrim` | `rgba(8,9,11,0.92)` | the foot of every poster, clear by 55 percent |
+| Text `base05` | `#eef2f5` | text |
+| Dim `base04` | `#9aa3ad` | secondary text |
+| Smalt `base0D` | `#7fb3d4` | the accent, for state only: focus, selection, playing, progress, the airing countdown |
+| Gilt `base0A` | `#e0b25a` | warnings only (stray files, the skippable intro band) |
+| Alarm `base08` | `#ff7a4d` | errors and destructive actions only |
+
+`base01` and `base02` hold the glass composited on the ground, the opaque equivalents for code
+that needs a solid colour. Light (`#e3e6ea` ground, `#111418` text, smalt `#28628a`): the glass
+turns to the text colour at low alpha, dark-on-light, with a white top highlight; text on a
+poster stays light because the scrim is dark in both modes. The player forces its own tokens
+dark, since it is a dark room either way.
+
+List statuses are quiet too: the accent for Watching and Rewatching, greys for the rest. The
+other hues stay in the palette for the accent picker and for themes, not for surfaces.
+
+Type: **Archivo**, one variable family (`wdth` 62 to 125, `wght` 100 to 900):
+
+- Display (page titles, the hero tile's title): `wdth` 125, weight 760, `typeDisplay`. The
+  wide cut is the futuristic note.
+- Titles (titles on posters, section names): `wdth` 112, weight 650, `typeLarge` or
+  `typeNormal`.
+- UI (controls, body): `wdth` 100, weight 450, `typeNormal`.
+- Ledger (tables, episode lists, counts, times): `wdth` 88, weight 500, tabular figures,
+  `typeSmall`.
+
+Four sizes only (small 0.85, normal 1, large 1.5, display 2.2 of the system size); widths and
+weights do the rest. No monospace, no ALL CAPS.
+
+Geometry: rounded panes, plain circular corners, no squircle smoothing. Every tile, poster,
+menu, tooltip, sheet, rail tile and player island takes `theme.radiusTile` (3.5 spacing units,
+14 px at normal density); a control (button, chip, segmented switch, dropdown, the title
+language square) is a pill at half its height; a row nested inside a tile takes
+`theme.radiusInner(padding)`, so the two curves stay concentric. `Corner.qml` draws the radius
+it is given (`smoothing` is accepted and ignored; `highlight` draws the top line, inset past
+the curve) and stays a plain Rectangle unless it holds a fill item. Grout `theme.grout` (3
+spacing units, 12 px at normal density), also the page's margin, so everything scales with
+density together. No shadows and no live blur (the frosted glass cost too much): the glass is
+translucency and hairlines. **Gradients are allowed for the poster scrim only.**
+
+This aired-out pass (2026-10-13) supersedes the 2 px joint and the square geometry of the
+first glass mosaic: the panes read as set apart now, and the one place that was straight-line
+chrome, the accent bars along a pane's edge, became filled states (below).
+
+Controls: a button is a raised glass pill (edge and highlight), primary is an accent fill with
+ground-coloured ink. A segmented switch is cells in a glass pill, the selected cell carried
+by a thumb of soft accent (`theme.accentSoft`) with an accent edge (`theme.accentEdge`).
+Fields and dropdowns are glass whose edge turns to the accent on focus. The rail's active page
+is a pane filled with the soft accent, its glyph and edge in the accent; a list's current row
+(dropdown, score picker, track picker) takes the same soft fill, and a hovered row the raised
+glass. No bars along an edge: a state is a fill, never a line.
+
+The poster tile (`Card.qml`): the poster full-bleed (`PreserveAspectCrop`, sized by the
+layout, never by the image, clipped to the tile's radius through a Corner fill), the scrim,
+then bottom left the title (two lines at most) over one dim ledger line (progress, a page's
+own line, or "Episode 3" with a clock and the countdown in accent text, or "12 files"); the
+score bottom right; the episode code a small rounded tag top left; progress a rounded 3 px
+accent line along the foot, inside the padding. Hover: a 1 px accent outline, a lift of 1.5
+percent and a deeper scrim; press scales 0.98. The hero takes the display cut and a square
+Play button. A ghost (Watching's AniList-only entries) shows its poster at 60 percent.
+
+Keys across the grids (`GridKeys.qml`, owned by `PageScroll`): a tile takes focus from Tab,
+after the rail and the page's controls, or from a click; hover never takes it. Focus is the
+hover outline at full strength plus a 2 px ring of `theme.focusRing` outside the tile, so the
+two states never read alike. Left and Right walk a Flow in its own order, Up and Down go to the
+row above or below at the nearest centre x, with rows read off the content at the key press,
+so a section boundary, a day row of the week and Home's Resume button are all just rows and
+no column count is ever hardcoded. Return opens the series, Space plays the next episode,
+Escape drops the focus to the page, and the page scrolls the focused tile wholly into view
+through the wheel's smoothed target.
+
+Motion: exponential smoothing at rate 14 for anything tracking a target (bandit shell's value).
+Hover is a glass step and a 1 px edge; press is scale 0.98. One orchestrated moment: when the
+library opens, the hero tiles settle first and the shelf follows in one sweep (no per-card
+stagger). Reduced motion (`Theme.reducedMotion` or the setting) turns it off.
+
+## Layout
+
+One module for the whole window. The library computes its columns from the page width
+(as many as fit at `posterWidth` plus a grout, the spare pixels handed out one per column
+from the left so the right edge is exact) and a vertical unit `u` of half a column. A tile
+spanning k units is `k*u + (k-1)*grout` tall, so every edge on the page lands on the
+module. The grout is the only joint: between tiles both ways, and as the page's margin on
+the top, right and bottom (on the left the rail's own grout is the joint).
+
+```
+rail  header: one unit tall, whole column spans, spare columns to the title (count at its right)
+┌──┐ ┌──────────────────────────┐┌──────────────┐┌─────────────────────┐┌──────────────────────┐┌───────────┐┌──────────┐
+│▣ │ │ Library        52 series ││ All Series ..││ ^ A to Z  Last .. ..││ Arrange Related .. ..││ Show  (o) ││ [Search] │
+│▣ │ └──────────────────────────┘└──────────────┘└─────────────────────┘└──────────────────────┘│ watched   │└──────────┘
+│▣ │ ╔═════════════════════════╤════╤════╗┌────┐╔══════════════╤════╤════╗┌────┐  boxes: a hairline frame,
+│▣ │ ║ Airing this week        │ 1  │ 1  ║│ 1  │║ Youjo Senki  │ 1  │ 1  ║│ 1  │  the label stone at its top
+│▣ │ ║ Next (1d 16h)         6 │    │    ║│    │║            2 │    │    ║│    │  left taking the slack, the
+│▣ │ ╟────┬────┬────┬────┬────┼────┼────╢└────┘╚══════════════╧════╧════╝└────┘  members packed inside;
+│  │ ║ 1  │ 1  │ 1  │ 1  │ 1  │ 1  │ 1  ║┌────┐┌────┐╔═════════╤══════════╗      lone series are plain
+│  │ ║    │    │    │    │    │    │    ║│ 1  ││ 1  │║ Girls   │ hero 2x2 ║      tiles filling the gaps
+│  │ ╚════╧════╧════╧════╧════╧════╧════╝└────┘└────┘║ und P. 3│          ║      around them
+│  │ ┌────┐┌────┐┌────┐ ...  everything first-fit, the last row ragged on the right only
+│▤ │ ┌────────────────────────────────────────────────────────────────────────────────┐
+└──┘ │ status strip: one tile across the content, as tall as the rail's foot tile       │
+     └────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **The header is a row of tiles**, one unit tall, content centred: the title with the
+  count at its right, the tabs, the sorts (the active one carries its direction as a
+  chevron; picking it again flips it), the arrangement, Show watched (the whole tile
+  toggles) and the search. No eyebrow captions: a control says what it is, and only the
+  arrangement keeps a word ("Arrange"), since a bare "None" would not. Each tile spans the whole columns
+  its content needs, the row's spare columns go to the title, and a narrow window wraps it
+  onto a second unit row. It scrolls with the wall as its first rows.
+- **A series is one stone**: the poster on top (2:3) and, in the same rounded shape, a
+  plate in the poster's own tone carrying the title (two lines at most) and one ledger line
+  (the airing countdown, else "3 of 12", else "12 files") with the score at its right. The
+  countdown is one treatment everywhere (library, heroes, feed): a small pill in the accent
+  holding the time ("4d 18h"), its text the ground colour where that holds 4.5:1, and
+  "Episode 2" beside it in plain plate text. The episode code rides the poster's top left, the progress strip its bottom
+  edge. A small tile's plate is as tall as it takes to land the tile on a whole number of
+  units; a hero's plate is exactly as tall as its lines and Play, and the poster takes the
+  rest of the module.
+  Nothing is captioned outside a tile, on any page that shows series (`Card.qml`).
+- **Size says what matters now.** A hero is 2x2 (two columns, two small tiles and the
+  joint between tall) and goes to a series that is in progress and was viewed in the last
+  14 days, or airs within seven, most recent first: one per box, and among the lone tiles
+  a third of the columns at most (one from four columns, none below). Its plate carries
+  the title in the display cut, the next episode, and a Play button that starts it (or
+  opens the series when nothing is next). A series is a hero once on the wall.
+- **Arrange: the wall is boxes.** The owner's ask, after SpaceSniffer (its grouping, not
+  its colours): related shows in one labelled box. The header's Arrange control picks
+  None (the default, first in the menu and set apart by a rule), Related, Type (TV; Movie;
+  OVA, ONA and specials; Music; Unknown), Genre (the first genre) or Watch state (Watching,
+  Not started, Caught up), and it is a
+  preference (`library_arrange`). Related groups by the core's franchise tag on each card
+  (the connected franchise among library series); a group of one is a plain tile, no box.
+  Type, Genre and Watch state box every group, one included, since there the label is the
+  point. The sort orders the members inside a box (Related: release order when the cards
+  carry a year), and the boxes and lone tiles go in the order of their best member.
+- **A box** is a rectangle of whole slots (a slot: one column by one small tile's height)
+  with a hairline frame (`lineStrong`) drawn over its members' outer pixel. Its header is
+  the label stone at its top left: the group's name, its one fact line and its count. The
+  stone is a slot tall and takes the box's slack (as wide as the members leave over in the
+  first row), so every box is a full rectangle with no hole inside at any width, and every
+  box edge stays on the same module as the lone tiles beside it. A thinner header strip
+  would set each box a fraction of a slot out of step, and the wall could never close up.
+  The width is the one whose pixel rectangle is nearest a square, each extra slot of
+  header costing as much as a fair step off square, capped at the wall's columns.
+- **Airing this week** is the first box in every arrangement: the airing rail, small tiles
+  only, the accent countdown on its stone. Its series also stand in their own groups, the
+  one deliberate exception to a series showing once, like a "now" shelf. It leaves while a
+  search is up.
+- **The packer**:
+  `packGroups` packs boxes and lone tiles as one skyline. It always fills the lowest,
+  left-most run of columns; the next item goes there when it fits, a box too wide for the
+  run lets the next lone tile in first (lone tiles fill the gaps around boxes), and with
+  none left the box takes the best shape the run allows. Every placement sits on a flat
+  run, so nothing is left under a tile; only the bottom can come out uneven, and only the
+  very last row may run short, on the right. When it would not, the greedy pass is tried
+  again with lone tiles held back to the end (they level the bottom) and lone heroes set
+  small, cheapest first, then a depth-first search goes back over the decisions, latest
+  first, with a budget. The wall is also laid in **bands** (rows of boxes sharing one
+  height, their widths summing exactly to the columns, chosen by dynamic programming; the
+  lone tiles after them), which always closes; whichever of the two has the cheaper box
+  shapes stands, the bands paying extra for moving lone tiles behind the boxes. A wall of
+  boxes only (Type, Genre, Watch state) usually comes out in bands. `pack`, the section
+  packer, is still the other walls'.
+- The live window covers the boxes too: a box is its frame plus its stone and members as
+  tiles in the same flat list, positioned absolutely; the frames are bare outlines, always
+  drawn, and the rest is built only within a screen of the viewport.
+- **The other walls** (Feed, Watching, the old Subscriptions) are `qml/MosaicWall.qml`: the same
+  module and header tiles, and sections rather than boxes, packed by `pack`: each section
+  opens with a label stone the size of a small tile (its name, fact line and count), then
+  its heroes, then its small tiles, as one continuous skyline in which sections never
+  interleave in reading order and heroes are demoted while the wall would leave a hole. The feed's heroes are the episodes out this week (Coming
+  soon: airing this week); Watching's are owned series airing this week. A page with
+  nothing to show is its header and one tile filling the rest of the viewport, saying what
+  to do.
+- The wall is one Flickable; a tile is built only within a screen of the viewport.
+- The rail is a column of rounded tiles, icon over label; the active one is filled with
+  the soft accent, its glyph in smalt. No accent bar.
+- The series page is a bento: banner across the top, poster, title tile, fact tiles (score,
+  episodes, status, next airing), synopsis, tags, the episode ledger, relations.
+
+## Killed idioms (still dead)
+
+- Numbered nav markers; letter-spaced ALL-CAPS eyebrows; monospace data labels.
+- Middle-dot meta joins ("A · B · C"): plain sentences instead.
+- Appended arrows on controls.
+- The lobby's lightbox halo and the frosted glass (a live blur of the whole page every frame).
+- Squircles (G2 corner smoothing): a corner is a plain arc.
+- Accent bars along a pane's edge: a state is a fill.
+- Poster-toned plates, and any surface tinted by a hue that is not saying something.
+- Gradients, except the poster scrim.
+
+## The one bold spend
+
+The posters themselves. Every other surface is quiet glass. If a future pass wants a second
+loud effect, take one away instead.
+
+## Reviewing the work
+
+`scripts/shoot.sh <name> --page <page>` renders a page offscreen into `captures/`;
+`scripts/drive.sh <script.json>` clicks through the real app offscreen and captures each step
+(see README). Read the PNGs at native resolution.

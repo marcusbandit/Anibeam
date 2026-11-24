@@ -6,7 +6,7 @@ AniList and MyAnimeList. It can also show another Anibeam's library over your ta
 only.
 
 Everything is Rust: the UI is [Slint](https://slint.dev) on its Android backend, behind
-the stock `android.app.NativeActivity`, and the core is `anibeam-core` from `core/`. There
+the stock `android.app.NativeActivity`, and the core is `anibeam-core` from `crates/core/`. There
 is no Gradle in the build.
 
 ## What it does
@@ -61,8 +61,8 @@ tracking. Nothing is re-encoded: a Chromecast gets HLS cut on keyframes from the
 file (fragmented MP4, so HEVC works where the device decodes it), a DLNA TV gets the file as
 it is, or the same fragments as one stream if it refuses. Subtitles go as text (WebVTT for
 Chromecast, SRT for TVs that read it), so ASS styling is lost. 10-bit H.264 (Hi10P) is refused
-with a reason until the transcode (#141) lands. The cast code is in `playback/src/cast/`;
-`core/examples/cast_drive.rs` drives a whole cast from the desktop. To try it from the
+with a reason until the transcode (#141) lands. The cast code is in `crates/playback/src/cast/`;
+`crates/core/examples/cast_drive.rs` drives a whole cast from the desktop. To try it from the
 emulator, which cannot see the LAN's multicast, write `/data/local/tmp/anibeam-cast-dev` with
 `renderer=<a DLNA description URL>`, `port=47000` and `advertise=127.0.0.1:47000`, and
 `adb forward tcp:47000 tcp:47000`.
@@ -146,8 +146,7 @@ scripts/build.sh cargo clippy --workspace --all-targets -- -D warnings
 The version lives in `Cargo.toml` and nowhere else. `build.sh` works the APK's versionName
 and versionCode out of it, or out of `ANIBEAM_RELEASE_VERSION` when CI ships the build as a
 nightly or a release, and stops when the newest heading in `CHANGELOG.md` is not that
-version. Builds for people come from CI, never from a checkout: CONTRIBUTING.md, under
-Releases.
+version. Builds for people come from CI, never from a checkout: see `docs/releasing.md`.
 
 ### iOS
 
@@ -192,7 +191,7 @@ scripts/stop-emulator.sh   # sync the guest, then stop it
 The scripts only talk to `emulator-5580`, so other emulators on the same adb server are
 left alone.
 
-The phone lays out for three postures, worked out in `ui/fold.slint`: folded (the bar along
+The phone lays out for three postures, worked out in `ui/core/fold.slint`: folded (the bar along
 the bottom, one column), open (a rail and two columns) and half folded, where the panes sit
 either side of the crease, left and right held like a book or above and below stood up like
 a laptop. To try them, use the fold AVD, which has a hinge:
@@ -291,12 +290,12 @@ src/platform/       everything that differs by platform: android.rs holds androi
 src/main.rs         the iPhone's executable
 ios/                the iPhone's Xcode project (project.yml for xcodegen), Info.plist
                     and cargo.sh, the build step that runs cargo
-ui/                 the Slint screens; theme.slint is the one token file, fonts/ holds
+ui/                 the Slint screens; ui/core/theme.slint is the one token file, fonts/ holds
                     Archivo and B612 as on the desktop
 scripts/            the build and emulator loop, and the mock host
 ```
 
-The wire format is the `anibeam-host-api` crate in `host-api/` at the repository root,
+The wire format is the `anibeam-host-api` crate in `crates/host-api/`,
 shared with the desktop's server. This directory is its own Cargo workspace, so desktop
 builds and CI never compile it.
 

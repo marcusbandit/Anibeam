@@ -3359,7 +3359,7 @@ error-line-details = Details
 error-line-details-tip = Toon letterlijk wat er misging, en kopieer het
 error-line-copied = Gekopieerd.
 
-## Weergaven (apps/linux/src/format.rs): tijden, aftellingen en duur
+## Weergaven (apps/desktop/src/format.rs): tijden, aftellingen en duur
 
 fmt-just-now = zojuist
 fmt-now = nu
@@ -3388,7 +3388,7 @@ fmt-size-gb = { $size } GB
 fmt-size-tb = { $size } TB
 fmt-episode-span = Afleveringen { $first } t/m { $through }
 
-## apps/linux/src/problem.rs: elke fout in gewone woorden, wat er gebeurde en wat je kunt doen
+## apps/desktop/src/problem.rs: elke fout in gewone woorden, wat er gebeurde en wat je kunt doen
 
 problem-report = Probeer het opnieuw. Blijft het gebeuren, meld het dan vanuit het activiteitenlog.
 problem-try-later = Probeer het later opnieuw.
@@ -3456,7 +3456,7 @@ problem-refused-unmatched = Dat bestand hoort niet bij een aflevering.
 problem-refused-unmatched-next = Corrigeer het vanaf de pagina van de serie, onder Correcties.
 problem-refused-on-disk = Dat bestand staat alleen op deze computer.
 
-## apps/linux/src/library_view.rs: de sectietitels van de bibliotheek en het feit onder elke titel
+## apps/desktop/src/library_view.rs: de sectietitels van de bibliotheek en het feit onder elke titel
 
 library-view-airing = Loopt
 library-view-no-date = Geen datum
@@ -3486,22 +3486,22 @@ library-view-dropped-on-disk =
        *[other] { $count } bestanden
     } nog op schijf
 
-## apps/linux/src/dbus/notify.rs: de bureaubladmelding voor een nieuwe aflevering
+## apps/desktop/src/dbus/notify.rs: de bureaubladmelding voor een nieuwe aflevering
 
 notify-episode-out = Aflevering { $episode } van { $title } is uit
 notify-click-open = Klik om het te openen in { -app-name }
 notify-click-get = Klik om de afleveringen op te halen in { -app-name }
 notify-get-episodes = Afleveringen ophalen
 
-## apps/linux/src/nowplaying.rs: de tweede regel van een mediawidget tijdens het afspelen
+## apps/desktop/src/nowplaying.rs: de tweede regel van een mediawidget tijdens het afspelen
 
 now-playing-show-episode = { $show }, { $episode }
 
-## apps/linux/src/dbus/inhibit.rs: waarom het scherm aan blijft
+## apps/desktop/src/dbus/inhibit.rs: waarom het scherm aan blijft
 
 inhibit-reason = Een aflevering afspelen
 
-## apps/linux/src/bridge/door.rs: waarom een waarde van een pagina niet bruikbaar is
+## apps/desktop/src/bridge/door.rs: waarom een waarde van een pagina niet bruikbaar is
 
 door-not-a-choice = { $value } is geen geldige keuze
 door-tokens-op-empty = een tokens-op heeft tokens nodig
@@ -3509,7 +3509,7 @@ door-not-a-refine-op = { $value } is geen verfijn-op
 door-limit-too-low = moet minstens 1 zijn, kreeg { $limit }
 door-not-a-torrent-action = { $value } is geen torrentactie
 
-## apps/linux/src/bridge/shell.rs: de startmap bij de eerste start en de updatemelding
+## apps/desktop/src/bridge/shell.rs: de startmap bij de eerste start en de updatemelding
 
 shell-starter-folder-failed = Kon { $folder } niet aanmaken: { $error }
 shell-update-gone = { -app-name } { $version } is niet meer beschikbaar
