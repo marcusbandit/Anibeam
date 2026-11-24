@@ -98,6 +98,12 @@ const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN se
                 WHERE a.kind = 'Clearlogo'
                   AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
              ) WHERE pick = 1)
+     UNION SELECT url FROM (SELECT url FROM (
+                SELECT a.url, row_number() OVER (PARTITION BY a.anilist_id ORDER BY a.rank) AS pick
+                FROM anizip_images a
+                WHERE a.kind = 'Fanart'
+                  AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
+             ) WHERE pick = 1)
      UNION SELECT b.logo_url FROM fallback_shows b
            WHERE b.logo_url IS NOT NULL
              AND b.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
@@ -108,9 +114,9 @@ const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN se
 /// covers of every entry in an owned series' franchise, walked the way the
 /// graph closes it (CHARACTER and OTHER edges are never crossed), so the
 /// series page's Related stones have their art offline too. From ani.zip
-/// (#1036), an owned series' one clear logo, English first, and the stills
-/// of the episodes it has a file of; the rest of its artwork waits until
-/// something asks.
+/// (#1036), an owned series' one clear logo, English first, its first
+/// background (#1475), and the stills of the episodes it has a file of; the
+/// rest of its artwork waits until something asks.
 const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
         SELECT anilist_id FROM series WHERE anilist_id IS NOT NULL
         UNION SELECT r.to_id FROM relations r JOIN franchise f ON r.from_id = f.id
@@ -139,6 +145,12 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
                 ) AS pick
                 FROM anizip_images a
                 WHERE a.kind = 'Clearlogo'
+                  AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
+             ) WHERE pick = 1)
+        UNION SELECT url FROM (SELECT url FROM (
+                SELECT a.url, row_number() OVER (PARTITION BY a.anilist_id ORDER BY a.rank) AS pick
+                FROM anizip_images a
+                WHERE a.kind = 'Fanart'
                   AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
              ) WHERE pick = 1)
         UNION SELECT ze.still_url FROM anizip_episodes ze

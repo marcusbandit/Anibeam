@@ -1,5 +1,5 @@
 // Home: the page the app opens on, ordered by what the app is for. First the hero: the
-// series to go on with, one at a time and the same for every show (#1468): the banner across
+// series to go on with, one at a time and the same for every show (#1468): the backdrop across
 // the window, the poster in front, the logo or the title, the episode, two lines of the
 // show's synopsis and the two actions. It steps on by itself after a stretch with no input,
 // or by hand with its arrows. Under it Continue, one row of episode cards that steps along
@@ -1285,8 +1285,8 @@ Item {
         visible: !page.libraryEmpty
 
         // ---- The hero (#1464, #1468): the Continue series one at a time, every one in the same
-        // shape. The show's banner runs to the window's edges under a quiet scrim and fades into
-        // the page (with no banner, its poster blurred in its place); low on it sit the poster,
+        // shape. The show's backdrop (#1475) runs to the window's edges under a quiet scrim and
+        // fades into the page (with none, its poster blurred in its place); low on it sit the poster,
         // the logo or the title, the episode, two lines of the show's synopsis and the two
         // actions. The poster is a picture and nothing more: playing is the button's job and
         // Continue's. A show with no logo makes its poster the larger centre piece, the title
@@ -1421,7 +1421,9 @@ Item {
                     // With a logo the words take the poster's height whatever the window;
                     // without one, the words' own height
                     readonly property real blockH: Math.max(hero.framed || hasLogo ? posterH : 0, hasLogo ? 0 : lower.implicitHeight)
-                    readonly property string banner: d && d.banner ? d.banner : ""
+                    // The core's pick (#1475): the show's background, else a banner wide
+                    // enough to stay sharp, else nothing and the poster wash below
+                    readonly property string backdrop: d && d.backdrop ? d.backdrop : ""
                     readonly property string poster: c.poster || ""
                     function focusResume() { resumeButton.forceActiveFocus() }
                     // The incoming slide fades in over the outgoing one, which stays whole
@@ -1451,22 +1453,22 @@ Item {
                         Rectangle { anchors.fill: parent; color: slide.bandBase }
                         Image {
                             id: art
-                            visible: slide.banner !== "" && status === Image.Ready
+                            visible: slide.backdrop !== "" && status === Image.Ready
                             anchors.fill: parent
-                            source: slide.loaded && slide.banner ? Fmt.fileUrl(slide.banner) : ""
-                            // Decoded at the width it is drawn, not the banner's own
+                            source: slide.loaded && slide.backdrop ? Fmt.fileUrl(slide.backdrop) : ""
+                            // Decoded at the width it is drawn, not the picture's own
                             sourceSize.width: Math.ceil(back.width * Screen.devicePixelRatio)
                             fillMode: Image.PreserveAspectCrop
                             verticalAlignment: Image.AlignTop
                             asynchronous: true
                         }
-                        // No banner: the poster, decoded tiny and drawn large, so it reads as
+                        // No backdrop: the poster, decoded tiny and drawn large, so it reads as
                         // its colours and nothing sharp
                         Image {
                             id: soft
-                            visible: slide.banner === "" && slide.poster !== "" && status === Image.Ready
+                            visible: slide.backdrop === "" && slide.poster !== "" && status === Image.Ready
                             anchors.fill: parent
-                            source: slide.loaded && slide.banner === "" && slide.poster ? Fmt.fileUrl(slide.poster) : ""
+                            source: slide.loaded && slide.backdrop === "" && slide.poster ? Fmt.fileUrl(slide.poster) : ""
                             sourceSize: Qt.size(12, 18)
                             fillMode: Image.PreserveAspectCrop
                             smooth: true

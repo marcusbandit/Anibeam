@@ -14,6 +14,7 @@ use anibeam_foundation::sync::recover;
 pub mod anilist;
 pub mod aniskip;
 pub mod anizip;
+pub mod dimensions;
 pub mod doh;
 pub mod front;
 pub mod gzip;

@@ -35,6 +35,8 @@ struct AniZipView {
     episodes: HashMap<i64, AniZipEpisodeView>,
     logo: Option<String>,
     artwork: Vec<Artwork>,
+    /// The first background on disk, in ani.zip's order (#1475).
+    fanart: Option<String>,
 }
 
 impl AniZipView {
@@ -44,6 +46,26 @@ impl AniZipView {
             .then(|| self.episodes.get(&(number as i64)))
             .flatten()
     }
+}
+
+/// How wide a banner has to be to stay sharp across the hero (#1475).
+/// AniList's are often 1900 wide, many narrower, and stretched past the
+/// window's width a narrow one reads as a blur.
+const SHARP_WIDTH: u32 = 1600;
+
+/// The wide picture behind the hero and the series head (#1475): ani.zip's
+/// background once it is on disk, else the banner when it is at least
+/// `SHARP_WIDTH` across, else none, and the shells wash the poster in.
+fn backdrop(
+    fanart: Option<String>,
+    banner: Option<&str>,
+    width_of: impl Fn(&Path) -> Option<u32>,
+) -> Option<String> {
+    fanart.or_else(|| {
+        banner
+            .filter(|b| width_of(Path::new(b)).is_some_and(|w| w >= SHARP_WIDTH))
+            .map(str::to_string)
+    })
 }
 
 /// Midnight UTC of a `YYYY-MM-DD`.
@@ -320,6 +342,11 @@ impl Snapshot {
             suggested_fix,
             logo: zip.logo,
             artwork: zip.artwork,
+            backdrop: backdrop(
+                zip.fanart,
+                row.banner_path.as_deref(),
+                anibeam_net::dimensions::width_of,
+            ),
             card,
         }))
     }
@@ -425,6 +452,8 @@ impl Snapshot {
                     Some(_) => 2,
                 };
                 logos.push((path.is_none(), pick, path.clone()));
+            } else if kind == "Fanart" && view.fanart.is_none() {
+                view.fanart = path.clone();
             }
             view.artwork.push(Artwork { kind, url, path });
         }
@@ -1090,6 +1119,36 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn the_background_comes_first_then_a_wide_banner_then_none() {
+        use anibeam_net::dimensions::{testing, width_of};
+        let dir = tempfile::tempdir().unwrap();
+        let write = |name: &str, bytes: Vec<u8>| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, bytes).unwrap();
+            path.to_string_lossy().into_owned()
+        };
+        let fanart = write("fanart.jpg", testing::jpeg(1920, 1080));
+        let wide = write("wide.jpg", testing::jpeg(1900, 400));
+        let small = write("small.png", testing::png(1200, 300));
+        let edge = write("edge.jpg", testing::jpeg(1600, 400));
+        let unreadable = write("odd.jpg", b"image".to_vec());
+
+        // The background wins over any banner, even a wide one.
+        assert_eq!(
+            backdrop(Some(fanart.clone()), Some(&wide), width_of),
+            Some(fanart.clone())
+        );
+        assert_eq!(backdrop(Some(fanart.clone()), None, width_of), Some(fanart));
+        // Without one, a banner 1600 wide or more.
+        assert_eq!(backdrop(None, Some(&wide), width_of), Some(wide));
+        assert_eq!(backdrop(None, Some(&edge), width_of), Some(edge));
+        // A narrower banner, one whose width cannot be read, or none: nothing.
+        assert_eq!(backdrop(None, Some(&small), width_of), None);
+        assert_eq!(backdrop(None, Some(&unreadable), width_of), None);
+        assert_eq!(backdrop(None, None, width_of), None);
     }
 
     #[test]

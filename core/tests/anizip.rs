@@ -19,6 +19,7 @@ const LOGO_EN: &str = "https://images.example.com/logo-en.png";
 const LOGO_JA: &str = "https://images.example.com/logo-ja.png";
 const STILL_1: &str = "https://images.example.com/still/1.jpg";
 const STILL_2: &str = "https://images.example.com/still/2.jpg";
+const FANART: &str = "https://images.example.com/fanart.jpg";
 
 /// AniList's `Media` reply, with no MAL id: the mapping has to supply it.
 fn media_json() -> serde_json::Value {
@@ -74,7 +75,7 @@ fn anizip_json() -> String {
             "S1": { "seasonNumber": 0, "episodeNumber": 1, "title": { "en": "Harbour Recap" } }
         },
         "images": [
-            { "coverType": "Fanart", "url": "https://images.example.com/fanart.jpg" },
+            { "coverType": "Fanart", "url": FANART },
             { "coverType": "Clearlogo", "url": LOGO_JA, "lang": "ja" },
             { "coverType": "Clearlogo", "url": LOGO_EN, "lang": "en" },
             { "coverType": "Poster", "url": "https://images.example.com/poster.jpg" }
@@ -189,7 +190,8 @@ fn series_mal(core: &Core, series: u64) -> Option<i64> {
 /// A match through ani.zip: its titles win, a placeholder of its falls to
 /// AniList's streaming title, an episode it has no title for falls to
 /// Jikan's, which the mapped MAL id let the match ask, and the stills of
-/// the episodes on disk and the English clear logo are on disk as files.
+/// the episodes on disk, the English clear logo and the background are on
+/// disk as files, the background as the page's backdrop (#1475).
 #[test]
 fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     let http = FakeHttp::new();
@@ -202,6 +204,11 @@ fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     for url in [STILL_1, STILL_2, LOGO_EN] {
         http.push_for(url, 200, b"image".to_vec());
     }
+    http.push_for(
+        FANART,
+        200,
+        anibeam_core::net::dimensions::testing::jpeg(1920, 1080),
+    );
     apply(&core, &c, series);
 
     assert_eq!(
@@ -237,10 +244,13 @@ fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     assert!(logo.ends_with(".png") && std::path::Path::new(logo).is_file());
     let kinds: Vec<&str> = d.artwork.iter().map(|a| a.kind.as_str()).collect();
     assert_eq!(kinds, ["Fanart", "Clearlogo", "Clearlogo", "Poster"]);
-    // Only the logo is fetched up front.
-    assert_eq!(d.artwork[0].path, None);
+    // Only the logo and the background are fetched up front.
+    let fanart = d.artwork[0].path.as_deref().expect("the background");
+    assert!(fanart.ends_with(".jpg") && std::path::Path::new(fanart).is_file());
+    assert_eq!(d.backdrop.as_deref(), Some(fanart));
     assert_eq!(d.artwork[2].url, LOGO_EN);
     assert_eq!(d.artwork[2].path.as_deref(), Some(logo));
+    assert_eq!(d.artwork[3].path, None);
     assert!(!http.requests().iter().any(|r| r.url == LOGO_JA));
 
     core.shutdown();

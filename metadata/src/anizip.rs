@@ -272,7 +272,8 @@ pub fn due(conn: &Connection, anilist_id: u64, now: i64) -> Result<bool, CoreErr
 }
 
 /// The images a show wants fetched now: its one clear logo, English first,
-/// else the logo the fallback borrowed from its franchise (#1461), and the
+/// else the logo the fallback borrowed from its franchise (#1461), its first
+/// background, which the hero and the series head draw (#1475), and the
 /// still of every episode a series matched to it has a file of, ani.zip's or
 /// the fallback's. The rest of the artwork, and the stills of episodes not
 /// on disk, wait until something asks for them.
@@ -283,6 +284,14 @@ pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, Cor
             WHERE i.anilist_id = ?1 AND i.kind = 'Clearlogo'
               AND EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = i.anilist_id AND s.provider = 'anilist')
             ORDER BY CASE WHEN lower(i.lang) LIKE 'en%' THEN 0 WHEN i.lang IS NULL THEN 1 ELSE 2 END, i.rank
+            LIMIT 1
+         )
+         UNION
+         SELECT url FROM (
+            SELECT i.url FROM anizip_images i
+            WHERE i.anilist_id = ?1 AND i.kind = 'Fanart'
+              AND EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = i.anilist_id AND s.provider = 'anilist')
+            ORDER BY i.rank
             LIMIT 1
          )
          UNION
