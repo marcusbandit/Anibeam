@@ -46,6 +46,39 @@ static BATCH_WORD: LazyLock<Regex> = LazyLock::new(|| {
 /// A season with no episode after it: `S01 1080p`, `S02.1080p`
 pub(crate) static SEASON_PACK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bS(\d{1,2})(?:[\s._\[(]|$)").unwrap());
+/// A season a title, or a show's name, states in words or as a season code outside an
+/// SxxEyy marker: `Season 04`, `4th Season`, `S2`. Its word boundaries are ASCII ones, as
+/// JavaScript's are: `GetShow.qml` reads show names with the same pattern.
+static SEASON_WORD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)(?-u:\b)(?:season\s*([0-9]{1,2})|([0-9]{1,2})(?:st|nd|rd|th)\s+season|s([0-9]{1,2}))(?-u:\b)",
+    )
+    .unwrap()
+});
+/// What follows the near end of a span of seasons: `-4`, ` - S04`, ` ~ 3`, `+S2`, ` & 2`,
+/// ` and 2`. Its groups: the space before the joiner, the joiner (none for `and`), the
+/// space after it, a season word or code on the far end, the far end's number.
+static SEASON_SPAN_NEXT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(\s*)(?:([-~+&])|and\s)(\s*)((?:season|s)\s*)?([0-9]{1,2})(?:[^0-9]|$)")
+        .unwrap()
+});
+/// What comes before the far end of a span of seasons: `S01 - `, `Season 1 & `.
+static SEASON_SPAN_BEFORE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:season\s*|(?-u:\b)s)[0-9]{1,2}\s*(?:[-~+&]|and\s)\s*$").unwrap()
+});
+/// A season named in words, which takes no number after it: `The Final Season 05` is the
+/// fifth episode of the final season, never season 5.
+static NAMED_SEASON: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?-u:\b)(?:final|last)\s+$").unwrap());
+/// `Complete` before a season word: `Complete Season 2` is season 2, but a range after it
+/// is episodes, `Complete Season 01-12`.
+static COMPLETE_BEFORE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?-u:\b)complete\s+$").unwrap());
+/// A season word with its season said before it, so a range after it is episodes:
+/// `The Final Season 01-16`, `2nd Season 01-12`, `Complete Season 01-12`.
+static NAMED_BEFORE_RANGE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?-u:\b)(?:final|complete|last|[0-9]{1,2}(?:st|nd|rd|th))\s+season$").unwrap()
+});
 /// Where the video came from: `WEB-DL`, `WEBRip`, `WEB`, `BluRay`, `BDRip`, `HDTV`, `DVD`
 static RIP: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?:^|[^a-z0-9])(web[-. ]?dl|web[-. ]?rip|web|blu[-. ]?ray|bd[-. ]?rip|bd|hdtv|dvd[-. ]?rip|dvd)(?:$|[^a-z0-9])").unwrap()
@@ -77,6 +110,85 @@ pub fn read_name(name: &str) -> ReleaseFacts {
     })
 }
 
+/// What a title, or a show's name, says of its season outside an SxxEyy marker.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SeasonSaid {
+    Nothing,
+    /// One season; `words` when it is written out (`Season 4`, `4th Season`) rather than
+    /// as a code (`S4`).
+    One {
+        season: u32,
+        words: bool,
+    },
+    /// A span or a pack of seasons: `Season 1-4`, `S01 - S04`, `Season 1 ~ 3`, `S1+S2`,
+    /// `Season 1 & 2`. It names no one season.
+    Span,
+}
+
+/// What `title` says of its season (`SEASON_WORD`): the first season it states, unless
+/// that is the near end of a span. A spaced dash and a padded number after it is an
+/// episode (`Season 2 - 03`); one unpadded digit past a season written in words is a
+/// span's far end (`Season 1 - 4`), but past a code it is the episode (`S2 - 7`).
+/// `GetShow.qml` `seasonSaid` reads it the same way.
+pub(crate) fn season_said(title: &str) -> SeasonSaid {
+    for c in SEASON_WORD.captures_iter(title) {
+        let Some(whole) = c.get(0) else { continue };
+        let (number, words) = match (c.get(1), c.get(2), c.get(3)) {
+            (Some(n), _, _) | (None, Some(n), _) => (n, true),
+            (None, None, Some(n)) => (n, false),
+            _ => continue,
+        };
+        let before = &title[..whole.start()];
+        if c.get(1).is_some() && NAMED_SEASON.is_match(before) {
+            continue;
+        }
+        if SEASON_SPAN_BEFORE.is_match(before) {
+            continue;
+        }
+        let after = &title[whole.end()..];
+        if c.get(1).is_some()
+            && COMPLETE_BEFORE.is_match(before)
+            && SEASON_SPAN_NEXT.is_match(after)
+        {
+            continue;
+        }
+        let Ok(season) = number.as_str().parse::<u32>() else {
+            continue;
+        };
+        if let Some(n) = SEASON_SPAN_NEXT.captures(after) {
+            let far = &n[5];
+            let spaced = !n[1].is_empty() || !n[3].is_empty();
+            let span = n.get(4).is_some()
+                || n.get(2).is_none_or(|j| j.as_str() != "-")
+                || !spaced
+                || (words && far.len() == 1 && far.parse::<u32>().is_ok_and(|f| f > season));
+            if span {
+                return SeasonSaid::Span;
+            }
+        }
+        return SeasonSaid::One { season, words };
+    }
+    SeasonSaid::Nothing
+}
+
+/// The one season a title, or a show's name, states (`season_said`), when it states one,
+/// in words or as a code. `grid` reads a show's names with it, and a release's season when
+/// its facts carry none: `ReleaseFacts::season` keeps to codes.
+pub(crate) fn season_word(title: &str) -> Option<u32> {
+    match season_said(title) {
+        SeasonSaid::One { season, .. } => Some(season),
+        _ => None,
+    }
+}
+
+/// Whether the season a release title states is written out in words (`Season 04`,
+/// `4th Season`), as AniList's names number seasons, rather than as a code (`S04E01`,
+/// `S2`), which follows the TV listings and may number them otherwise.
+pub(crate) fn season_in_words(title: &str) -> bool {
+    !SEASON_EPISODE.is_match(title)
+        && matches!(season_said(title), SeasonSaid::One { words: true, .. })
+}
+
 pub fn read(item: &Release) -> ReleaseFacts {
     let title = item.title.as_str();
     let group = GROUP_LEAD
@@ -106,14 +218,33 @@ pub fn read(item: &Release) -> ReleaseFacts {
         season = c[1].parse().ok();
         episode = c[2].parse().ok();
     }
+    let said = season_said(title);
+    // Only a code: the downloads match files on disk by this season, numbered as the TV
+    // listings number them, and a season written out follows AniList's names, which may
+    // number it otherwise (`Kimetsu no Yaiba Season 2 - 05` is the listings' S03E05).
+    // `grid::of_show` reads the written one itself.
+    if let SeasonSaid::One {
+        season: s,
+        words: false,
+    } = said
+    {
+        season = season.or(Some(s));
+    }
     let batch = episode.is_none()
         && (BATCH_WORD.is_match(title)
+            // A span of seasons is a pack of them
+            || said == SeasonSaid::Span
             || ranged(title)
             // "Show S2 - 03" names a season and then its episode: not a pack
             || (!DASH_EPISODE.is_match(title)
                 && SEASON_PACK
                     .captures(title)
-                    .inspect(|c| season = c[1].parse().ok())
+                    // A code season_said leaves out ("S02_1080p")
+                    .inspect(|c| {
+                        if season.is_none() {
+                            season = c[1].parse().ok();
+                        }
+                    })
                     .is_some()));
     if !batch && episode.is_none() {
         episode = DASH_EPISODE
@@ -214,9 +345,16 @@ fn ranged(title: &str) -> bool {
     span(title).is_some()
 }
 
-/// The first range of episodes a title names, as first and last.
+/// The first range of episodes a title names, as first and last. A pair of numbers right
+/// after a season word is seasons, or a season and then an episode: `Season 1-4`,
+/// `Season 2 - 03`. After a season already named they are episodes: `The Final Season
+/// 01-16`, `2nd Season 01-12`.
 fn span(title: &str) -> Option<(u32, u32)> {
     RANGE.captures_iter(title).find_map(|c| {
+        let before = title[..c.get(0)?.start()].trim_end();
+        if before.to_ascii_lowercase().ends_with("season") && !NAMED_BEFORE_RANGE.is_match(before) {
+            return None;
+        }
         let (a, b) = (
             c[1].parse::<u32>().unwrap_or(0),
             c[2].parse::<u32>().unwrap_or(0),
@@ -283,6 +421,178 @@ mod tests {
             "",
         ));
         assert_eq!((f.episode, f.batch), (Some(3.0), false));
+    }
+
+    #[test]
+    fn a_season_word_names_the_season() {
+        // The Judas batch of the show's fourth season, as its own title words it
+        let t = "[Judas] Re:Zero kara Hajimeru Isekai Seikatsu (Season 04) [1080p][Batch]";
+        let f = read(&release(t, ""));
+        assert_eq!((f.season, f.batch, f.episode), (None, true, None));
+        assert_eq!(season_word(t), Some(4));
+        let t = "[Grp] Show 4th Season - 03 [1080p]";
+        let f = read(&release(t, ""));
+        assert_eq!((f.season, f.episode, f.batch), (None, Some(3.0), false));
+        assert_eq!(season_word(t), Some(4));
+        let t = "[Grp] Show Season 2 - 03 [1080p]";
+        let f = read(&release(t, ""));
+        assert_eq!((f.season, f.episode, f.batch), (None, Some(3.0), false));
+        assert_eq!(season_word(t), Some(2));
+        assert_eq!(read(&release("Show S02E05 [1080p]", "")).season, Some(2));
+        assert_eq!(read(&release("Show S2 - 03 [1080p]", "")).season, Some(2));
+        // A span of seasons, a year and a plain episode name no season
+        let f = read(&release(
+            "[Judas] Black Clover (Season 1-4) [1080p][Batch]",
+            "",
+        ));
+        assert_eq!((f.season, f.batch), (None, true));
+        let f = read(&release("Show S01-S04 [1080p]", ""));
+        assert_eq!((f.season, f.batch), (None, true));
+        assert_eq!(read(&release("Show Season 2020 [1080p]", "")).season, None);
+        assert_eq!(read(&release("Plain Show - 05", "")).season, None);
+    }
+
+    #[test]
+    fn a_span_of_seasons_names_none_and_is_a_pack() {
+        for t in [
+            "Show S01 - S04 [1080p]",
+            "Show S01 ~ S03 [1080p]",
+            "Show (Season 1 - 4) [1080p]",
+            "Show Season 1 - Season 4 [1080p]",
+            "Show Season 1 ~ 3 [1080p]",
+            "Show S1+S2 [1080p]",
+            "Show S1 + S2 + S3 [1080p]",
+            "Show Season 1 & 2 [1080p]",
+            "Show Season 1 and 2 [1080p]",
+        ] {
+            assert_eq!(season_said(t), SeasonSaid::Span, "{t}");
+            let f = read(&release(t, ""));
+            assert_eq!((f.season, f.batch, f.episode), (None, true, None), "{t}");
+        }
+        // A season, then its episode
+        for t in [
+            "[Grp] Show Season 2 - 03 [1080p]",
+            "[Grp] Show S2 - 03 [1080p]",
+            "[Grp] Show Season 2 - 13 [1080p]",
+        ] {
+            let f = read(&release(t, ""));
+            assert_eq!(season_word(t), Some(2), "{t}");
+            assert!(!f.batch && f.episode.is_some(), "{t}");
+        }
+        // A dash before a season leads it in, it does not end a span
+        let t = "[Grp] Re Zero - Season 2 - 03 [1080p]";
+        let f = read(&release(t, ""));
+        assert_eq!((season_word(t), f.episode), (Some(2), Some(3.0)));
+    }
+
+    #[test]
+    fn a_season_named_in_words_keeps_its_episodes() {
+        let f = read(&release(
+            "[Grp] Shingeki no Kyojin The Final Season 01-16 [Batch]",
+            "",
+        ));
+        assert_eq!(
+            (f.season, f.batch, f.first_episode, f.last_episode),
+            (None, true, Some(1), Some(16))
+        );
+        let t = "[Grp] Show 2nd Season 01-12 [Batch]";
+        let f = read(&release(t, ""));
+        assert_eq!(
+            (season_word(t), f.batch, f.first_episode, f.last_episode),
+            (Some(2), true, Some(1), Some(12))
+        );
+        let t = "[Grp] Show Complete Season 01-12 [1080p]";
+        let f = read(&release(t, ""));
+        assert_eq!(
+            (season_said(t), f.batch, f.first_episode, f.last_episode),
+            (SeasonSaid::Nothing, true, Some(1), Some(12))
+        );
+        // Complete is no season's name: its number is the season
+        let t = "[Grp] Show Complete Season 2 [1080p]";
+        let f = read(&release(t, ""));
+        assert_eq!((season_word(t), f.batch, f.episode), (Some(2), true, None));
+        assert!(season_in_words(t));
+        // Its episode is no season
+        let f = read(&release(
+            "Shingeki no Kyojin The Final Season 05 [1080p]",
+            "",
+        ));
+        assert_eq!(f.season, None);
+        let f = read(&release(
+            "[Grp] Shingeki no Kyojin The Final Season - 05 [1080p]",
+            "",
+        ));
+        assert_eq!((f.season, f.episode), (None, Some(5.0)));
+    }
+
+    #[test]
+    fn a_season_code_and_a_dashed_episode_are_no_span() {
+        // A bare code, a spaced dash and an unpadded episode: season 2, episode 7
+        for (t, season, episode) in [
+            ("[Grp] Show S2 - 7 [720p]", 2, 7.0),
+            ("Show S1 - 5", 1, 5.0),
+        ] {
+            assert_eq!(
+                season_said(t),
+                SeasonSaid::One {
+                    season,
+                    words: false
+                },
+                "{t}"
+            );
+            let f = read(&release(t, ""));
+            assert_eq!(
+                (f.season, f.episode, f.batch),
+                (Some(season), Some(episode), false),
+                "{t}"
+            );
+        }
+        // Written out, or with a season on the far end, it is a span
+        for t in [
+            "Show Season 1 - 4",
+            "Show S1 - S4",
+            "Show S1-S4",
+            "Show S01 - S04",
+        ] {
+            assert_eq!(season_said(t), SeasonSaid::Span, "{t}");
+        }
+    }
+
+    #[test]
+    fn a_season_written_out_stays_out_of_the_facts() {
+        // The downloads match files on disk by the facts' season, which the TV listings
+        // number: AniList's "Season 2" of Kimetsu no Yaiba is the listings' third
+        let t = "Kimetsu no Yaiba Season 2 - 05 [1080p]";
+        let f = read(&release(t, ""));
+        assert_eq!((f.season, f.episode), (None, Some(5.0)));
+        assert_eq!(season_word(t), Some(2));
+        // A code still sets it
+        assert_eq!(
+            read(&release("Kimetsu no Yaiba S03E05 [1080p]", "")).season,
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn a_season_written_out_is_told_from_a_code() {
+        assert!(season_in_words("[Judas] Show (Season 04) [Batch]"));
+        assert!(season_in_words("[Grp] Show 4th Season - 03"));
+        assert!(!season_in_words("[Grp] Show S2 - 03"));
+        assert!(!season_in_words("Show S02E05 1080p WEB h264-GRP"));
+        assert!(!season_in_words("Show Season 2 S02E05 1080p"));
+        assert!(!season_in_words("Show S01 - S04 [Batch]"));
+        assert_eq!(season_word("Fate/Zero 2nd Season"), Some(2));
+        assert_eq!(
+            season_word("Re:ZERO -Starting Life in Another World- Season 4"),
+            Some(4)
+        );
+        assert_eq!(season_word("Shingeki no Kyojin: The Final Season"), None);
+        // A code season_said cannot bound still reads off the pack
+        let f = read(&release("Show S02_1080p", ""));
+        assert_eq!((f.season, f.batch), (Some(2), true));
+        // Words inside other words are none
+        assert_eq!(season_said("Preseason 2 Show - 01"), SeasonSaid::Nothing);
+        assert_eq!(season_said("Show Seasons 2 - 01"), SeasonSaid::Nothing);
     }
 
     #[test]

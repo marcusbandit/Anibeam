@@ -10,7 +10,7 @@ use anibeam_core::{
 };
 use slint::{ComponentHandle, ModelRc, VecModel, Weak};
 
-use crate::{AppWindow, AuthRow, EndpointRow, RepoData, RepoRow};
+use crate::{AppData, AppWindow, AuthRow, EndpointRow, Nav, RepoData, RepoRow, Settings};
 
 /// What a tap on a row of the endpoint list stands for.
 #[derive(Clone)]
@@ -111,6 +111,12 @@ struct Repos {
     /// What the last check found, by host.
     health: HashMap<String, Health>,
     preview: Option<EndpointRepoPreview>,
+    /// Counts the previews asked for and cancelled: an answer to one asked before the last
+    /// Cancel, or Back from a link, is dropped rather than put up where nobody looks.
+    asked: u64,
+    /// The preview still being fetched, by its `asked` number: the busy state is its own
+    /// until its answer comes or a Cancel or a link drops it.
+    fetching: Option<u64>,
     rows: Vec<Row>,
     /// The endpoint list, kept and updated row by row: a row that did not change keeps its
     /// element, so an open form's field keeps what was typed when the list is read again.
@@ -137,16 +143,13 @@ fn with(f: impl FnOnce(&mut Repos)) {
 }
 
 /// Runs `call` on a thread and hands the answer to `done` on the UI thread.
-fn spawn(call: Call, done: impl FnOnce(&mut Repos, Result<Reply, CoreError>) + Send + 'static) {
-    let Some(core) = crate::local::core() else {
-        return;
-    };
-    let _ = std::thread::Builder::new()
-        .name("repos".into())
-        .spawn(move || {
-            let answer = core.call(call);
-            let _ = slint::invoke_from_event_loop(move || with(|r| done(r, answer)));
-        });
+/// False when the core is not open yet: `done` never runs, so a caller that set itself busy
+/// sets itself free again.
+fn spawn(
+    call: Call,
+    done: impl FnOnce(&mut Repos, Result<Reply, CoreError>) + Send + 'static,
+) -> bool {
+    crate::local::call_off_thread("repos", call, move |answer| with(|r| done(r, answer)))
 }
 
 pub fn install(window: &AppWindow) {
@@ -156,6 +159,8 @@ pub fn install(window: &AppWindow) {
             catalog: None,
             health: HashMap::new(),
             preview: None,
+            asked: 0,
+            fetching: None,
             rows: Vec::new(),
             lines: std::rc::Rc::new(VecModel::default()),
             asking: None,
@@ -174,7 +179,9 @@ pub fn install(window: &AppWindow) {
     d.on_trust(|| with(Repos::trust));
     d.on_cancel(|| {
         with(|r| {
+            r.asked += 1;
             r.preview = None;
+            r.drop_fetch();
             r.data(|d| {
                 d.set_previewing(false);
                 d.set_error("".into());
@@ -204,6 +211,59 @@ pub fn install(window: &AppWindow) {
     d.on_dismiss(|| with(Repos::dismiss));
     d.on_open_link(|url| crate::platform::open_url(&url));
     d.on_add_custom(|name, url| with(|r| r.add_custom(name.to_string(), url.to_string())));
+}
+
+/// An anibeam://add-repo link came (src/link.rs): Search sites opens, or onboarding's sites
+/// step during the first run, with the address filled in and its preview started, or with
+/// why the link was refused. Nothing is trusted until the person taps Trust. Where they were
+/// is kept, so Back goes there.
+pub fn open_link(link: Result<String, crate::link::Refusal>) {
+    with(|r| {
+        let Some(w) = r.window.upgrade() else {
+            return;
+        };
+        let nav = w.global::<Nav>();
+        let app = w.global::<AppData>();
+        let settings = w.global::<Settings>();
+        // A second link while the first is still up keeps the first one's way back, and one
+        // that comes while the person is on the page already has nowhere else to go back to.
+        let here = if app.get_onboarding() {
+            app.get_step() == app.get_onboarding_sites()
+        } else {
+            nav.get_page() == 3 && settings.get_section() == 3
+        };
+        if !nav.get_link_back() && !here {
+            nav.set_link_page(nav.get_page());
+            nav.set_link_section(settings.get_section());
+            nav.set_link_step(app.get_step());
+            nav.set_link_back(true);
+        }
+        if app.get_onboarding() {
+            app.set_step(app.get_onboarding_sites());
+        } else {
+            w.invoke_go(3);
+            settings.set_lit("".into());
+            // 3 is Search sites (more.slint's Settings.section).
+            settings.set_section(3);
+        }
+        r.asked += 1;
+        r.preview = None;
+        r.drop_fetch();
+        r.data(|d| d.set_previewing(false));
+        match link {
+            Ok(url) => {
+                r.data(|d| d.set_url(url.clone().into()));
+                r.add(url);
+            }
+            Err(refusal) => {
+                let text = refusal.text();
+                r.data(|d| {
+                    d.set_url("".into());
+                    d.set_error(text.into());
+                });
+            }
+        }
+    });
 }
 
 /// The language changed: the rows, the preview and the form's note are worded again.
@@ -280,6 +340,14 @@ impl Repos {
 
     fn busy(&self, busy: bool) {
         self.data(|d| d.set_busy(busy));
+    }
+
+    /// Forgets the preview being fetched, if one is, and the busy state it held: its answer
+    /// is dropped when it comes.
+    fn drop_fetch(&mut self) {
+        if self.fetching.take().is_some() {
+            self.busy(false);
+        }
     }
 
     /// Takes a catalog answer, or puts its error up.
@@ -461,7 +529,15 @@ impl Repos {
         }
         self.busy(true);
         self.data(|d| d.set_error("".into()));
-        spawn(Call::AddEndpointRepo { url }, |r, answer| {
+        self.asked += 1;
+        let asked = self.asked;
+        let started = spawn(Call::AddEndpointRepo { url }, move |r, answer| {
+            // An answer to a preview a Cancel, a link or a newer Add replaced leaves the busy
+            // state to the one that replaced it
+            if r.asked != asked {
+                return;
+            }
+            r.fetching = None;
             r.busy(false);
             match answer {
                 Ok(Reply::EndpointRepoPreview { preview }) => {
@@ -483,6 +559,11 @@ impl Repos {
                 }
             }
         });
+        if started {
+            self.fetching = Some(asked);
+        } else {
+            self.busy(false);
+        }
     }
 
     /// Opens a source added by hand for editing: its name and address in its own row.
@@ -552,7 +633,7 @@ impl Repos {
             url = d.get_edit_url().to_string();
         });
         let saved = install.clone();
-        spawn(
+        let started = spawn(
             Call::EditCustomEndpoint { install, name, url },
             move |r, answer| {
                 r.saving = false;
@@ -576,6 +657,9 @@ impl Repos {
                 }
             },
         );
+        if !started {
+            self.saving = false;
+        }
     }
 
     fn add_custom(&mut self, name: String, url: String) {
@@ -610,7 +694,7 @@ impl Repos {
             return;
         };
         self.busy(true);
-        spawn(
+        let started = spawn(
             Call::TrustEndpointRepo {
                 url: p.url,
                 key: p.key,
@@ -625,6 +709,9 @@ impl Repos {
                 }
             },
         );
+        if !started {
+            self.busy(false);
+        }
     }
 
     fn remove_repo(&mut self, i: i32) {
@@ -651,8 +738,7 @@ impl Repos {
         {
             return;
         }
-        self.data(|d| d.set_checking(true));
-        spawn(Call::PhoneNetCheck, |r, answer| {
+        let started = spawn(Call::PhoneNetCheck, |r, answer| {
             r.data(|d| d.set_checking(false));
             if let Ok(Reply::PhoneNetCheck { checks }) = answer {
                 r.health = health_of(&checks);
@@ -661,6 +747,10 @@ impl Repos {
                 }
             }
         });
+        // Set after the start, which answers on this thread later, never before it
+        if started {
+            self.data(|d| d.set_checking(true));
+        }
     }
 
     fn refresh(&mut self) {
@@ -868,7 +958,7 @@ impl Repos {
             },
         };
         self.busy(true);
-        spawn(call, |r, answer| match answer {
+        let started = spawn(call, |r, answer| match answer {
             Err(e) => {
                 r.busy(false);
                 let text = e.to_string();
@@ -880,6 +970,9 @@ impl Repos {
                 }
             }
         });
+        if !started {
+            self.busy(false);
+        }
     }
 
     fn remove_endpoint(&mut self, i: i32) {

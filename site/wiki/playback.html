@@ -1,0 +1,139 @@
+<section>
+  <h2 id="player">The built-in video player</h2>
+  <p>Anibeam plays anime directly inside the app window using <b>mpv</b>, a fast player built to handle anime video formats and complex styled subtitles without needing external codecs or extra setup.</p>
+  <ul>
+    <li><b>Pick up where you left off:</b> Your playback position is saved automatically, so closing an episode halfway lets you resume from the exact second on <b>Home</b> or the show's page.</li>
+    <li><b>Hold for 2x speed:</b> Press and hold anywhere on the video to temporarily play at 2x speed; let go to return to normal speed.</li>
+    <li><b>Screenshots:</b> Press <kbd>S</kbd> during playback to save a clean screenshot to your <code>Pictures/Anibeam</code> folder.</li>
+    <li><b>Multiple copies of an episode:</b> If you have more than one video file for the same episode (for example, a TV release and a Blu-ray version), click the <b>versions</b> badge on the episode row to pick which one plays.</li>
+    <li><b>Next episode button:</b> Near the end of an episode, Anibeam offers the next episode automatically. You can hide the next episode's title (to avoid spoilers!) under <span class="where"><b>Settings</b><b>Playback</b></span> by turning off <b class="ui">Show next episode title</b>.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="shortcuts">Useful keyboard shortcuts</h2>
+  <p>You can view every active shortcut at any time inside Anibeam by pressing <kbd>?</kbd> (or clicking the keyboard icon in the player controls). Here are the ones you will use most:</p>
+  <div class="wiki-table-wrap">
+    <table class="wiki-table">
+      <thead>
+        <tr>
+          <th>Key</th>
+          <th>What it does</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><kbd>Space</kbd> or <kbd>K</kbd></td>
+          <td>Play or pause</td>
+        </tr>
+        <tr>
+          <td><kbd>Left</kbd> / <kbd>Right</kbd></td>
+          <td>Seek backward or forward 5 seconds</td>
+        </tr>
+        <tr>
+          <td><kbd>J</kbd> / <kbd>L</kbd></td>
+          <td>Seek backward or forward 10 seconds</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl</kbd>+<kbd>Right</kbd></td>
+          <td>Skip intro or outro (or jump forward 90 seconds)</td>
+        </tr>
+        <tr>
+          <td><kbd>Hold video</kbd></td>
+          <td>Play at 2x speed while holding the mouse button</td>
+        </tr>
+        <tr>
+          <td><kbd>[</kbd> / <kbd>]</kbd> and <kbd>Backspace</kbd></td>
+          <td>Adjust playback speed by 0.25x, or reset to normal speed</td>
+        </tr>
+        <tr>
+          <td><kbd>,</kbd> / <kbd>.</kbd></td>
+          <td>Step backward or forward one single frame</td>
+        </tr>
+        <tr>
+          <td><kbd>Up</kbd> / <kbd>Down</kbd> and <kbd>M</kbd></td>
+          <td>Adjust volume or mute</td>
+        </tr>
+        <tr>
+          <td><kbd>C</kbd></td>
+          <td>Toggle subtitles on or off</td>
+        </tr>
+        <tr>
+          <td><kbd>z</kbd> / <kbd>Z</kbd> and <kbd>a</kbd> / <kbd>A</kbd></td>
+          <td>Nudge subtitle delay or audio delay by 0.1 seconds</td>
+        </tr>
+        <tr>
+          <td><kbd>N</kbd> / <kbd>P</kbd></td>
+          <td>Jump to the next or previous episode</td>
+        </tr>
+        <tr>
+          <td><kbd>Page Up</kbd> / <kbd>Page Down</kbd></td>
+          <td>Jump between chapter markers</td>
+        </tr>
+        <tr>
+          <td><kbd>F</kbd> or double-click</td>
+          <td>Toggle fullscreen</td>
+        </tr>
+        <tr>
+          <td><kbd>S</kbd></td>
+          <td>Save a screenshot to <code>Pictures/Anibeam</code></td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl</kbd>+<kbd>J</kbd></td>
+          <td>Open the Watch together room panel</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl</kbd>+<kbd>K</kbd> or <kbd>/</kbd></td>
+          <td>Jump to Library search or filter the current page</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p>You can also browse the complete shortcut list anytime under <span class="where"><b>Settings</b><b>Keyboard</b></span>.</p>
+</section>
+
+<section>
+  <h2 id="skip">Skip intros and outros</h2>
+  <p>Anibeam marks openings and endings right on the seek bar using chapter markers embedded in the video file, and falls back to community timestamps from <b>AniSkip</b> when a file has no chapters.</p>
+  <ul>
+    <li><b>Manual skip:</b> While an opening or ending is playing, click the <b class="ui">Skip intro</b> or <b class="ui">Skip outro</b> button that pops up, or press <kbd>Ctrl</kbd>+<kbd>Right</kbd>.</li>
+    <li><b>Automatic skip:</b> Open <span class="where"><b>Settings</b><b>Playback</b></span> and turn on <b class="ui">Skip intros</b> and/or <b class="ui">Skip outros</b>. If Anibeam skips something you actually wanted to watch, click <b class="ui">Undo</b> on the toast that appears.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="tracks">Audio tracks, subtitles, and timing</h2>
+  <p>Many anime files include both Japanese and English audio plus multiple subtitle tracks (like full dialogue and signs-only). You can switch tracks mid-episode from the player bar, and set defaults so every episode starts the way you like:</p>
+  <ol class="steps">
+    <li>Open <span class="where"><b>Settings</b><b>Playback</b></span>.</li>
+    <li>Under <b>Languages</b>, list your preferred language codes in order, separated by commas (for example, <code>ja, en</code> for <b>Audio languages</b> and <code>en</code> for <b>Subtitle languages</b>).</li>
+    <li>Scroll down to <b>Subtitles</b> to see a live preview on a real frame from your library. Adjust <b>Size</b>, <b>Position</b>, <b>Font</b>, <b>Text color</b>, <b>Outline</b>, <b>Shadow</b>, and <b>Background box</b> until it looks right.</li>
+  </ol>
+  <div class="callout">
+    <span class="callout-title">Styled anime subtitles (ASS)</span>
+    <p>Many anime releases use styled <code>.ass</code> subtitles with custom fonts and on-screen sign placement. Under <b>Styled subtitles</b>, pick <b class="ui">Original</b> to keep their exact look, <b class="ui">Size only</b> (the default) to scale them cleanly while keeping sign styling, or <b class="ui">Override</b> to replace them with your own custom font and colors.</p>
+  </div>
+  <p><b>Subtitles or audio slightly out of sync?</b> Click the clock icon (<b>Subtitle and audio delay</b>) in the player bar, or tap <kbd>z</kbd>/<kbd>Z</kbd> for subtitles and <kbd>a</kbd>/<kbd>A</kbd> for audio to shift timing in 0.1-second steps. The delay resets automatically when you move to the next file.</p>
+  <p><b>Power users:</b> If you already maintain your own <code>mpv.conf</code> file, turn on <b class="ui">Use my mpv settings</b> under <b>Advanced</b> in <span class="where"><b>Settings</b><b>Playback</b></span>.</p>
+</section>
+
+<section>
+  <h2 id="cast">Cast to your TV</h2>
+  <p>You can send any episode from Anibeam straight to a <b>Chromecast</b> or a <b>DLNA-compatible smart TV</b> on your home Wi-Fi network.</p>
+  <ol class="steps">
+    <li>Make sure your computer (or phone) and your TV are connected to the same local Wi-Fi network.</li>
+    <li>Start playing an episode and click the <b>Cast to a TV</b> icon in the bottom-right player bar.</li>
+    <li>Pick your TV or Chromecast from the list.</li>
+  </ol>
+  <p>While casting, Anibeam stays your remote for play, pause, seeking, skipping intros, and moving to the next episode. Your watch progress and AniList or MyAnimeList updates continue tracking normally.</p>
+  <div class="callout callout-warn">
+    <span class="callout-title">Heads up about TV compatibility</span>
+    <p>Older 10-bit H.264 anime files (sometimes labeled <em>Hi10P</em>) cannot be decoded by Chromecasts or most smart TVs. Also, TVs display plain text subtitles rather than full styled <code>.ass</code> layouts, so complex on-screen sign effects won't appear when casting.</p>
+  </div>
+</section>
+
+<section>
+  <h2 id="discord">Show what you're watching on Discord</h2>
+  <p>If you want your Discord profile to display the anime and episode you are watching, open <span class="where"><b>Settings</b><b>Playback</b></span> and turn on <b class="ui">Show what you watch on Discord</b> (it is off by default).</p>
+  <p>When you are in a <a href="../watch-together/">Watch together</a> room with Discord enabled, friends on Discord can also ask to join your room directly from your status, and you can choose between <b class="ui">Invite only</b> and <b class="ui">Open</b> in the room panel.</p>
+</section>

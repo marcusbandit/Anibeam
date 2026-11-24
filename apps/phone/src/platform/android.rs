@@ -24,6 +24,10 @@ fn android_main(android: slint::android::AndroidApp) {
     slint::android::init_with_event_listener(android, move |event| {
         if let PollEvent::Main(MainEvent::Resume { .. }) = event {
             let _ = on_resume.send(crate::worker::Command::Sync);
+            let _ = slint::invoke_from_event_loop(|| crate::foreground(true));
+        }
+        if let PollEvent::Main(MainEvent::Pause) = event {
+            let _ = slint::invoke_from_event_loop(|| crate::foreground(false));
         }
         // The phone's light or dark setting or its language changed: Appearance's System mode
         // and a language left to follow the phone follow it.
@@ -623,36 +627,46 @@ extern "system" fn focus_changed(
     let _ = slint::invoke_from_event_loop(move || crate::audio_focus(change));
 }
 
-/// Hands `Focus.changed` its native body. NativeActivity loads this library itself, so the
-/// JVM would not find the method by its symbol name.
+/// Hands `Focus.changed` its native body.
 fn register_focus() -> bool {
-    let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
-    if raw == 0 {
-        return false;
-    }
-    let r = with_env(|env, _app| {
-        use jni::objects::JObject;
-        env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
-            let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
-            let class = app_class(env, activity, "Focus")?;
-            env.register_native_methods(
-                &class,
-                &[jni::NativeMethod {
-                    name: "changed".into(),
-                    sig: "(I)V".into(),
-                    fn_ptr: focus_changed as *mut std::ffi::c_void,
-                }],
-            )?;
-            Ok(())
-        })
-    });
-    match r {
+    let natives = [("changed", "(I)V", focus_changed as *mut std::ffi::c_void)];
+    match register_natives("Focus", &natives) {
         Ok(()) => true,
         Err(e) => {
             crate::local::log(&format!("audio focus: {e}"));
             false
         }
     }
+}
+
+/// Hands one of the app's own Java classes the native bodies of its methods, each a name,
+/// a JNI signature and the function. NativeActivity loads this library itself, so the JVM
+/// would not find them by their symbol names. Focus and control over adb use it.
+pub(crate) fn register_natives(
+    class: &str,
+    methods: &[(&str, &str, *mut std::ffi::c_void)],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
+    if raw == 0 {
+        return Err("the activity is not up".into());
+    }
+    with_env(|env, _app| {
+        use jni::objects::JObject;
+        env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+            let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
+            let class = app_class(env, activity, class)?;
+            let natives: Vec<jni::NativeMethod> = methods
+                .iter()
+                .map(|(name, sig, f)| jni::NativeMethod {
+                    name: (*name).into(),
+                    sig: (*sig).into(),
+                    fn_ptr: *f,
+                })
+                .collect();
+            env.register_native_methods(&class, &natives)?;
+            Ok(())
+        })
+    })
 }
 
 /// Puts `text` on the clipboard, so a connection check can be pasted into a message.
@@ -735,7 +749,7 @@ fn app_class<'l>(
 
 /// Calls a static method of one of the app's own Java classes with the activity and one more
 /// argument, and hands back what it returns.
-fn java_call(
+pub(crate) fn java_call(
     class: &str,
     method: &str,
     sig: &str,
@@ -904,4 +918,60 @@ pub fn bars(argb: u32) {
         "(Landroid/app/Activity;I)V",
         Some(jni::objects::JValue::Int(argb as i32)),
     );
+}
+
+/// `LinkActivity`, looked up once: the clock asks it for a link every second.
+static LINK_CLASS: std::sync::OnceLock<jni::objects::GlobalRef> = std::sync::OnceLock::new();
+
+/// The anibeam:// link a browser opened the app with, once: `LinkActivity.java` keeps it
+/// until it is taken here. With none waiting this is one static field read.
+pub fn take_link() -> Option<String> {
+    let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
+    if raw == 0 {
+        return None;
+    }
+    let r = with_env(|env, _app| {
+        use jni::objects::{JClass, JObject, JString, JValue};
+        env.with_local_frame(
+            8,
+            |env| -> Result<Option<String>, Box<dyn std::error::Error>> {
+                let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
+                let class = match LINK_CLASS.get() {
+                    Some(class) => class,
+                    None => {
+                        let class = app_class(env, activity, "LinkActivity")?;
+                        let class = env.new_global_ref(class)?;
+                        LINK_CLASS.get_or_init(|| class)
+                    }
+                };
+                let class = <&JClass>::from(class.as_obj());
+                let waiting = env
+                    .get_static_field(class, "pending", "Ljava/lang/String;")?
+                    .l()?;
+                if waiting.is_null() {
+                    return Ok(None);
+                }
+                let link = env
+                    .call_static_method(
+                        class,
+                        "take",
+                        "(Landroid/app/Activity;)Ljava/lang/String;",
+                        &[JValue::Object(activity)],
+                    )?
+                    .l()?;
+                if link.is_null() {
+                    return Ok(None);
+                }
+                let link = JString::from(link);
+                Ok(Some(env.get_string(&link)?.into()))
+            },
+        )
+    });
+    match r {
+        Ok(link) => link,
+        Err(e) => {
+            crate::local::log(&format!("LinkActivity.take: {e}"));
+            None
+        }
+    }
 }

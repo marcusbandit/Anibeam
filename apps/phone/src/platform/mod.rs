@@ -34,11 +34,14 @@ pub use target::{
     give_audio_focus, line_colours, log, multicast, notification_settings, notifications_allowed,
     open_url, pick_file, player_awake, player_screen, relocalize, set_app_icon, set_brightness,
     set_volume, start_service, stop_service, system_dark, system_locale, take_audio_focus,
-    unmetered, update_service, volume, window_up,
+    take_link, unmetered, update_service, volume, window_up,
 };
 // Only the player calls these, and it links libmpv only where libmpv was fetched.
 #[cfg_attr(not(libmpv), allow(unused_imports))]
 pub use target::{emulator, prepare_mpv};
+// Android only: the JNI that control over adb shares with the rest (src/control/android.rs).
+#[cfg(all(target_os = "android", control))]
+pub(crate) use android::{java_call, register_natives};
 
 /// What the platform said to a request for the audio focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

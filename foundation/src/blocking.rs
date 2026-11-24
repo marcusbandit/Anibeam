@@ -1,7 +1,8 @@
-//! Blocking work from whatever thread asked for it. A call into the core blocks: on the
-//! core's runtime, on the store's writer (#1368). A shell calls from its own thread, where
-//! blocking is plain. A listener runs inline on the runtime worker that emitted the event, where a
-//! plain `block_on` or `blocking_recv` panics, so there the work goes through
+//! Blocking work from whatever thread asked for it. The phone's update check blocks on the
+//! core's runtime (#809), and a call into the core blocks on that runtime and on the store's
+//! writer (#1368). A shell calls from its own thread, where blocking is plain. A
+//! listener runs inline on the runtime worker that emitted the event, where a plain
+//! `block_on` or `blocking_recv` panics, so there the work goes through
 //! `block_in_place`, which hands the worker's other tasks to a sibling before it blocks. A
 //! caller on a current-thread runtime, a `#[tokio::test]` say, cannot give its thread up
 //! that way, so the work runs on a thread of its own and the caller waits for it.

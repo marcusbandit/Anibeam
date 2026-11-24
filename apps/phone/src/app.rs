@@ -110,7 +110,6 @@ struct App {
     detail: Option<SeriesDetail>,
     art: Art,
     asked: HashSet<u64>,
-    posters: Sender<(u64, String)>,
     trackers: Option<(TrackerAccount, TrackerAccount)>,
     /// The tracker a sign-in was last started for (0 AniList, 1 MAL), and why it failed,
     /// which More shows in place of "Not signed in" until it is tried again.
@@ -213,6 +212,15 @@ fn with_app(f: impl FnOnce(&mut App)) {
     });
 }
 
+/// The phone's own series, id and title, for control over adb's `go series`: Library's
+/// list can hold a computer's shows or be narrowed by its search.
+#[cfg(control)]
+pub(crate) fn phone_series() -> Vec<(u64, String)> {
+    let mut out = Vec::new();
+    with_app(|app| out = app.cards.iter().map(|c| (c.id, c.title.clone())).collect());
+    out
+}
+
 /// More's sections' names, by the index Settings.section uses.
 const SECTIONS: [&str; 14] = [
     "more-accounts",
@@ -230,6 +238,14 @@ const SECTIONS: [&str; 14] = [
     "more-subtitles",
     "more-language",
 ];
+
+/// More's section by its index, in English, for control over adb's `where`.
+#[cfg(control)]
+pub(crate) fn section_name(index: i32) -> Option<String> {
+    use anibeam_core::i18n::{Lang, tr_in};
+    let id = SECTIONS.get(usize::try_from(index).ok()?)?;
+    Some(tr_in(Lang::En, id, &[]))
+}
 
 /// Every setting More's search can land on: its section, its label's message ID (the label is
 /// the key its page lights), and the ID of the words a person might type for it. The search
@@ -252,7 +268,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
     (6, "more-set-whats-new", "more-words-whats-new"),
     (6, "more-set-onboarding", "more-words-onboarding"),
     (6, "about-ratings", "more-words-ratings"),
-    (6, "more-set-version", "more-words-version"),
+    (6, UPDATES, "more-words-updates"),
     (8, "more-stats", "more-words-stats"),
     (9, "backup-export", "more-words-backup"),
     (9, "backup-restore", "more-words-restore"),
@@ -268,6 +284,7 @@ const SETTINGS: &[(i32, &str, &str)] = &[
 
 const FEEDS: &str = "more-set-feeds";
 const REPOS_CHECK: &str = "repos-check-repos";
+const UPDATES: &str = "more-updates";
 
 /// The settings a search names: each word in the label, the words or the section's name, the
 /// ones whose label holds the whole search first.
@@ -281,6 +298,8 @@ fn find_settings(query: &str, has_feeds: bool, has_repos: bool) -> Vec<SettingHi
         .iter()
         .filter(|(_, label, _)| has_feeds || *label != FEEDS)
         .filter(|(_, label, _)| has_repos || *label != REPOS_CHECK)
+        // A build that never asks for its updates has no Updates choice to land on
+        .filter(|(_, label, _)| crate::newer::offered() || *label != UPDATES)
         .filter_map(|&(section, label_id, words_id)| {
             let label = tr!(label_id);
             let place = tr!(SECTIONS[section as usize]);
@@ -428,13 +447,7 @@ impl App {
                 .collect();
             self.data().set_ready(true);
         }
-        for card in &self.cards {
-            if let Some(path) = &card.poster
-                && self.asked.insert(card.id)
-            {
-                let _ = self.posters.send((card.id, path.clone()));
-            }
-        }
+        self.ask_card_posters();
         if let Some(Open::Phone(id)) = self.open {
             // A failed read keeps the page as it was; only a series that is gone closes it.
             match core.call(Call::GetSeries { series: id }) {
@@ -653,8 +666,8 @@ impl App {
             self.trackers.as_ref(),
             &self.art,
         ) {
-            if self.asked.insert(key) {
-                let _ = self.posters.send((key, path));
+            if crate::posters::may_ask(&path) && self.asked.insert(key) {
+                load_poster(key, path);
             }
         }
 
@@ -724,6 +737,7 @@ impl App {
     /// the clock moves the count; a tick asked for by a tap or a reply redraws and no more.
     fn second(&mut self) {
         self.tick();
+        crate::newer::tick();
         self.ticks = self.ticks.wrapping_add(1);
     }
 
@@ -984,15 +998,28 @@ impl App {
         self.art.poster(Some(AIRING_ART | anilist_id))
     }
 
+    /// Asks once for each library card's poster, and again for one whose retry came due.
+    fn ask_card_posters(&mut self) {
+        for card in &self.cards {
+            if let Some(path) = &card.poster
+                && crate::posters::may_ask(path)
+                && self.asked.insert(card.id)
+            {
+                load_poster(card.id, path.clone());
+            }
+        }
+    }
+
     /// Asks once for each Airing now poster the core has on disk.
     fn ask_airing_posters(&mut self) {
         let Some(airing) = &self.airing else { return };
         for show in &airing.shows {
             let key = AIRING_ART | show.anilist_id;
             if let Some(path) = &show.poster
+                && crate::posters::may_ask(path)
                 && self.asked.insert(key)
             {
-                let _ = self.posters.send((key, path.clone()));
+                load_poster(key, path.clone());
             }
         }
     }
@@ -1308,61 +1335,57 @@ impl App {
 
     /// Runs the connection check on a thread and lists what it found, failures first.
     fn run_check(&mut self) {
-        let Some(core) = crate::local::core() else {
-            return;
-        };
-        self.data().set_checking(true);
-        self.data().set_check_summary("".into());
-        let _ = std::thread::Builder::new()
-            .name("check".into())
-            .spawn(move || {
-                let answer = core.call(Call::PhoneNetCheck);
-                let _ = slint::invoke_from_event_loop(move || {
-                    with_app(|app| {
-                        let window = app.window.clone_strong();
-                        let data = window.global::<AppData>();
-                        data.set_checking(false);
-                        let Ok(Reply::PhoneNetCheck { checks }) = answer else {
-                            return;
-                        };
-                        app.check_text = std::iter::once(format!(
-                            "Anibeam {} connection check",
-                            env!("ANIBEAM_PHONE_VERSION")
-                        ))
-                        .chain(checks.iter().map(|c| {
-                            format!(
-                                "{} {}: {} ({} ms)",
-                                if c.ok { "OK  " } else { "FAIL" },
-                                c.name,
-                                c.detail,
-                                c.ms
-                            )
-                        }))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                        let failed = checks.iter().filter(|c| !c.ok).count();
-                        data.set_check_failed(failed as i32);
-                        data.set_check_summary(
-                            if failed == 0 {
-                                tr!("more-check-all-ok")
-                            } else {
-                                tr!("more-check-failed", failed = failed, total = checks.len())
-                            }
-                            .into(),
-                        );
-                        let rows: Vec<CheckRow> = checks
-                            .iter()
-                            .map(|c| CheckRow {
-                                name: tr!("more-check-row", step = c.name.as_str(), ms = c.ms)
-                                    .into(),
-                                detail: c.detail.clone().into(),
-                                ok: c.ok,
-                            })
-                            .collect();
-                        data.set_checks(ModelRc::new(VecModel::from(rows)));
+        let started = crate::local::call_off_thread("check", Call::PhoneNetCheck, |answer| {
+            with_app(|app| {
+                let window = app.window.clone_strong();
+                let data = window.global::<AppData>();
+                data.set_checking(false);
+                let checks = match answer {
+                    Ok(Reply::PhoneNetCheck { checks }) => checks,
+                    Ok(_) => return,
+                    // A check that could not run says why, rather than nothing
+                    Err(e) => return data.set_check_summary(e.to_string().into()),
+                };
+                app.check_text = std::iter::once(format!(
+                    "Anibeam {} connection check",
+                    env!("ANIBEAM_PHONE_VERSION")
+                ))
+                .chain(checks.iter().map(|c| {
+                    format!(
+                        "{} {}: {} ({} ms)",
+                        if c.ok { "OK  " } else { "FAIL" },
+                        c.name,
+                        c.detail,
+                        c.ms
+                    )
+                }))
+                .collect::<Vec<_>>()
+                .join("\n");
+                let failed = checks.iter().filter(|c| !c.ok).count();
+                data.set_check_failed(failed as i32);
+                data.set_check_summary(
+                    if failed == 0 {
+                        tr!("more-check-all-ok")
+                    } else {
+                        tr!("more-check-failed", failed = failed, total = checks.len())
+                    }
+                    .into(),
+                );
+                let rows: Vec<CheckRow> = checks
+                    .iter()
+                    .map(|c| CheckRow {
+                        name: tr!("more-check-row", step = c.name.as_str(), ms = c.ms).into(),
+                        detail: c.detail.clone().into(),
+                        ok: c.ok,
                     })
-                });
-            });
+                    .collect();
+                data.set_checks(ModelRc::new(VecModel::from(rows)));
+            })
+        });
+        if started {
+            self.data().set_checking(true);
+            self.data().set_check_summary("".into());
+        }
     }
 
     /// Asks the engine for its torrents on a thread, one ask at a time.
@@ -1600,6 +1623,7 @@ impl App {
             )
             .into(),
         );
+        data.set_update_seen(self.prefs.update_seen.as_str().into());
         data.set_ratings_label(tr!("about-ratings").into());
         data.set_mark_watched_label(tr!("mark-menu-watched").into());
         data.set_mark_unwatched_label(tr!("mark-menu-unwatched").into());
@@ -1686,6 +1710,27 @@ impl App {
             self.save_prefs();
             self.data().set_notify_ask(true);
         }
+    }
+
+    /// About was open with a newer version on it: the More tab stops pointing at it.
+    fn mark_update_seen(&mut self) {
+        let data = self.data();
+        let view = crate::newer::View {
+            foreground: data.get_foreground(),
+            notes: data.get_notes_open(),
+            onboarding: data.get_onboarding(),
+            player: self.window.global::<crate::PlayerData>().get_open(),
+        };
+        if !view.shows_about() {
+            return;
+        }
+        let version = data.get_update_version().to_string();
+        if version.is_empty() || version == self.prefs.update_seen {
+            return;
+        }
+        self.data().set_update_seen(version.as_str().into());
+        self.prefs.update_seen = version;
+        self.save_prefs();
     }
 
     fn save_prefs(&mut self) {
@@ -2195,30 +2240,21 @@ fn finished(t: &Torrent) -> bool {
     t.progress >= 1.0 && t.roll.is_none()
 }
 
-/// Reads poster files off the UI thread and hands each decoded one back.
-fn start_poster_loader() -> Sender<(u64, String)> {
-    let (tx, rx) = std::sync::mpsc::channel::<(u64, String)>();
-    let _ = std::thread::Builder::new()
-        .name("posters".into())
-        .spawn(move || {
-            for (id, path) in rx {
-                let Some(decoded) = std::fs::read(&path)
-                    .ok()
-                    .and_then(|b| crate::posters::decode(&b))
-                else {
-                    continue;
-                };
-                let _ = slint::invoke_from_event_loop(move || {
-                    with_app(|app| {
-                        app.art
-                            .posters
-                            .insert(id, Image::from_rgba8(decoded.buffer));
-                        app.art.tones.insert(id, decoded.tone);
-                    });
-                });
+/// Decodes the poster file for `id` on the posters threads, which Downloads shares, so a file
+/// both show is decoded once; the pages show it from their next draw. One that did not decode
+/// is asked for again when `posters::on_retry` says so, or by a later draw.
+fn load_poster(id: u64, path: String) {
+    crate::posters::load(path, move |poster| {
+        with_app(|app| match poster {
+            Some(poster) => {
+                app.art.posters.insert(id, poster.image);
+                app.art.tones.insert(id, poster.tone);
+            }
+            None => {
+                app.asked.remove(&id);
             }
         });
-    tx
+    });
 }
 
 /// Each streamable file of the other device's, with its episode number.
@@ -2265,6 +2301,8 @@ pub fn run(
     commands: Commands,
     inbox: Receiver<Command>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // A new event loop: posters asked of the last one are asked again, not waited on.
+    crate::posters::reset();
     // Before anything talks to a computer, so every request can carry the phone's proof.
     match Store::open(&data_dir).and_then(|s| s.device_key()) {
         Ok(key) => anibeam_companion::client::use_device_key(key),
@@ -2278,6 +2316,8 @@ pub fn run(
 
     let window = AppWindow::new()?;
     crate::platform::window_up(&window);
+    #[cfg(control)]
+    crate::control::install(&window);
     // First, so everything below that words a line already speaks the picked language.
     crate::lang::install(&window, &data_dir);
     crate::player::install(&window);
@@ -2454,6 +2494,10 @@ pub fn run(
         }
     });
     data.on_close_notes(|| with_app(App::close_notes));
+    data.on_open_notes_github(|| {
+        crate::platform::open_url("https://github.com/marcusbandit/Anibeam/releases");
+    });
+    data.on_mark_update_seen(|| with_app(App::mark_update_seen));
     data.on_restart_onboarding(|| {
         with_app(|app| {
             app.prefs.onboarded = false;
@@ -2508,6 +2552,14 @@ pub fn run(
         }
     });
 
+    // A failed poster's retry came due: the cards and Airing now ask again. The show page
+    // asks on every draw already.
+    crate::posters::on_retry(|| {
+        with_app(|app| {
+            app.ask_card_posters();
+            app.ask_airing_posters();
+        })
+    });
     crate::find::install(&window, data_dir.clone());
     crate::repos::install(&window);
     crate::stats::install(&window);
@@ -2515,6 +2567,7 @@ pub fn run(
     crate::activity::install(&window);
     crate::listmove::install(&window);
     crate::look::install(&window, &data_dir);
+    crate::newer::install(&window, &data_dir);
 
     let mut app = App {
         window: window.clone_strong(),
@@ -2527,7 +2580,6 @@ pub fn run(
         detail: None,
         art: Art::default(),
         asked: HashSet::new(),
-        posters: start_poster_loader(),
         trackers: None,
         signing_in: HashMap::new(),
         sign_in_error: None,
@@ -2595,7 +2647,9 @@ pub fn run(
 
     let clock = Timer::default();
     clock.start(TimerMode::Repeated, Duration::from_secs(1), || {
-        with_app(App::second)
+        with_app(App::second);
+        // A link that opened the app before the core did is taken once it is open.
+        crate::link::poll();
     });
     // The hinge and the crease, for the layout: a bend shows in a fifth of a second. A phone
     // with neither a hinge sensor nor window extensions stops the timer; one that has the
