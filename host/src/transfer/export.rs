@@ -378,6 +378,9 @@ fn account(
         return Ok(None);
     };
     let hint = row.secret_store;
+    // A MyAnimeList secret still owed a delete is the retired app's, and
+    // another machine would send it with its own id.
+    let secret_owed = t == Tracker::Mal && services.store.read(accounts::retired_secret_owed)?;
     let secrets = services.secrets();
     let read = |key: String| -> Result<Option<String>, CoreError> {
         Ok(secrets.get(&key, hint)?.map(|(value, _)| value))
@@ -386,7 +389,11 @@ fn account(
         user_id: row.user_id,
         username: row.username.clone(),
         client_id: row.client_id.clone().unwrap_or_default(),
-        client_secret: read(secret_key(t))?,
+        client_secret: if secret_owed {
+            None
+        } else {
+            read(secret_key(t))?
+        },
         // An empty string when the store holds none, which is the answer
         // Electron's own export gave.
         access_token: read(access_key(t))?.unwrap_or_default(),

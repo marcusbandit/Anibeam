@@ -535,6 +535,7 @@ core-presence-button-site = Anibeam 받기
 
 core-trackers-no-client-id = { $tracker } 클라이언트 ID가 설정되지 않았어요.
 core-trackers-mal-reconnect = 설정에서 MyAnimeList를 다시 연결하세요.
+core-trackers-mal-sign-in-again = MyAnimeList에 다시 로그인하세요. 이전 버전의 로그인은 더 이상 작동하지 않아요.
 core-trackers-mal-wants-secret = MyAnimeList에 이 앱의 클라이언트 시크릿이 필요해요. Anibeam 설정의 계정에서 추가하거나, App Type을 "other"로 해서 앱을 등록하세요.
 core-trackers-token-reply-unreadable = 토큰 응답을 읽지 못했어요: { $error }
 core-trackers-token-reply-no-token = 토큰 응답에 액세스 토큰이 없어요

@@ -39,7 +39,7 @@ use anibeam_library::scan;
 use anibeam_metadata::fetch;
 use anibeam_metadata::record;
 use anibeam_net::images;
-use anibeam_trackers::accounts::{self, access_key, refresh_key, secret_key};
+use anibeam_trackers::accounts::{self, access_key, refresh_key};
 
 /// The five sections a `JobProgress` counts through.
 const SECTIONS: u64 = 5;
@@ -990,14 +990,13 @@ async fn write_secrets(
             wrote = true;
         }
     }
-    for (key, value) in [
-        (refresh_key(t), account.refresh_token.clone()),
-        (secret_key(t), account.client_secret.clone()),
-    ] {
-        let Some(value) = value.filter(|v| !v.is_empty()) else {
-            continue;
-        };
-        write_secret(services, key, value, hint).await?;
+    if let Some(token) = account.refresh_token.clone().filter(|v| !v.is_empty()) {
+        write_secret(services, refresh_key(t), token, hint).await?;
+    }
+    // Through the accounts team, which owns the retired MyAnimeList secret's
+    // cleanup and must never delete this one in its place.
+    if let Some(secret) = account.client_secret.clone().filter(|v| !v.is_empty()) {
+        accounts::import_secret(services, t, secret, hint).await?;
     }
     Ok((store, wrote))
 }

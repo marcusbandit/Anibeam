@@ -322,6 +322,68 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
     );
 }
 
+/// A MyAnimeList sign-in is what the sign-in-again notice asks for, so a
+/// finished one clears it (#1408).
+#[test]
+fn a_mal_sign_in_clears_the_sign_in_again_notice() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_oauth_port(0);
+    core.services()
+        .store
+        .write(|c| store::settings::set(c, store::settings::MAL_SIGN_IN_AGAIN, &true))
+        .unwrap();
+    let notice = |core: &Core| match core.call(Call::GetTrackerNotice).unwrap() {
+        Reply::TrackerNotice { message } => message,
+        other => panic!("{other:?}"),
+    };
+    assert!(notice(&core).is_some());
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Mal,
+        client_id: "mid".into(),
+        client_secret: Some("sec".into()),
+    })
+    .unwrap();
+    http.push_for(
+        "oauth2/token",
+        200,
+        serde_json::json!({ "access_token": "mtok", "refresh_token": "mref", "expires_in": 2_415_600 }).to_string(),
+    );
+    http.push_for(
+        "users/@me",
+        200,
+        serde_json::json!({ "id": 7, "name": "bandit" }).to_string(),
+    );
+    http.push_for(
+        "users/@me/animelist",
+        200,
+        serde_json::json!({ "data": [], "paging": {} }).to_string(),
+    );
+
+    let job = started(
+        &core,
+        Call::ConnectTracker {
+            tracker: Tracker::Mal,
+        },
+    );
+    let (open_url, port) = ready_url(&c, job);
+    let state = param(&open_url, "state");
+    let ok = http_get(port, &format!("/callback?code=abc&state={state}"));
+    assert!(ok.contains("MyAnimeList is connected to"), "{ok}");
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            done.body,
+            EventBody::TrackerConnected {
+                tracker: Tracker::Mal,
+                ..
+            }
+        ),
+        "{done:?}"
+    );
+    assert_eq!(notice(&core), None);
+}
+
 /// The form of the one token request a test's core made.
 fn token_form(http: &anibeam_core::net::FakeHttp) -> Vec<(String, String)> {
     let exchange = http

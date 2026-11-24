@@ -185,6 +185,13 @@ pub enum Call {
     SetMainTracker {
         tracker: Tracker,
     },
+    /// The line a launch left for the user about their tracker accounts
+    /// (#1408), read without clearing it, so a window that opens after the
+    /// launch's cleanup still finds it. Answers `TrackerNotice`.
+    GetTrackerNotice,
+    /// The user closed the tracker notice with the x, so it is not owed any
+    /// more. MyAnimeList connecting clears it as well.
+    DismissTrackerNotice,
     MarkEpisode {
         series: u64,
         episode: f64,
@@ -973,6 +980,11 @@ pub enum Reply {
     },
     Trackers {
         state: TrackerState,
+    },
+    /// What `GetTrackerNotice` found, in the user's language: none when
+    /// nothing is owed.
+    TrackerNotice {
+        message: Option<String>,
     },
     ListMove {
         rows: Vec<MoveRow>,

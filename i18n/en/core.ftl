@@ -630,6 +630,9 @@ core-presence-button-site = Get Anibeam
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = No client ID set for { $tracker }.
 core-trackers-mal-reconnect = Reconnect MyAnimeList in Settings.
+# Shown after an update that signed out an account using an older version's MyAnimeList app.
+# It comes back each launch until the user signs in to MyAnimeList or closes it.
+core-trackers-mal-sign-in-again = Please sign in with MyAnimeList again. The sign-in from the previous version no longer works.
 core-trackers-mal-wants-secret = MyAnimeList requires this app's client secret. Add it under Accounts in Anibeam's settings, or register the app with App Type "other".
 # $error is the parser's own message.
 core-trackers-token-reply-unreadable = could not read token response: { $error }

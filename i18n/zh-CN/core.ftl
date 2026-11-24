@@ -526,6 +526,7 @@ core-presence-button-site = 获取 Anibeam
 
 core-trackers-no-client-id = 没有为 { $tracker } 设置客户端 ID。
 core-trackers-mal-reconnect = 请在设置中重新连接 MyAnimeList。
+core-trackers-mal-sign-in-again = 请重新登录 MyAnimeList。之前版本的登录已失效。
 core-trackers-mal-wants-secret = MyAnimeList 需要此应用的客户端密钥。请在 Anibeam 设置的“账号”中添加，或以 App Type“other”注册应用。
 core-trackers-token-reply-unreadable = 无法读取令牌响应：{ $error }
 core-trackers-token-reply-no-token = 令牌响应中没有访问令牌

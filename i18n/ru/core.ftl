@@ -585,6 +585,7 @@ core-presence-button-site = Скачать Anibeam
 # $tracker is the tracker's short name: AniList or MAL.
 core-trackers-no-client-id = Для { $tracker } не задан Client ID.
 core-trackers-mal-reconnect = Переподключите MyAnimeList в настройках.
+core-trackers-mal-sign-in-again = Войдите в MyAnimeList ещё раз. Вход из предыдущей версии больше не работает.
 core-trackers-mal-wants-secret = MyAnimeList требует Client Secret этого приложения. Добавьте его в настройках Anibeam в разделе «Аккаунты» или зарегистрируйте приложение с App Type «other».
 # $error is the parser's own message.
 core-trackers-token-reply-unreadable = не удалось прочитать ответ с токеном: { $error }

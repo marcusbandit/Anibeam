@@ -541,6 +541,7 @@ core-presence-button-site = Anibeam downloaden
 
 core-trackers-no-client-id = Geen client-ID ingesteld voor { $tracker }.
 core-trackers-mal-reconnect = Koppel MyAnimeList opnieuw in Instellingen.
+core-trackers-mal-sign-in-again = Log opnieuw in met MyAnimeList. De aanmelding uit de vorige versie werkt niet meer.
 core-trackers-mal-wants-secret = MyAnimeList vereist het client secret van deze app. Voeg het toe onder Accounts in de instellingen van Anibeam, of registreer de app met App Type "other".
 core-trackers-token-reply-unreadable = kon het tokenantwoord niet lezen: { $error }
 core-trackers-token-reply-no-token = het tokenantwoord bevatte geen access token
