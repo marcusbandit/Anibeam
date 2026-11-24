@@ -95,7 +95,7 @@ Install on Linux or macOS with one command:
 curl -fsSL https://anibeam.app/install.sh | sh
 ```
 
-The script uses your package manager on Arch, Ubuntu, Debian, Fedora, and Macs with Homebrew. Everywhere else, it uses the AppImage or the `.dmg`. You can [read the script first](https://anibeam.app/install.sh).
+The script uses your package manager on Ubuntu, Debian, Fedora, Arch with yay or paru, and Macs with Homebrew. Everywhere else, it uses the AppImage or the `.dmg`. Linux builds are x86_64 only. You can [read the script first](https://anibeam.app/install.sh).
 
 On Windows and Android, download the right build for your device from **[anibeam.app/download](https://anibeam.app/download/)**. All builds are also available on [GitHub Releases](https://github.com/marcusbandit/Anibeam/releases/latest).
 
@@ -200,7 +200,7 @@ The installer is unsigned, so Windows SmartScreen may block it. Click **More inf
 
 <br>
 
-Download `Anibeam-<version>.apk` from the latest [Android release](https://github.com/marcusbandit/Anibeam/releases?q=android&expanded=true) and open it on your phone. Android will ask once for permission to install apps from your browser or file manager.
+Download `Anibeam-<version>.apk` from [anibeam.app/download](https://anibeam.app/download/) or the [Android releases](https://github.com/marcusbandit/Anibeam/releases?q=android&expanded=true) and open it on your phone. Android will ask once for permission to install apps from your browser or file manager.
 
 </details>
 
@@ -232,7 +232,7 @@ Install the latest nightly on Linux or macOS:
 curl -fsSL https://anibeam.app/install.sh | ANIBEAM_CHANNEL=nightly sh
 ```
 
-Nightly builds use the AppImage on Linux and the `.dmg` on macOS, since AUR, apt, dnf, and Homebrew carry stable releases only. On Windows, download a nightly build from [Releases](https://github.com/marcusbandit/Anibeam/releases).
+Nightly builds use the AppImage on Linux and the `.dmg` on macOS, since AUR, apt, dnf, and Homebrew carry stable releases only. On Windows, download a nightly build from [Releases](https://github.com/marcusbandit/Anibeam/releases). If you installed through the AUR, apt or dnf, remove that package first, or you end up with two copies.
 
 </details>
 
