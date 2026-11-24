@@ -238,7 +238,7 @@ fn next_to_fetch(graph: &Closure, parked: &HashSet<u64>) -> Option<u64> {
 /// less than a minute either way. The upper clamp is a cast guard rather
 /// than a policy: `Retry-After` is a header a provider writes, and a
 /// nonsense value must not become a nonsense instant.
-fn retry_after(e: &CoreError) -> i64 {
+pub(crate) fn retry_after(e: &CoreError) -> i64 {
     let asked = match e {
         CoreError::Provider {
             retry_after: Some(seconds),
@@ -344,18 +344,23 @@ async fn fetch_covers(metadata: &Metadata, enrichment: &Enrichment) {
 }
 
 /// The node's edges are in: stamped at `?2`, and any deferral cleared.
-const STAMP: &str =
+pub(crate) const STAMP: &str =
     "UPDATE anilist_media SET relations_fetched_at = ?2, crawl_deferred_until = NULL WHERE id = ?1";
 
 /// The node is rate limited: it keeps owing its edges and is left out of
 /// the fetch list until `?2` passes.
-const DEFER: &str = "UPDATE anilist_media SET crawl_deferred_until = ?2 WHERE id = ?1";
+pub(crate) const DEFER: &str = "UPDATE anilist_media SET crawl_deferred_until = ?2 WHERE id = ?1";
 
 /// One of the two updates above on a node with nothing else to write. The
 /// bare stub goes first because a seed can be an id with no media row at
 /// all, and an `UPDATE` that matches nothing would leave the node owing its
 /// edges for ever, which is a loop rather than a missing stamp.
-async fn mark(services: &Services, id: u64, sql: &'static str, at: i64) -> Result<(), CoreError> {
+pub(crate) async fn mark(
+    services: &Services,
+    id: u64,
+    sql: &'static str,
+    at: i64,
+) -> Result<(), CoreError> {
     services
         .store
         .tx_async(move |tx| {

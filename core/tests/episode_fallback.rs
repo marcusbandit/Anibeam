@@ -158,6 +158,27 @@ fn apply(core: &Core, c: &anibeam_core::events::Collector, series: u64) {
     assert_eq!(done.body, EventBody::MatchApplied { series }, "{done:#?}");
 }
 
+/// Waits for the `n`th fallback job to end: the match reports first, and the
+/// walk runs after it in a job of its own.
+fn wait_fallbacks(c: &anibeam_core::events::Collector, n: usize) {
+    let done = |events: &[Event]| {
+        events
+            .iter()
+            .filter(|e| {
+                e.job.as_ref().is_some_and(|j| {
+                    j.kind == JobKind::RefreshAiring && j.phase == JobPhase::Finished
+                })
+            })
+            .count()
+            >= n
+    };
+    assert!(
+        c.wait_for(|events| done(events), std::time::Duration::from_secs(30)),
+        "{:#?}",
+        c.events()
+    );
+}
+
 fn detail(core: &Core, series: u64) -> SeriesDetail {
     match core.call(Call::GetSeries { series }).unwrap() {
         Reply::SeriesDetail { detail } => *detail,
@@ -213,6 +234,7 @@ fn a_season_ani_zip_has_not_mapped_takes_tvmazes_episodes_and_a_franchise_logo()
         http.push_for(url, 200, b"image".to_vec());
     }
     apply(&core, &c, series);
+    wait_fallbacks(&c, 1);
 
     assert_eq!(
         fallback_rows(&core),
@@ -272,6 +294,7 @@ fn a_tvmaze_outage_keeps_what_the_fallback_wrote() {
         http.push_for(url, 200, b"image".to_vec());
     }
     apply(&core, &c, series);
+    wait_fallbacks(&c, 1);
     assert_eq!(fallback_rows(&core), 3);
 
     // The franchise is known now, so only the match and TVmaze are asked.
@@ -279,6 +302,7 @@ fn a_tvmaze_outage_keeps_what_the_fallback_wrote() {
     not_found(&http, S3);
     http.push_for(&format!("lookup/shows?thetvdb={TVDB}"), 503, "down");
     apply(&core, &c, series);
+    wait_fallbacks(&c, 2);
     assert!(
         http.requests()
             .iter()

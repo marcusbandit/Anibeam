@@ -186,6 +186,18 @@ pub fn write(
             now
         ],
     )?;
+    if show.episodes.iter().any(|e| e.number.is_some()) {
+        // ani.zip has the season now: the fallback's episodes give way
+        // rather than fill its gaps with another source's guesses (#1461).
+        tx.execute(
+            "DELETE FROM fallback_episodes WHERE anilist_id = ?1",
+            params![id],
+        )?;
+        tx.execute(
+            "UPDATE fallback_shows SET via_anilist = NULL, tvmaze_id = NULL, season = NULL WHERE anilist_id = ?1",
+            params![id],
+        )?;
+    }
     if !show.episodes.is_empty() {
         tx.execute(
             "DELETE FROM anizip_episodes WHERE anilist_id = ?1",
@@ -242,13 +254,15 @@ pub fn fingerprint(conn: &Connection, anilist_id: u64) -> Result<String, CoreErr
 }
 
 /// Whether the airing refresh should ask ani.zip again for `anilist_id`:
-/// it answered for the show once, and that answer is older than the airing
-/// window. A show it was never asked about is the launch walk's.
+/// it was asked once, whatever it said, and that answer is older than the
+/// airing window. A season it had no entry for is asked again too, so once
+/// ani.zip maps it its answer takes over from the fallback (#1461). A show
+/// it was never asked about is the launch walk's.
 pub fn due(conn: &Connection, anilist_id: u64, now: i64) -> Result<bool, CoreError> {
     use rusqlite::OptionalExtension;
     let fetched_at: Option<i64> = conn
         .query_row(
-            "SELECT fetched_at FROM anizip_shows WHERE anilist_id = ?1 AND found = 1",
+            "SELECT fetched_at FROM anizip_shows WHERE anilist_id = ?1",
             params![as_i64(anilist_id)],
             |r| r.get(0),
         )
@@ -285,7 +299,8 @@ pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, Cor
          SELECT e.still_url FROM fallback_episodes e
             JOIN series s ON s.anilist_id = e.anilist_id AND s.provider = 'anilist'
             JOIN files f ON f.series_id = s.id AND f.kind != 'extra' AND f.number = e.number
-         WHERE e.anilist_id = ?1 AND e.still_url IS NOT NULL",
+         WHERE e.anilist_id = ?1 AND e.still_url IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = e.anilist_id AND ze2.number IS NOT NULL)",
     )?;
     let rows = stmt.query_map(params![as_i64(anilist_id)], |r| r.get::<_, String>(0))?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -312,15 +327,17 @@ pub fn start(metadata: &Arc<Metadata>) -> Option<u64> {
             .clone()
             .start(JobKind::RefreshAiring, move |ctx| async move {
                 let _walking = walking;
-                let filled = walk(&owner, &ctx).await?;
+                let (filled, fell_back) = walk(&owner, &ctx).await?;
                 Ok(Finished {
                     plain: None,
-                    level: if filled == 0 {
+                    level: if filled + fell_back == 0 {
                         Level::Debug
                     } else {
                         Level::Info
                     },
-                    message: format!("ani.zip episode details filled for {filled} series"),
+                    message: format!(
+                        "ani.zip filled episode details for {filled} series, the franchise fallback for {fell_back} more"
+                    ),
                     body: EventBody::Notice,
                 })
             }),
@@ -364,12 +381,14 @@ fn unasked(conn: &Connection) -> Result<Vec<(u64, Vec<u64>, String)>, CoreError>
 }
 
 /// Every unasked show, one request each at the limiter's pace. Returns how
-/// many ani.zip answered for. A show it cannot answer for right now, an
+/// many ani.zip answered for, and how many more the franchise fallback
+/// filled where ani.zip did not. A show it cannot answer for right now, an
 /// outage, ends the walk with the rest still unasked.
-async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> {
+async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<(u64, u64), CoreError> {
     let work = metadata.services.store.write_async(|c| unasked(c)).await?;
     let total = work.len() as u64;
     let mut filled = 0u64;
+    let mut fell_back_for = 0u64;
     let mut owed_any = false;
     for (done, (anilist_id, series, name)) in work.into_iter().enumerate() {
         ctx.checkpoint()?;
@@ -401,13 +420,15 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> 
             .await?;
         owed_any |= filled_mal;
         // What ani.zip left out, the franchise around it may have (#1461).
-        let fell_back = crate::fallback::run(metadata, anilist_id, now)
-            .await
-            .unwrap_or(false);
+        let fell_back = crate::fallback::run(metadata, anilist_id, now, Some(ctx.as_ref())).await?;
         if !answered && !fell_back {
             continue;
         }
-        filled += 1;
+        if answered {
+            filled += 1;
+        } else {
+            fell_back_for += 1;
+        }
         let urls = metadata
             .services
             .store
@@ -425,7 +446,7 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> 
     if owed_any && let Some(this) = metadata.this() {
         crate::owed::start(&this);
     }
-    Ok(filled)
+    Ok((filled, fell_back_for))
 }
 
 /// The MAL id an earlier ani.zip answer mapped `anilist_id` to.

@@ -282,7 +282,7 @@ async fn refresh_anilist(
         .read(move |c| crate::fallback::due(c, anilist_id, now))
         .unwrap_or(false);
     let fell_back = fallback_due
-        && crate::fallback::run(metadata, anilist_id, now)
+        && crate::fallback::run(metadata, anilist_id, now, None)
             .await
             .unwrap_or(false);
     let changed = changed || fell_back;
