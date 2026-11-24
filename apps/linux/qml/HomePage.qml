@@ -1132,6 +1132,22 @@ Item {
             if (to && to.reachable) to.forceActiveFocus()
             return true
         }
+        // Tab and Shift+Tab the same way, leaving the row from its ends for whatever the focus
+        // chain holds past the row's first or last card in the model
+        function tabFocus(from, by) {
+            if (!loops) return false
+            var to = cardAt(Math.round(from.place) + by)
+            if (to && to.reachable) { to.forceActiveFocus(); return true }
+            // Forward from the last reachable card in the model, back from the first
+            var edge = null
+            for (var i = 0; i < cards.count; i++) {
+                var c = cards.itemAt(by > 0 ? i : cards.count - 1 - i)
+                if (c && c.reachable) edge = c
+            }
+            var out = edge ? edge.nextItemInFocusChain(by > 0) : null
+            if (out) out.forceActiveFocus(by > 0 ? Qt.TabFocusReason : Qt.BacktabFocusReason)
+            return true
+        }
         NumberAnimation {
             id: glide
             target: row; property: "pos"
@@ -1184,6 +1200,8 @@ Item {
                         reachable: place > -0.01 && place < row.cols - (row.loops ? 1.99 : 0.99)
                         Keys.onLeftPressed: function(event) { event.accepted = row.stepFocus(slot, -1) }
                         Keys.onRightPressed: function(event) { event.accepted = row.stepFocus(slot, 1) }
+                        Keys.onTabPressed: function(event) { event.accepted = row.tabFocus(slot, 1) }
+                        Keys.onBacktabPressed: function(event) { event.accepted = row.tabFocus(slot, -1) }
                         onHeightChanged: if (index === 0) row.cardH = height
                         Component.onCompleted: if (index === 0) row.cardH = height
                     }
