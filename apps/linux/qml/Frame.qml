@@ -369,6 +369,15 @@ FocusScope {
         m = m.replace(/^(AniList|MyAnimeList|TMDB|Anilist|Mal|Jikan|Tmdb)( did not respond)?: /, "").replace(/^(io|internal|[Ii]nvalid [a-z_ ]+): /, "")
         return m === "" ? words.t("frame-did-not-work") : m.charAt(0).toUpperCase() + m.slice(1)
     }
+    // Downloads wants a source list: searches can run and there is nothing to search (#1003).
+    // The settings index dots Downloads by it, and the Source lists group carries the same dot
+    // so the page says what the index meant (#1426)
+    function wantsSourceList(status) {
+        if (!status) return false
+        var native = !!status.settings && status.settings.engine === "Native"
+        var ready = native || (!!status.anirss && status.anirss.state === "Ready")
+        return ready && (status.endpoints || []).length === 0
+    }
     // A call error on one line of a page: the bridge's plain words and what to do next, else
     // the core's message trimmed for a person
     function plainText(e) {
