@@ -685,6 +685,9 @@ impl Core {
             Call::ListFeed { sort } => feed::list_call(&self.services, sort),
             Call::GetSeries { series } => reads::get_series(&self.library, series),
             Call::SetHidden { series, hidden } => reads::set_hidden(&self.services, series, hidden),
+            Call::SetSeriesLogo { series, logo } => {
+                reads::set_series_logo(&self.services, series, logo)
+            }
             Call::ActOnSeries { series, action } => act::act_on_series(self, series, action),
             Call::ParseSchedule { text } => Ok(schedule::parse_call(&text)),
             Call::SetScheduleNotes {

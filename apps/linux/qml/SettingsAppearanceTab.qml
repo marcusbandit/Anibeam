@@ -36,6 +36,25 @@ SettingsTab {
         var r = Door.setPreferences(p)
         if (r && r.error) frame.fail(r.error, function() { tab.setTitleLanguage(v) })
     }
+    // Logo or title (#1463): what a series page's head draws where the show has a logo; a
+    // show's own choice in its More menu wins over this
+    function setSeriesLogos(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.series_logos = on
+        var r = Door.setPreferences(p)
+        if (r && r.error) frame.fail(r.error, function() { tab.setSeriesLogos(on) })
+    }
+    // Which language a logo is drawn in where the show has it in more than one (#1470), as
+    // the core names the choice; a stored value it does not know reads as Titles, the default
+    readonly property var logoLanguages: ["Titles", "English", "Japanese"] // i18n: none
+    readonly property var logoLanguageNames: [words.t("settings-appearance-logo-language-titles"), words.t("settings-appearance-logo-language-english"),
+                                              words.t("settings-appearance-logo-language-japanese")]
+    function setLogoLanguage(v) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.logo_language = v
+        var r = Door.setPreferences(p)
+        if (r && r.error) frame.fail(r.error, function() { tab.setLogoLanguage(v) })
+    }
 
     // The preview's sample cards carry relative labels (last-viewed, countdowns); this
     // tick keeps them fresh. It only runs while this section exists.
@@ -55,6 +74,11 @@ SettingsTab {
         SettingRow { label: words.t("settings-appearance-title-language")
             Seg { objectName: "title-language"; options: tab.titleLanguageNames; index: Math.max(0, tab.titleLanguages.indexOf(Door.preferences.title_language))
                   onPicked: function(i) { tab.setTitleLanguage(tab.titleLanguages[i]) } } }
+        SettingRow { label: words.t("settings-appearance-series-logos")
+            Switch { objectName: "series-logos"; checked: Door.preferences.series_logos !== false; onToggled: function(on) { tab.setSeriesLogos(on) } } }
+        SettingRow { label: words.t("settings-appearance-logo-language")
+            Seg { objectName: "logo-language"; options: tab.logoLanguageNames; index: Math.max(0, tab.logoLanguages.indexOf(Door.preferences.logo_language))
+                  onPicked: function(i) { tab.setLogoLanguage(tab.logoLanguages[i]) } } }
     }
     Panel {
         title: words.t("settings-appearance-colours")

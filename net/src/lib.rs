@@ -22,8 +22,10 @@ pub mod images;
 pub mod imdb;
 pub mod jikan;
 pub mod limiter;
+pub mod logo_image;
 pub mod mal;
 mod team;
+pub mod tvdb;
 pub mod tvmaze;
 pub mod wikidata;
 
@@ -169,6 +171,8 @@ pub enum Upstream {
     Mal,
     Tvmaze,
     AniZip,
+    /// TheTVDB's own site, for its clear logos' languages (#1470).
+    TvdbSite,
 }
 
 impl Upstream {
@@ -181,6 +185,9 @@ impl Upstream {
             Upstream::Tvmaze => Provider::Tvmaze,
             // ani.zip is asked by AniList id and answers for that entry.
             Upstream::AniZip => Provider::Anilist,
+            // TheTVDB's site answers for ani.zip's artwork of an AniList
+            // entry, and is no match provider of its own.
+            Upstream::TvdbSite => Provider::Anilist,
         }
     }
 
@@ -192,6 +199,7 @@ impl Upstream {
             Upstream::Mal => "MAL",
             Upstream::Tvmaze => "TVmaze",
             Upstream::AniZip => "ani.zip",
+            Upstream::TvdbSite => "TheTVDB",
         }
     }
 }

@@ -312,6 +312,37 @@ pub fn set_hidden(services: &Services, series: u64, hidden: bool) -> Result<Repl
     Ok(Reply::Ok)
 }
 
+/// Remembers this show's choice between its logo and its title in text,
+/// or forgets it so the show follows the setting again (#1463).
+pub fn set_series_logo(
+    services: &Services,
+    series: u64,
+    logo: Option<bool>,
+) -> Result<Reply, CoreError> {
+    let changed = services.store.write(move |c| {
+        Ok(c.execute(
+            "UPDATE series SET logo_choice = ?1 WHERE id = ?2",
+            params![logo.map(i64::from), series as i64],
+        )?)
+    })?;
+    if changed == 0 {
+        return Err(CoreError::NotFound {
+            what: Entity::Series,
+            id: series,
+        });
+    }
+    let images_dir = services.paths.images_dir();
+    let cards = services
+        .store
+        .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
+    services.bus.debug(
+        Stage::Library,
+        format!("series {series} logo choice: {logo:?}"),
+        EventBody::SeriesChanged { series: cards },
+    );
+    Ok(Reply::Ok)
+}
+
 /// Hides or shows several series at once (#208): one write, one card push
 /// and one line in the activity log for the lot. The caller has checked
 /// every id is there.

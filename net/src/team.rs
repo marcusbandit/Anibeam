@@ -12,6 +12,7 @@ use crate::images::{CardsFor, ImageCache};
 use crate::jikan::JikanClient;
 use crate::limiter::ProviderClient;
 use crate::mal::MalClient;
+use crate::tvdb::TvdbSiteClient;
 use crate::tvmaze::TvmazeClient;
 use anibeam_foundation::services::Services;
 
@@ -28,6 +29,9 @@ const TVMAZE_GAP: Duration = Duration::from_millis(550);
 /// ani.zip publishes no limit. One request a series, spaced like Jikan's
 /// pages, keeps a library walk polite.
 const ANIZIP_GAP: Duration = Duration::from_millis(1000);
+/// TheTVDB's site publishes no limit for its pages. A series costs its page
+/// and one per logo, so these are spaced wider than any API's.
+const TVDB_SITE_GAP: Duration = Duration::from_millis(1500);
 
 pub struct Net {
     pub(crate) services: Arc<Services>,
@@ -39,6 +43,7 @@ pub struct Net {
     pub mal: Arc<MalClient>,
     pub tvmaze: Arc<TvmazeClient>,
     pub anizip: Arc<AniZipClient>,
+    pub tvdb: Arc<TvdbSiteClient>,
     /// The poster, banner and portrait files under `<cache_dir>/images`,
     /// and the row per file that says what is there. Reads consult it,
     /// jobs fill it, and the sweep keeps it from growing without end.
@@ -98,6 +103,13 @@ impl Net {
                 .with_attempt_timeout(crate::anizip::ANIZIP_TIMEOUT)
                 .with_max_attempts(0),
         ));
+        // A side-fetch nothing waits on: capped, never retried, and a rate
+        // limit reads as an outage the metadata team leaves alone for a while.
+        let tvdb = Arc::new(TvdbSiteClient::new(
+            ProviderClient::new(Upstream::TvdbSite, http.clone(), TVDB_SITE_GAP)
+                .with_attempt_timeout(crate::tvdb::TVDB_TIMEOUT)
+                .with_max_attempts(0),
+        ));
         Net {
             services,
             anilist,
@@ -106,6 +118,7 @@ impl Net {
             mal,
             tvmaze,
             anizip,
+            tvdb,
             images,
             cards_for,
         }

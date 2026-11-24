@@ -11,7 +11,9 @@
 //! season the neighbour sits before this one, one fewer for each it sits
 //! after, or the rest of the neighbour's own season when the neighbour is the
 //! first cour of a split season. A series with no clear logo of its own keeps
-//! the nearest season's.
+//! a franchise season's, walking back the chain first and only then forward
+//! (#1463): an earlier season's logo is the show's name, where a later one may
+//! carry its own season's.
 //!
 //! Another season's episodes on a page are worse than none, so the fallback
 //! writes episodes only when it is sure: the series has to be a TV season
@@ -71,7 +73,9 @@ fn missing(conn: &Connection, anilist_id: u64) -> Result<(bool, bool), CoreError
         |r| r.get(0),
     )?;
     let logo: bool = conn.query_row(
-        "SELECT NOT EXISTS (SELECT 1 FROM anizip_images WHERE anilist_id = ?1 AND kind = 'Clearlogo')",
+        // A logo the image cache turned away as a card is none (#1470).
+        "SELECT NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = ?1 AND i.kind = 'Clearlogo'
+                AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0))",
         params![id],
         |r| r.get(0),
     )?;
@@ -303,7 +307,8 @@ fn neighbour(conn: &Connection, id: u64) -> Result<Neighbour, CoreError> {
     };
     let logo: Option<String> = conn
         .query_row(
-            "SELECT url FROM anizip_images WHERE anilist_id = ?1 AND kind = 'Clearlogo'
+            "SELECT url FROM anizip_images i WHERE anilist_id = ?1 AND kind = 'Clearlogo'
+               AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0)
              ORDER BY CASE WHEN lower(lang) LIKE 'en%' THEN 0 WHEN lang IS NULL THEN 1 ELSE 2 END, rank
              LIMIT 1",
             params![id],
@@ -490,12 +495,33 @@ struct Found {
     episodes: Vec<TvmazeEpisode>,
 }
 
-/// Whether the fallback has anything to look for: ani.zip leaves the series
-/// without regular episodes, where it is a season, or without a logo.
-pub fn wanted(conn: &Connection, anilist_id: u64) -> Result<bool, CoreError> {
+/// What the fallback has to look for: episodes, where ani.zip leaves the
+/// series without regular ones and it is a season, and a logo, where it has
+/// none of its own and has borrowed none yet.
+fn wants(conn: &Connection, anilist_id: u64) -> Result<(bool, bool), CoreError> {
     let (want_episodes, want_logo) = missing(conn, anilist_id)?;
-    Ok((want_episodes && entry(conn, anilist_id)?.season) || want_logo)
+    let borrowed: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM fallback_shows b WHERE b.anilist_id = ?1 AND b.logo_url IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = b.logo_url AND v.verdict = 0))",
+        params![as_i64(anilist_id)],
+        |r| r.get(0),
+    )?;
+    Ok((
+        want_episodes && entry(conn, anilist_id)?.season,
+        want_logo && !borrowed,
+    ))
 }
+
+/// Whether the fallback has anything to look for (`wants`).
+pub fn wanted(conn: &Connection, anilist_id: u64) -> Result<bool, CoreError> {
+    let (episodes, logo) = wants(conn, anilist_id)?;
+    Ok(episodes || logo)
+}
+
+/// How long a walk that looked only for a logo and found none is left
+/// before the next: a franchise with no logo anywhere rarely gains one, and
+/// a walk asks ani.zip and AniList again.
+const LOGO_WINDOW: i64 = 30 * 86_400;
 
 /// Runs the fallback for `anilist_id` when ani.zip leaves it without regular
 /// episodes or without a logo. Returns whether any row changed. An outage on
@@ -524,30 +550,46 @@ pub async fn run(
         Err(Stop::Outage) => return Ok(false),
         Err(Stop::Cancelled(e)) => return Err(e),
     };
+    // The logo walks back the sequel chain first, the season before this
+    // one and on back, then forward (#1463).
     let mut logo: Option<String> = None;
+    if want_logo {
+        let back = neighbours.iter().filter(|(_, place)| *place < 0);
+        let forward = neighbours.iter().filter(|(_, place)| *place > 0);
+        for &(id, _) in back.chain(forward) {
+            if let Some(ctx) = ctx {
+                ctx.checkpoint()?;
+            }
+            match ask(metadata, id, now).await? {
+                Asked::Down => return Ok(false),
+                Asked::Skip => continue,
+                Asked::Known => {}
+            }
+            logo = read(metadata, move |c| neighbour(c, id)).logo;
+            if logo.is_some() {
+                break;
+            }
+        }
+    }
+    // The episodes take the nearest season that names a TheTVDB season.
     let mut target: Option<(u64, u64, i32, Neighbour)> = None;
-    for (id, place) in neighbours {
-        if (!want_logo || logo.is_some()) && (!want_episodes || target.is_some()) {
-            break;
-        }
-        if let Some(ctx) = ctx {
-            ctx.checkpoint()?;
-        }
-        match ask(metadata, id, now).await? {
-            Asked::Down => return Ok(false),
-            Asked::Skip => continue,
-            Asked::Known => {}
-        }
-        let n = read(metadata, move |c| neighbour(c, id));
-        if want_logo && logo.is_none() {
-            logo = n.logo.clone();
-        }
-        if want_episodes
-            && target.is_none()
-            && let Some(tvdb) = n.tvdb_id
-            && n.seasons.is_some()
-        {
-            target = Some((id, tvdb, place, n));
+    if want_episodes {
+        for &(id, place) in &neighbours {
+            if let Some(ctx) = ctx {
+                ctx.checkpoint()?;
+            }
+            match ask(metadata, id, now).await? {
+                Asked::Down => return Ok(false),
+                Asked::Skip => continue,
+                Asked::Known => {}
+            }
+            let n = read(metadata, move |c| neighbour(c, id));
+            if let Some(tvdb) = n.tvdb_id
+                && n.seasons.is_some()
+            {
+                target = Some((id, tvdb, place, n));
+                break;
+            }
         }
     }
     let mut found: Option<Found> = None;
@@ -658,12 +700,18 @@ pub fn fingerprint(conn: &Connection, anilist_id: u64) -> Result<String, CoreErr
 }
 
 /// Whether the fallback should walk again: ani.zip still leaves the show
-/// without what the fallback looks for (`wanted`), and the last walk is
-/// older than the airing window or there was none.
+/// without what the fallback looks for (`wants`), and the last walk is older
+/// than the airing window for episodes, or than `LOGO_WINDOW` when only a
+/// logo is wanted, or there was none.
 pub fn due(conn: &Connection, anilist_id: u64, now: i64) -> Result<bool, CoreError> {
-    if !wanted(conn, anilist_id)? {
+    let (episodes, logo) = wants(conn, anilist_id)?;
+    let wait = if episodes {
+        window()
+    } else if logo {
+        LOGO_WINDOW
+    } else {
         return Ok(false);
-    }
+    };
     let fetched_at: Option<i64> = conn
         .query_row(
             "SELECT fetched_at FROM fallback_shows WHERE anilist_id = ?1",
@@ -671,7 +719,7 @@ pub fn due(conn: &Connection, anilist_id: u64, now: i64) -> Result<bool, CoreErr
             |r| r.get(0),
         )
         .optional()?;
-    Ok(fetched_at.is_none_or(|at| now.saturating_sub(at) >= window()))
+    Ok(fetched_at.is_none_or(|at| now.saturating_sub(at) >= wait))
 }
 
 /// Runs the fallback for one show as a job of its own, after a match has
@@ -684,7 +732,13 @@ pub fn follow_up(metadata: &Metadata, anilist_id: u64) -> Option<u64> {
         .read(move |c| wanted(c, anilist_id))
         .unwrap_or(false);
     let this = metadata.this()?;
-    needed.then(|| start_for(&this, vec![(anilist_id, series_of(&this, anilist_id))]))
+    needed.then(|| {
+        start_for(
+            &this,
+            vec![(anilist_id, series_of(&this, anilist_id))],
+            false,
+        )
+    })
 }
 
 /// The series matched to `anilist_id`, whose cards are drawn again after a
@@ -714,10 +768,13 @@ pub fn start(metadata: &Arc<Metadata>) -> Option<u64> {
         .store
         .read(move |c| due_ids(c, now))
         .ok()?;
-    (!work.is_empty()).then(|| start_for(metadata, work))
+    (!work.is_empty()).then(|| start_for(metadata, work, true))
 }
 
-fn start_for(metadata: &Arc<Metadata>, work: Vec<(u64, Vec<u64>)>) -> u64 {
+/// The job behind `follow_up` and `start`. `only_due` asks `due` again right
+/// before each show's walk, for the launch pass; a match's own follow-up
+/// walks whatever the clock says, since the match itself is new information.
+fn start_for(metadata: &Arc<Metadata>, work: Vec<(u64, Vec<u64>)>, only_due: bool) -> u64 {
     let owner = metadata.clone();
     metadata
         .services
@@ -730,19 +787,36 @@ fn start_for(metadata: &Arc<Metadata>, work: Vec<(u64, Vec<u64>)>) -> u64 {
                 ctx.checkpoint()?;
                 ctx.progress(done as u64, Some(total), &anilist_id.to_string());
                 let now = anibeam_foundation::time::now_secs();
-                if !run(&owner, anilist_id, now, Some(&ctx)).await? {
+                // Asked again right before the walk: the airing sweep starts
+                // beside this pass and may have walked the season already,
+                // or a match's own walk may have.
+                if only_due && !read(&owner, move |c| due(c, anilist_id, now)) {
                     continue;
+                }
+                // One show's failure is that show's: the rest still get
+                // their turn. Only a cancel ends the pass.
+                match run(&owner, anilist_id, now, Some(&ctx)).await {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(e) => {
+                        ctx.checkpoint()?;
+                        tracing::debug!("the fallback for AniList {anilist_id} failed: {e}");
+                        continue;
+                    }
                 }
                 filled += 1;
                 let urls = owner
                     .services
                     .store
                     .write_async(move |c| anizip::image_urls(c, anilist_id))
-                    .await?;
+                    .await
+                    .unwrap_or_default();
                 owner.net.images.ensure(&urls).await;
                 for id in series {
-                    if let Some(card) = crate::apply::card_for(&owner.services, id).await? {
-                        ctx.changed(card);
+                    match crate::apply::card_for(&owner.services, id).await {
+                        Ok(Some(card)) => ctx.changed(card),
+                        Ok(None) => {}
+                        Err(e) => tracing::debug!("no card for series {id}: {e}"),
                     }
                 }
             }

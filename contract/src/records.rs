@@ -484,6 +484,11 @@ pub struct SeriesDetail {
     /// when neither is, and the shells wash the poster in instead.
     #[serde(default)]
     pub backdrop: Option<String>,
+    /// The person's choice for this show between its logo (true) and its
+    /// title in text (false), which wins over `Preferences::series_logos`;
+    /// None follows the setting (#1463).
+    #[serde(default)]
+    pub logo_choice: Option<bool>,
 }
 
 /// One piece of a show's artwork (ani.zip, #1036). `kind` is `Clearlogo`,
@@ -1240,6 +1245,16 @@ pub struct Preferences {
     /// The relay rooms are made on, `ROOM_RELAY` by default. Per machine.
     #[serde(default = "default_room_relay")]
     pub room_relay: String,
+    /// Whether a series page draws the show's logo where it has one, or the
+    /// title in text (#1463). Default on; a show's own choice
+    /// (`SeriesDetail::logo_choice`) wins over it.
+    #[serde(default = "default_true")]
+    pub series_logos: bool,
+    /// Which language a logo is drawn in where a show has it in more than
+    /// one (#1470). Default `Titles`. `serde(default)` because older blobs
+    /// predate it.
+    #[serde(default, deserialize_with = "lenient::logo_language")]
+    pub logo_language: LogoLanguage,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -1300,6 +1315,9 @@ mod lenient {
     }
     pub fn recommended<'de, D: Deserializer<'de>>(d: D) -> Result<RecommendedScope, D::Error> {
         or(d, Preferences::default().home_recommended)
+    }
+    pub fn logo_language<'de, D: Deserializer<'de>>(d: D) -> Result<LogoLanguage, D::Error> {
+        or(d, Preferences::default().logo_language)
     }
 }
 
@@ -1411,6 +1429,8 @@ impl Default for Preferences {
             home_recommended: RecommendedScope::All,
             room_name: String::new(),
             room_relay: ROOM_RELAY.to_string(),
+            series_logos: true,
+            logo_language: LogoLanguage::Titles,
         }
     }
 }

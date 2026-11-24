@@ -139,10 +139,8 @@ pub async fn fetch_and_write(
         })
         .await?;
 
-    // A season ani.zip has not mapped yet takes its episode details and its
-    // logo from the franchise around it (#1461), in a job of its own that
-    // starts now, so the match never waits on the walk.
-    crate::fallback::follow_up(metadata, anilist_id);
+    // And which language each of its logos is in (#1470), the same way.
+    crate::logos::follow_up(metadata, anilist_id);
 
     // Waited for rather than fired off: a card that reports a match and
     // then draws a blank poster for the next few seconds is worse than a
@@ -158,6 +156,13 @@ pub async fn fetch_and_write(
             .unwrap_or_default(),
     );
     metadata.net.images.ensure(&urls).await;
+
+    // A season ani.zip has not mapped yet takes its episode details and its
+    // logo from the franchise around it (#1461), in a job of its own, so the
+    // match never waits on the walk. It starts once the images are in, so a
+    // logo of its own the image cache turned away as a card counts as none
+    // (#1470).
+    crate::fallback::follow_up(metadata, anilist_id);
     reread_after_record(metadata, series).await;
     Ok(())
 }
@@ -198,7 +203,8 @@ pub fn write_match_only(
     tx.execute(
         "UPDATE series SET provider = ?2, anilist_id = ?3, mal_id = ?4, tmdb_id = NULL, tmdb_kind = NULL, tvmaze_id = NULL,
                 confirmed = ?5, matched_at = ?6, attempted_at = ?6, attempt_version = ?7,
-                episodes_set = CASE WHEN anilist_id IS ?3 AND mal_id IS ?4 THEN episodes_set END
+                episodes_set = CASE WHEN anilist_id IS ?3 AND mal_id IS ?4 THEN episodes_set END,
+                logo_choice = CASE WHEN anilist_id IS ?3 THEN logo_choice END
          WHERE id = ?1",
         params![
             as_i64(series),
@@ -338,7 +344,8 @@ pub fn write_tvmaze_match(
     tx.execute(
         "UPDATE series SET provider = 'tvmaze', anilist_id = NULL, mal_id = NULL, tmdb_id = NULL, tmdb_kind = NULL,
                 tvmaze_id = ?2, confirmed = ?3, matched_at = ?4, attempted_at = ?4, attempt_version = ?5,
-                episodes_set = CASE WHEN tvmaze_id IS ?2 THEN episodes_set END
+                episodes_set = CASE WHEN tvmaze_id IS ?2 THEN episodes_set END,
+                logo_choice = CASE WHEN tvmaze_id IS ?2 THEN logo_choice END
          WHERE id = ?1",
         params![
             as_i64(series),

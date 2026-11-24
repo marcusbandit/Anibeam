@@ -15,8 +15,8 @@ use anibeam_core::*;
 
 const ANILIST_ID: u64 = 900_001;
 const MAL_ID: u64 = 900_101;
-const LOGO_EN: &str = "https://images.example.com/logo-en.png";
-const LOGO_JA: &str = "https://images.example.com/logo-ja.png";
+const LOGO_EN: &str = "https://images.example.com/series/1/clearlogo/logo-en.png";
+const LOGO_JA: &str = "https://images.example.com/series/1/clearlogo/logo-ja.png";
 const STILL_1: &str = "https://images.example.com/still/1.jpg";
 const STILL_2: &str = "https://images.example.com/still/2.jpg";
 const FANART: &str = "https://images.example.com/fanart.jpg";

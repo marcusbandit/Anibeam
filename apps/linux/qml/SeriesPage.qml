@@ -134,13 +134,28 @@ Item {
         items.push({ text: page.matched ? words.t("series-fix-match") : words.t("series-find-match"), icon: "link", action: function() { matchPanel.openFor(page.props.id, page.title, card.match_info) } })
         return items
     }
-    // The head's More: the notes on your list entry, hide, and the fixes
+    // Logo or title (#1463): the show's own choice, else the setting in Appearance
+    readonly property bool logoChosen: detail && detail.logo_choice !== null && detail.logo_choice !== undefined
+        ? detail.logo_choice === true : Door.preferences.series_logos !== false
+    readonly property bool hasLogo: !!(detail && detail.logo)
+    // A choice that matches the setting is forgotten, so the show follows the setting again
+    function toggleLogo() {
+        var want = !page.logoChosen
+        var id = props.id
+        var follows = (Door.preferences.series_logos !== false) === want
+        var r = Door.call("SetSeriesLogo", { series: id, logo: follows ? null : want })
+        if (r.error) frame.fail(r.error, function() { page.toggleLogo() })
+    }
+    // The head's More: the notes on your list entry, hide, logo or title, and the fixes
     function moreItems() {
         var items = []
         if (frame.canSetListStatus(card) && card.list_status)
             items.push({ text: page.detail && page.detail.notes ? words.t("series-your-notes") : words.t("series-add-notes"), icon: "pencil",
                          action: function() { notesSheet.openFor(page.props.id, page.title, page.detail ? page.detail.notes : "", page.trackerSites) } })
         items.push({ text: card.hidden ? words.t("series-unhide") : words.t("series-hide"), icon: card.hidden ? "eye" : "eye-off", action: page.toggleHidden })
+        if (page.hasLogo)
+            items.push({ text: page.logoChosen ? words.t("series-show-title-text") : words.t("series-show-logo"), icon: page.logoChosen ? "type" : "image",
+                         action: page.toggleLogo })
         var fixes = page.fixItems()
         fixes[0].gapBefore = true
         return items.concat(fixes)
@@ -893,21 +908,22 @@ Item {
                     TapHandler { enabled: aka.foldable; onTapped: aka.open = !aka.open }
                 }
 
-                // The show's logo when the record has one, drawn from its left edge and no
-                // taller than a few lines of the title; the title in the display cut otherwise
+                // The show's logo when the record has one, fitted into one box of a fixed height
+                // and a capped width, Home's hero's proportions, and sat on its bottom left, so a
+                // wide logo and a tall one line up (#1470); the title in the display cut otherwise
                 Item {
                     id: titleBlock
                     width: parent.width
                     readonly property bool logoShown: logo.status === Image.Ready && logo.implicitWidth > 0
                     readonly property real logoW: Math.min(width, theme.space(140))
-                    height: logoShown ? Math.min(theme.space(30), Math.round(logoW * logo.implicitHeight / logo.implicitWidth)) : titleLabel.height
+                    height: logoShown ? theme.space(26) : titleLabel.height
                     Image {
                         id: logo
                         objectName: "series-logo"
                         visible: titleBlock.logoShown
                         width: titleBlock.logoW
                         height: parent.height
-                        source: page.detail && page.detail.logo ? Fmt.fileUrl(page.detail.logo) : ""
+                        source: page.logoChosen && page.hasLogo ? Fmt.fileUrl(page.detail.logo) : ""
                         fillMode: Image.PreserveAspectFit
                         horizontalAlignment: Image.AlignLeft
                         verticalAlignment: Image.AlignBottom

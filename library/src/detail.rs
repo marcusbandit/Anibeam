@@ -81,6 +81,40 @@ fn day_start(day: &str) -> Option<i64> {
     Some(date.midnight().assume_utc().unix_timestamp())
 }
 
+/// The file of the TheTVDB logo `anilist_id` draws, by the logo language
+/// setting, among those the image cache holds and did not turn away. A logo
+/// TheTVDB's page names no language for takes the one ani.zip gives the
+/// same file. `None` when neither names the language of any of them, so
+/// ani.zip's own order decides, or when none is on disk yet.
+fn tvdb_logo(conn: &Connection, anilist_id: u64) -> Result<Option<String>, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT coalesce(l.lang, (SELECT lower(a.lang) FROM anizip_images a
+                                  WHERE a.anilist_id = k.anilist_id AND a.kind = 'Clearlogo' AND a.url = l.url)),
+                i.path
+         FROM tvdb_logo_asks k
+         JOIN anizip_shows z ON z.anilist_id = k.anilist_id AND z.tvdb_id = k.tvdb_id
+         JOIN tvdb_logos l ON l.tvdb_id = k.tvdb_id
+         JOIN images i ON i.url = l.url
+         WHERE NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = l.url AND v.verdict = 0)
+           AND k.anilist_id = ?1 ORDER BY l.rank",
+    )?;
+    let rows = stmt.query_map([anilist_id as i64], |r| {
+        Ok((r.get::<_, Option<String>>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let logos = rows.collect::<Result<Vec<_>, _>>()?;
+    if logos.iter().all(|(lang, _)| lang.is_none()) {
+        return Ok(None);
+    }
+    let prefs = anibeam_foundation::prefs::load_preferences(conn).unwrap_or_default();
+    let want = crate::logo::wanted(prefs.logo_language, prefs.title_language);
+    // ani.zip's `en-US` and TheTVDB's `en` are one language here.
+    let langs: Vec<Option<&str>> = logos
+        .iter()
+        .map(|(l, _)| l.as_deref().and_then(|l| l.split(['-', '_']).next()))
+        .collect();
+    Ok(crate::logo::pick(&langs, want).map(|at| logos[at].1.clone()))
+}
+
 impl Snapshot {
     /// The series page. Takes the connection because the character images
     /// and the recommendations are one query each, and neither belongs in a
@@ -349,6 +383,15 @@ impl Snapshot {
                 row.banner_path.as_deref(),
                 anibeam_net::dimensions::width_of,
             ),
+            logo_choice: conn
+                .query_row(
+                    "SELECT logo_choice FROM series WHERE id = ?1",
+                    [id as i64],
+                    |r| r.get::<_, Option<i64>>(0),
+                )
+                .optional()?
+                .flatten()
+                .map(|v| v != 0),
             card,
         }))
     }
@@ -429,7 +472,7 @@ impl Snapshot {
             e.aired_at = e.aired_at.or(aired_at);
         }
         let mut stmt = conn.prepare(
-            "SELECT a.kind, a.url, a.lang, i.path FROM anizip_images a
+            "SELECT a.kind, a.url, a.lang, i.path, EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = a.url AND v.verdict = 0) FROM anizip_images a
              LEFT JOIN images i ON i.url = a.url
              WHERE a.anilist_id = ?1 ORDER BY a.rank",
         )?;
@@ -439,14 +482,17 @@ impl Snapshot {
                 r.get::<_, String>(1)?,
                 r.get::<_, Option<String>>(2)?,
                 r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<bool>>(4)?.unwrap_or(false),
             ))
         })?;
         let mut logos: Vec<(bool, u8, Option<String>)> = Vec::new();
         let mut seen_fanart = false;
         for row in rows {
-            let (kind, url, lang, path) = row?;
+            let (kind, url, lang, path, not_a_logo) = row?;
             let path = local(path);
-            if kind == "Clearlogo" {
+            // A logo on a solid rectangle is no logo (#1470): the next one
+            // is picked, then a franchise season's, then the title.
+            if kind == "Clearlogo" && !not_a_logo {
                 // English first, then a logo that names no language, then
                 // any other, each in the reply's own order.
                 let pick = match lang.as_deref().map(str::to_ascii_lowercase) {
@@ -471,11 +517,18 @@ impl Snapshot {
         let own_logo = !logos.is_empty();
         logos.sort_by_key(|(missing, pick, _)| (*missing, *pick));
         view.logo = logos.into_iter().next().and_then(|(_, _, path)| path);
+        // TheTVDB's logos, where it named their languages (#1470), win over
+        // ani.zip's order: the one in the language wanted, then the other of
+        // English and Japanese, then any, of those on disk.
+        if let Some(path) = tvdb_logo(conn, anilist_id)? {
+            view.logo = local(Some(path));
+            return Ok(view);
+        }
         if !own_logo {
             let borrowed: Option<String> = conn
                 .query_row(
                     "SELECT i.path FROM fallback_shows b JOIN images i ON i.url = b.logo_url
-                     WHERE b.anilist_id = ?1",
+                     WHERE b.anilist_id = ?1 AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = b.logo_url AND v.verdict = 0)",
                     [anilist_id as i64],
                     |r| r.get(0),
                 )

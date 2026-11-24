@@ -244,6 +244,8 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 home_recommended: RecommendedScope::All,
                 room_name: String::new(),
                 room_relay: ROOM_RELAY.to_string(),
+                series_logos: true,
+                logo_language: LogoLanguage::Titles,
             }
         ),
         other => panic!("{other:?}"),
@@ -325,6 +327,8 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         home_recommended: RecommendedScope::All,
         room_name: String::new(),
         room_relay: ROOM_RELAY.to_string(),
+        series_logos: true,
+        logo_language: LogoLanguage::Titles,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),

@@ -54,8 +54,9 @@
   "images": [
     { "coverType": "Banner", "url": "https://images.example.com/banner.jpg" },
     { "coverType": "Banner", "url": "https://images.example.com/banner.jpg" },
-    { "coverType": "Clearlogo", "url": "https://images.example.com/logo-ja.png" },
-    { "coverType": "Clearlogo", "url": "https://images.example.com/logo-en.png", "lang": "en" },
+    { "coverType": "Clearlogo", "url": "https://images.example.com/series/1/clearlogo/logo-ja.png" },
+    { "coverType": "Clearlogo", "url": "https://images.example.com/series/1/icons/square.jpg", "lang": "en" },
+    { "coverType": "Clearlogo", "url": "https://images.example.com/series/1/clearlogo/logo-en.png", "lang": "en" },
     { "coverType": "Thumb", "url": "https://images.example.com/thumb.jpg" },
     { "coverType": "Fanart", "url": "https://images.example.com/fanart.jpg" },
     { "coverType": "Poster", "url": "http://images.example.com/poster.jpg" }

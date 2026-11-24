@@ -21,7 +21,7 @@ const S3: u64 = 900_012;
 const ANILIST: &str = "graphql.anilist.co";
 const TVDB: u64 = 9_000_010;
 const TVMAZE: u64 = 70_001;
-const LOGO: &str = "https://images.example.com/s1-logo.png";
+const LOGO: &str = "https://images.example.com/series/10/clearlogo/s1.png";
 const STILL_1: &str = "https://images.example.com/tvmaze/s3e1.jpg";
 
 fn node(id: u64) -> serde_json::Value {
@@ -314,6 +314,137 @@ fn a_tvmaze_outage_keeps_what_the_fallback_wrote() {
     let d = detail(&core, series);
     assert_eq!(d.episodes[0].title.as_deref(), Some("Harbour Lights"));
     assert!(d.logo.is_some());
+
+    core.shutdown();
+}
+
+/// A season with no logo of its own takes the previous season's, walking
+/// back the chain first even past a nearer sequel that has one (#1463).
+/// Everything is known already, so nothing is asked.
+#[test]
+fn the_logo_walks_back_the_chain_before_forward() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = show(&core);
+    let now = time::now_secs();
+    // S1 has a logo two seasons back, S2 just before has none, and the
+    // sequel right after has one too.
+    const S4: u64 = 900_013;
+    for id in [S1, S2, S3, S4] {
+        fixtures::media(id, &format!("Toudai {id}")).insert(&core);
+    }
+    fixtures::match_series(&core, series, Some(S3), None);
+    core.store()
+        .write(move |c| {
+            c.execute_batch(&format!(
+                "UPDATE anilist_media SET relations_fetched_at = {now};
+                 INSERT INTO relations (from_id, to_id, relation) VALUES
+                    ({S2}, {S1}, 'PREQUEL'), ({S3}, {S2}, 'PREQUEL'), ({S3}, {S4}, 'SEQUEL');
+                 INSERT INTO anizip_shows (anilist_id, found, fetched_at) VALUES
+                    ({S1}, 1, {now}), ({S2}, 0, {now}), ({S3}, 0, {now}), ({S4}, 1, {now});
+                 INSERT INTO anizip_images (anilist_id, kind, url, rank) VALUES
+                    ({S1}, 'Clearlogo', '{LOGO}', 0),
+                    ({S4}, 'Clearlogo', 'https://images.example.com/series/13/clearlogo/s4.png', 0);"
+            ))?;
+            Ok(())
+        })
+        .unwrap();
+    http.push_for(LOGO, 200, b"image".to_vec());
+
+    let job = anibeam_core::metadata::fallback::start(core.metadata()).expect("a season due");
+    common::wait_job(&c, job);
+    let borrowed: Option<String> = core
+        .store()
+        .read(|c| {
+            Ok(c.query_row(
+                "SELECT logo_url FROM fallback_shows WHERE anilist_id = ?1",
+                [S3 as i64],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(borrowed.as_deref(), Some(LOGO));
+    assert!(detail(&core, series).logo.is_some());
+    assert!(
+        http.requests().iter().all(|r| r.url == LOGO),
+        "{:#?}",
+        http.requests()
+    );
+
+    // The show's own choice is remembered, and None follows the setting again.
+    assert!(matches!(
+        core.call(Call::SetSeriesLogo {
+            series,
+            logo: Some(false)
+        }),
+        Ok(Reply::Ok)
+    ));
+    assert_eq!(detail(&core, series).logo_choice, Some(false));
+    core.call(Call::SetSeriesLogo { series, logo: None })
+        .unwrap();
+    assert_eq!(detail(&core, series).logo_choice, None);
+
+    core.shutdown();
+}
+
+/// A season whose own clear logo the image cache turned away as a card
+/// (#1470) has no logo of its own: it borrows the previous season's.
+#[test]
+fn a_season_whose_own_logo_is_a_card_borrows_the_previous_seasons() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = show(&core);
+    let now = time::now_secs();
+    const CARD: &str = "https://images.example.com/series/12/clearlogo/card.png";
+    for id in [S1, S2, S3] {
+        fixtures::media(id, &format!("Toudai {id}")).insert(&core);
+    }
+    fixtures::match_series(&core, series, Some(S3), None);
+    core.store()
+        .write(move |c| {
+            c.execute_batch(&format!(
+                "UPDATE anilist_media SET relations_fetched_at = {now};
+                 INSERT INTO relations (from_id, to_id, relation) VALUES
+                    ({S2}, {S1}, 'PREQUEL'), ({S3}, {S2}, 'PREQUEL');
+                 INSERT INTO anizip_shows (anilist_id, found, fetched_at) VALUES
+                    ({S1}, 1, {now}), ({S2}, 0, {now}), ({S3}, 1, {now});
+                 INSERT INTO anizip_images (anilist_id, kind, url, rank) VALUES
+                    ({S1}, 'Clearlogo', '{LOGO}', 0), ({S3}, 'Clearlogo', '{CARD}', 0);
+                 INSERT INTO logo_checks (url, verdict, checked_at) VALUES ('{CARD}', 0, {now});"
+            ))?;
+            Ok(())
+        })
+        .unwrap();
+    http.push_for(LOGO, 200, b"image".to_vec());
+
+    let job = anibeam_core::metadata::fallback::start(core.metadata()).expect("a logo wanted");
+    common::wait_job(&c, job);
+    let borrowed: Option<String> = core
+        .store()
+        .read(|c| {
+            Ok(c.query_row(
+                "SELECT logo_url FROM fallback_shows WHERE anilist_id = ?1",
+                [S3 as i64],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(borrowed.as_deref(), Some(LOGO));
+    let path: String = core
+        .store()
+        .read(|c| {
+            Ok(
+                c.query_row("SELECT path FROM images WHERE url = ?1", [LOGO], |r| {
+                    r.get(0)
+                })?,
+            )
+        })
+        .unwrap();
+    assert!(
+        detail(&core, series)
+            .logo
+            .is_some_and(|l| l.ends_with(&path))
+    );
 
     core.shutdown();
 }
