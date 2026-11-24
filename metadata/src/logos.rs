@@ -168,17 +168,48 @@ pub async fn run(metadata: &Metadata, anilist_id: u64) -> Result<bool, CoreError
     let logos = match metadata.net.tvdb.logos(ask.tvdb_id).await {
         Ok(logos) => logos,
         Err(e) => {
-            if crate::team::is_outage(&e) {
-                *recover(&metadata.tvdb_outage) = Some(Instant::now());
-            }
             tracing::debug!("TheTVDB's logos for AniList {anilist_id} did not read: {e}");
+            if turned_away(&e) {
+                // TheTVDB is down, or turns this client away (a bot check):
+                // nothing is asked of it for a while.
+                *recover(&metadata.tvdb_outage) = Some(Instant::now());
+            } else {
+                // A refusal for this series alone (a 410, a 400) is asked
+                // again only after `KEEP`, and the series' logos stay as
+                // they are.
+                store
+                    .tx_async(move |tx| stamp(tx, anilist_id, &ask, now))
+                    .await?;
+            }
             return Ok(false);
         }
     };
+    if logos.is_empty() {
+        // ani.zip lists logos for the show, so a page that lists none did
+        // not read (TheTVDB changed its pages): the ask waits for `KEEP`,
+        // and the logos other seasons read before stay.
+        store
+            .tx_async(move |tx| stamp(tx, anilist_id, &ask, now))
+            .await?;
+        return Ok(false);
+    }
     store
         .tx_async(move |tx| write(tx, anilist_id, &ask, &logos, now))
         .await?;
     Ok(true)
+}
+
+/// Whether a failure says TheTVDB is down or turns this client away as a
+/// whole, rather than that one page was bad.
+fn turned_away(e: &CoreError) -> bool {
+    crate::team::is_outage(e)
+        || matches!(
+            e,
+            CoreError::Provider {
+                status: Some(401 | 403 | 451),
+                ..
+            }
+        )
 }
 
 /// Fetches the images `anilist_id` wants now. A logo that turns out to be
@@ -204,46 +235,71 @@ async fn ensure_logos(metadata: &Metadata, anilist_id: u64) {
     }
 }
 
-/// The AniList ids a series is matched to that are owed an ask, each with
-/// the series on it.
-fn owed_ids(conn: &Connection, now: i64) -> Result<Vec<(u64, Vec<u64>)>, CoreError> {
+/// One show a job asks about: its AniList id, the series matched to it,
+/// whose cards are drawn again, and the name its progress line shows.
+struct Work {
+    anilist_id: u64,
+    series: Vec<u64>,
+    name: String,
+}
+
+/// The AniList ids a series is matched to that are owed an ask.
+fn owed_ids(conn: &Connection, now: i64) -> Result<Vec<Work>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT s.anilist_id, s.id FROM series s
+        "SELECT s.anilist_id, s.id, s.folder_name FROM series s
          WHERE s.provider = 'anilist' AND s.anilist_id IS NOT NULL
            AND EXISTS (SELECT 1 FROM anizip_images z WHERE z.anilist_id = s.anilist_id AND z.kind = 'Clearlogo')
          ORDER BY s.anilist_id, s.id",
     )?;
     let rows = stmt.query_map([], |r| {
-        Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u64))
+        Ok((
+            r.get::<_, i64>(0)? as u64,
+            r.get::<_, i64>(1)? as u64,
+            r.get::<_, String>(2)?,
+        ))
     })?;
-    let mut out: Vec<(u64, Vec<u64>)> = Vec::new();
+    let mut out: Vec<Work> = Vec::new();
     for row in rows {
-        let (anilist_id, series) = row?;
+        let (anilist_id, series, name) = row?;
         match out.last_mut() {
-            Some((id, list)) if *id == anilist_id => list.push(series),
-            _ => out.push((anilist_id, vec![series])),
+            Some(w) if w.anilist_id == anilist_id => w.series.push(series),
+            _ => out.push(Work {
+                anilist_id,
+                series: vec![series],
+                name,
+            }),
         }
     }
     let mut owed_out = Vec::with_capacity(out.len());
-    for (anilist_id, series) in out {
-        if owed(conn, anilist_id, now)?.is_some() {
-            owed_out.push((anilist_id, series));
+    for w in out {
+        if owed(conn, w.anilist_id, now)?.is_some() {
+            owed_out.push(w);
         }
     }
     Ok(owed_out)
 }
 
-/// The series matched to `anilist_id`.
-fn series_of(conn: &Connection, anilist_id: u64) -> Result<Vec<u64>, CoreError> {
+/// The series matched to `anilist_id`, and the first one's name.
+fn work_of(conn: &Connection, anilist_id: u64) -> Result<Work, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT id FROM series WHERE anilist_id = ?1 AND provider = 'anilist' ORDER BY id",
+        "SELECT id, folder_name FROM series WHERE anilist_id = ?1 AND provider = 'anilist' ORDER BY id",
     )?;
-    let rows = stmt.query_map(params![as_i64(anilist_id)], |r| r.get::<_, i64>(0))?;
-    Ok(rows
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .map(|v| v as u64)
-        .collect())
+    let rows = stmt.query_map(params![as_i64(anilist_id)], |r| {
+        Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?))
+    })?;
+    let mut work = Work {
+        anilist_id,
+        series: Vec::new(),
+        name: anilist_id.to_string(),
+    };
+    for (at, row) in rows.enumerate() {
+        let (id, name) = row?;
+        if at == 0 {
+            work.name = name;
+        }
+        work.series.push(id);
+    }
+    Ok(work)
 }
 
 /// After a match or a fresh ani.zip answer: asks about `anilist_id`'s logos
@@ -261,12 +317,12 @@ pub fn follow_up(metadata: &Metadata, anilist_id: u64) -> Option<u64> {
         return None;
     }
     let this = metadata.this()?;
-    let series = metadata
+    let work = metadata
         .services
         .store
-        .read(move |c| series_of(c, anilist_id))
-        .unwrap_or_default();
-    Some(start_for(&this, vec![(anilist_id, series)], false))
+        .read(move |c| work_of(c, anilist_id))
+        .ok()?;
+    Some(start_for(&this, vec![work], false))
 }
 
 /// The launch's walk over every matched show owed an ask, unless one is
@@ -294,7 +350,7 @@ impl Drop for Walking {
     }
 }
 
-fn start_for(metadata: &Arc<Metadata>, work: Vec<(u64, Vec<u64>)>, walk: bool) -> u64 {
+fn start_for(metadata: &Arc<Metadata>, work: Vec<Work>, walk: bool) -> u64 {
     let owner = metadata.clone();
     let walking = walk.then(|| Walking(metadata.clone()));
     metadata
@@ -306,7 +362,9 @@ fn start_for(metadata: &Arc<Metadata>, work: Vec<(u64, Vec<u64>)>, walk: bool) -
             let named = ask_all(&owner, &ctx, work, walk).await?;
             Ok(Finished {
                 plain: None,
-                level: if named == 0 {
+                // One show after its match is no news for the log; the
+                // launch walk over the library is.
+                level: if named == 0 || !walk {
                     Level::Debug
                 } else {
                     Level::Info
@@ -322,16 +380,24 @@ fn start_for(metadata: &Arc<Metadata>, work: Vec<(u64, Vec<u64>)>, walk: bool) -
 async fn ask_all(
     metadata: &Metadata,
     ctx: &Arc<JobCtx>,
-    mut work: Vec<(u64, Vec<u64>)>,
+    mut work: Vec<Work>,
     walk: bool,
 ) -> Result<u64, CoreError> {
     let mut named = 0u64;
     let mut tried: HashSet<u64> = HashSet::new();
     loop {
         let total = work.len() as u64;
-        for (done, (anilist_id, series)) in work.into_iter().enumerate() {
+        for (
+            done,
+            Work {
+                anilist_id,
+                series,
+                name,
+            },
+        ) in work.into_iter().enumerate()
+        {
             ctx.checkpoint()?;
-            ctx.progress(done as u64, Some(total), &anilist_id.to_string());
+            ctx.progress(done as u64, Some(total), &name);
             tried.insert(anilist_id);
             if metadata.tvdb_down() {
                 return Ok(named);
@@ -364,7 +430,7 @@ async fn ask_all(
             .read(move |c| owed_ids(c, now))
             .unwrap_or_default()
             .into_iter()
-            .filter(|(id, _)| !tried.contains(id))
+            .filter(|w| !tried.contains(&w.anilist_id))
             .collect();
         if work.is_empty() {
             return Ok(named);

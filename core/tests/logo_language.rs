@@ -194,9 +194,11 @@ fn a_logo_that_is_not_clear_gives_way_to_the_next() {
                  INSERT INTO tvdb_logo_asks (anilist_id, tvdb_id, logo_set, fetched_at) VALUES ({SHOW}, {TVDB}, '', {now});
                  INSERT INTO tvdb_logos (tvdb_id, url, lang, rank) VALUES
                     ({TVDB}, '{LOGO_JA}', 'ja', 0), ({TVDB}, '{LOGO_EN}', 'en', 1);
-                 INSERT INTO images (url, path, bytes, fetched_at, used_at, logo_check) VALUES
-                    ('{LOGO_JA}', 'aa/ja.png', 5, {now}, {now}, 0),
-                    ('{LOGO_EN}', 'aa/en.png', 5, {now}, {now}, 1);"
+                 INSERT INTO images (url, path, bytes, fetched_at, used_at) VALUES
+                    ('{LOGO_JA}', 'aa/ja.png', 5, {now}, {now}),
+                    ('{LOGO_EN}', 'aa/en.png', 5, {now}, {now});
+                 INSERT INTO logo_checks (url, verdict, checked_at) VALUES
+                    ('{LOGO_JA}', 0, {now}), ('{LOGO_EN}', 1, {now});"
             ))?;
             Ok(())
         })
@@ -213,11 +215,113 @@ fn a_logo_that_is_not_clear_gives_way_to_the_next() {
     // Neither is a logo, and no franchise season lends one: the title.
     core.store()
         .write(|c| {
-            c.execute_batch("UPDATE images SET logo_check = 0;")?;
+            c.execute_batch("UPDATE logo_checks SET verdict = 0;")?;
             Ok(())
         })
         .unwrap();
     assert_eq!(detail(&core, series).logo, None);
 
+    core.shutdown();
+}
+
+/// A show matched to `SHOW` whose ani.zip answer lists `logos` as
+/// (url, lang), with TheTVDB series `TVDB`.
+fn matched_with(core: &Core, logos: &[(&str, &str)]) -> u64 {
+    let src = fixtures::insert_source(core, "/lib");
+    let series = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Toudai", "Toudai");
+    fixtures::media(SHOW, "Toudai").insert(core);
+    fixtures::match_series(core, series, Some(SHOW), None);
+    let now = time::now_secs();
+    let rows: Vec<String> = logos
+        .iter()
+        .enumerate()
+        .map(|(rank, (url, lang))| format!("({SHOW}, 'Clearlogo', '{url}', '{lang}', {rank})"))
+        .collect();
+    let sql = format!(
+        "INSERT INTO anizip_shows (anilist_id, found, tvdb_id, fetched_at) VALUES ({SHOW}, 1, {TVDB}, {now});
+         INSERT INTO anizip_images (anilist_id, kind, url, lang, rank) VALUES {};",
+        rows.join(", ")
+    );
+    core.store()
+        .write(move |c| {
+            c.execute_batch(&sql)?;
+            Ok(())
+        })
+        .unwrap();
+    series
+}
+
+fn count(core: &Core, sql: &'static str) -> i64 {
+    core.store()
+        .read(move |c| Ok(c.query_row(sql, [], |r| r.get(0))?))
+        .unwrap()
+}
+
+/// TheTVDB lists the logos but names no language for any: each takes the
+/// language ani.zip gives the same file, and with none named anywhere
+/// ani.zip's own order stands over TheTVDB's page order.
+#[test]
+fn a_logo_tvdb_names_no_language_for_takes_ani_zips() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    // ani.zip lists the English logo first, TheTVDB's page the Japanese one.
+    let series = matched_with(&core, &[(LOGO_EN, "en"), (LOGO_JA, "ja")]);
+    http.push_for("thetvdb.com/dereferrer/series/9000020", 200, series_page());
+    http.push_for("thetvdb.com/artwork/7001", 404, "gone");
+    http.push_for("thetvdb.com/artwork/7002", 404, "gone");
+    http.push_for(LOGO_JA, 200, b"image".to_vec());
+    http.push_for(LOGO_EN, 200, b"image".to_vec());
+
+    let job = anibeam_core::metadata::logos::start(core.metadata()).expect("a show owed an ask");
+    common::wait_job(&c, job);
+    assert_eq!(
+        count(&core, "SELECT count(*) FROM tvdb_logos WHERE lang IS NULL"),
+        2
+    );
+    // Romaji titles want the Japanese logo, which ani.zip names.
+    assert!(logo_is(&core, series, LOGO_JA));
+    set_logo_language(&core, LogoLanguage::English);
+    assert!(logo_is(&core, series, LOGO_EN));
+    // Nobody names a language: ani.zip's order, not TheTVDB's page order.
+    core.store()
+        .write(|c| {
+            c.execute_batch("UPDATE anizip_images SET lang = NULL;")?;
+            Ok(())
+        })
+        .unwrap();
+    set_logo_language(&core, LogoLanguage::Japanese);
+    assert!(logo_is(&core, series, LOGO_EN));
+
+    core.shutdown();
+}
+
+/// A series page TheTVDB refuses for good (410) is not asked again before
+/// long; one it hides behind a bot check (403) writes nothing and leaves
+/// TheTVDB alone for a while.
+#[test]
+fn a_refusal_is_not_asked_again_and_a_bot_check_pauses_the_asks() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    matched_with(&core, &[(LOGO_EN, "en")]);
+    http.push_for("thetvdb.com/dereferrer", 410, "gone");
+    let job = anibeam_core::metadata::logos::start(core.metadata()).expect("a show owed an ask");
+    common::wait_job(&c, job);
+    assert_eq!(count(&core, "SELECT count(*) FROM tvdb_logo_asks"), 1);
+    assert_eq!(count(&core, "SELECT count(*) FROM tvdb_logos"), 0);
+    assert_eq!(anibeam_core::metadata::logos::start(core.metadata()), None);
+    core.shutdown();
+
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    matched_with(&core, &[(LOGO_EN, "en")]);
+    http.push_for("thetvdb.com/dereferrer", 403, "a bot check");
+    let job = anibeam_core::metadata::logos::start(core.metadata()).expect("a show owed an ask");
+    common::wait_job(&c, job);
+    assert_eq!(count(&core, "SELECT count(*) FROM tvdb_logo_asks"), 0);
+    let asked = http.requests().len();
+    // Still owed, but TheTVDB is left alone inside the outage window.
+    let job = anibeam_core::metadata::logos::start(core.metadata()).expect("still owed");
+    common::wait_job(&c, job);
+    assert_eq!(http.requests().len(), asked);
     core.shutdown();
 }

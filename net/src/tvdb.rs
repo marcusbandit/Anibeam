@@ -267,16 +267,13 @@ impl TvdbSiteClient {
         };
         let mut out = Vec::new();
         for (url, artwork_id) in series_logos(&page).into_iter().take(MAX_LOGOS) {
-            let lang = match self.page(format!("{TVDB_SITE}/artwork/{artwork_id}")).await {
-                Ok(page) => page.as_deref().and_then(artwork_language),
-                // One artwork page that would not read costs that logo its
-                // language; TheTVDB being down costs the whole answer.
-                Err(e @ CoreError::Provider { status: None, .. }) => return Err(e),
-                Err(CoreError::Provider {
-                    status: Some(code), ..
-                }) if code < 500 && code != 429 => None,
-                Err(e) => return Err(e),
-            };
+            // An artwork page that is gone costs that logo its language.
+            // Any other failure fails the whole answer, which writes
+            // nothing: a bot check or a timeout is no lasting word on it.
+            let page = self
+                .page(format!("{TVDB_SITE}/artwork/{artwork_id}"))
+                .await?;
+            let lang = page.as_deref().and_then(artwork_language);
             out.push(TvdbLogo {
                 url,
                 artwork_id,
@@ -418,10 +415,15 @@ mod tests {
         http.push(503, "down");
         http.push(200, SERIES);
         http.push(500, "down");
+        http.push(200, SERIES);
+        http.push(403, "a bot check");
         let c = client(http);
         assert_eq!(c.logos(1).await.unwrap(), Vec::new());
         assert!(c.logos(1).await.is_err());
         // Down part way through: the whole answer is an error, never half.
+        assert!(c.logos(1).await.is_err());
+        // So is an artwork page behind a bot check: no language for half a
+        // year on the word of a challenge page.
         assert!(c.logos(1).await.is_err());
     }
 

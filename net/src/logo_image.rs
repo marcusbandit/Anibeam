@@ -22,7 +22,7 @@ pub enum LogoFile {
 }
 
 impl LogoFile {
-    /// The value `images.logo_check` keeps: 1 a clear logo, 0 not a logo,
+    /// The value `logo_checks.verdict` keeps: 1 a clear logo, 0 not a logo,
     /// 2 a file this could not read, which is drawn as it is.
     pub fn check(&self) -> i64 {
         match self {
@@ -40,6 +40,10 @@ const MAX_SOLID: f64 = 0.85;
 
 /// The alpha from which a pixel counts as solid.
 const SOLID_ALPHA: u8 = 128;
+
+/// The alpha under which an edge pixel counts as clear: the faint haze or
+/// glow some logos carry out to the canvas edge is no background.
+const CLEAR_ALPHA: u8 = 8;
 
 /// A logo the cache would decode at most: anything larger is left unread
 /// rather than held in memory whole.
@@ -61,12 +65,23 @@ pub fn inspect(bytes: &[u8]) -> LogoFile {
     }
 }
 
+/// The colour information a PNG carries beside its pixels, kept so a
+/// trimmed logo draws in the same colours as the file it came from.
+#[derive(Default)]
+struct Colour {
+    icc_profile: Option<Vec<u8>>,
+    gamma: Option<png::ScaledFloat>,
+    chromaticities: Option<png::SourceChromaticities>,
+    srgb: Option<png::SrgbRenderingIntent>,
+}
+
 /// A decoded PNG, eight bits a channel.
 struct Decoded {
     width: usize,
     height: usize,
     channels: usize,
     color: png::ColorType,
+    colour: Colour,
     data: Vec<u8>,
 }
 
@@ -87,6 +102,15 @@ fn decode(bytes: &[u8]) -> Option<Decoded> {
     decoder.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = decoder.read_info().ok()?;
     let (width, height) = reader.info().size();
+    let colour = {
+        let info = reader.info();
+        Colour {
+            icc_profile: info.icc_profile.as_ref().map(|p| p.to_vec()),
+            gamma: info.gamma(),
+            chromaticities: info.chromaticities(),
+            srgb: info.srgb,
+        }
+    };
     if u64::from(width) * u64::from(height) > MAX_PIXELS || width == 0 || height == 0 {
         return None;
     }
@@ -102,14 +126,16 @@ fn decode(bytes: &[u8]) -> Option<Decoded> {
         height: info.height as usize,
         channels,
         color: info.color_type,
+        colour,
         data,
     })
 }
 
 fn judge(image: &Decoded) -> LogoFile {
     let (w, h) = (image.width, image.height);
-    let clear_edge = (0..w).any(|x| image.alpha(x, 0) == 0 || image.alpha(x, h - 1) == 0)
-        || (0..h).any(|y| image.alpha(0, y) == 0 || image.alpha(w - 1, y) == 0);
+    let clear = |x, y| image.alpha(x, y) < CLEAR_ALPHA;
+    let clear_edge = (0..w).any(|x| clear(x, 0) || clear(x, h - 1))
+        || (0..h).any(|y| clear(0, y) || clear(w - 1, y));
     if !clear_edge {
         return LogoFile::Opaque;
     }
@@ -151,17 +177,29 @@ fn judge(image: &Decoded) -> LogoFile {
             (x1 - x0 + 1) as u32,
             (y1 - y0 + 1) as u32,
             image.color,
+            &image.colour,
             &cut,
         ),
     }
 }
 
-fn encode(width: u32, height: u32, color: png::ColorType, data: &[u8]) -> Option<Vec<u8>> {
+fn encode(
+    width: u32,
+    height: u32,
+    color: png::ColorType,
+    colour: &Colour,
+    data: &[u8],
+) -> Option<Vec<u8>> {
     let mut out = Vec::new();
     {
-        let mut encoder = png::Encoder::new(&mut out, width, height);
-        encoder.set_color(color);
-        encoder.set_depth(png::BitDepth::Eight);
+        let mut info = png::Info::with_size(width, height);
+        info.color_type = color;
+        info.bit_depth = png::BitDepth::Eight;
+        info.icc_profile = colour.icc_profile.clone().map(Into::into);
+        info.source_gamma = colour.gamma;
+        info.source_chromaticities = colour.chromaticities;
+        info.srgb = colour.srgb;
+        let encoder = png::Encoder::with_info(&mut out, info).ok()?;
         let mut writer = encoder.write_header().ok()?;
         writer.write_image_data(data).ok()?;
         writer.finish().ok()?;
@@ -181,7 +219,7 @@ mod tests {
                 data.extend_from_slice(&pixel(x, y));
             }
         }
-        encode(w, h, png::ColorType::Rgba, &data).unwrap()
+        encode(w, h, png::ColorType::Rgba, &Colour::default(), &data).unwrap()
     }
 
     fn size_of(bytes: &[u8]) -> (usize, usize) {
@@ -236,6 +274,55 @@ mod tests {
     }
 
     #[test]
+    fn a_faint_glow_to_the_edge_is_no_background_and_the_colour_stays() {
+        // Lettering in the middle, a glow of alpha 3 out to every edge.
+        let glow = png_of(10, 6, |x, y| {
+            if (x == 3 || x == 6) && (2..4).contains(&y) {
+                [255, 255, 255, 255]
+            } else {
+                [255, 255, 255, 3]
+            }
+        });
+        assert_eq!(inspect(&glow), LogoFile::Clear { trimmed: None });
+        // A logo that names its colour space keeps it when it is trimmed.
+        let colour = Colour {
+            gamma: Some(png::ScaledFloat::new(0.45455)),
+            srgb: Some(png::SrgbRenderingIntent::Perceptual),
+            ..Colour::default()
+        };
+        let mut data = vec![0u8; 6 * 4 * 4];
+        for (x, y) in [(1, 1), (3, 2)] {
+            data[(y * 6 + x) * 4..(y * 6 + x) * 4 + 4].copy_from_slice(&[9, 9, 9, 255]);
+        }
+        let logo = encode(6, 4, png::ColorType::Rgba, &colour, &data).unwrap();
+        let LogoFile::Clear {
+            trimmed: Some(trimmed),
+        } = inspect(&logo)
+        else {
+            panic!("{:?}", inspect(&logo));
+        };
+        let image = decode(&trimmed).unwrap();
+        assert_eq!((image.width, image.height), (3, 2));
+        assert_eq!(
+            image.colour.srgb,
+            Some(png::SrgbRenderingIntent::Perceptual)
+        );
+        // A gamma of its own, without sRGB, stays too.
+        let gamma = Colour {
+            gamma: Some(png::ScaledFloat::new(0.45455)),
+            ..Colour::default()
+        };
+        let logo = encode(6, 4, png::ColorType::Rgba, &gamma, &data).unwrap();
+        let LogoFile::Clear {
+            trimmed: Some(trimmed),
+        } = inspect(&logo)
+        else {
+            panic!("{:?}", inspect(&logo));
+        };
+        assert!(decode(&trimmed).unwrap().colour.gamma.is_some());
+    }
+
+    #[test]
     fn a_name_on_a_solid_rectangle_is_not_a_logo() {
         let card = png_of(8, 4, |x, y| {
             if (2..6).contains(&x) && (1..3).contains(&y) {
@@ -263,7 +350,7 @@ mod tests {
         for _ in 0..4 {
             rgb.extend_from_slice(&[1, 2, 3]);
         }
-        let rgb = encode(2, 2, png::ColorType::Rgb, &rgb).unwrap();
+        let rgb = encode(2, 2, png::ColorType::Rgb, &Colour::default(), &rgb).unwrap();
         assert_eq!(inspect(&rgb), LogoFile::Opaque);
         assert_eq!(inspect(&[0xFF, 0xD8, 0xFF, 0xE0, 0, 0]), LogoFile::Opaque);
         // Wholly transparent: nothing to draw.

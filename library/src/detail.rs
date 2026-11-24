@@ -58,26 +58,36 @@ fn day_start(day: &str) -> Option<i64> {
 }
 
 /// The file of the TheTVDB logo `anilist_id` draws, by the logo language
-/// setting, among those the image cache holds. `None` when TheTVDB named
-/// none of its logos, or none is on disk yet.
+/// setting, among those the image cache holds and did not turn away. A logo
+/// TheTVDB's page names no language for takes the one ani.zip gives the
+/// same file. `None` when neither names the language of any of them, so
+/// ani.zip's own order decides, or when none is on disk yet.
 fn tvdb_logo(conn: &Connection, anilist_id: u64) -> Result<Option<String>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT l.lang, i.path FROM tvdb_logo_asks k
+        "SELECT coalesce(l.lang, (SELECT lower(a.lang) FROM anizip_images a
+                                  WHERE a.anilist_id = k.anilist_id AND a.kind = 'Clearlogo' AND a.url = l.url)),
+                i.path
+         FROM tvdb_logo_asks k
          JOIN anizip_shows z ON z.anilist_id = k.anilist_id AND z.tvdb_id = k.tvdb_id
          JOIN tvdb_logos l ON l.tvdb_id = k.tvdb_id
-         JOIN images i ON i.url = l.url AND coalesce(i.logo_check, 1) != 0
-         WHERE k.anilist_id = ?1 ORDER BY l.rank",
+         JOIN images i ON i.url = l.url
+         WHERE NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = l.url AND v.verdict = 0)
+           AND k.anilist_id = ?1 ORDER BY l.rank",
     )?;
     let rows = stmt.query_map([anilist_id as i64], |r| {
         Ok((r.get::<_, Option<String>>(0)?, r.get::<_, String>(1)?))
     })?;
     let logos = rows.collect::<Result<Vec<_>, _>>()?;
-    if logos.is_empty() {
+    if logos.iter().all(|(lang, _)| lang.is_none()) {
         return Ok(None);
     }
     let prefs = anibeam_foundation::prefs::load_preferences(conn).unwrap_or_default();
     let want = crate::logo::wanted(prefs.logo_language, prefs.title_language);
-    let langs: Vec<Option<&str>> = logos.iter().map(|(l, _)| l.as_deref()).collect();
+    // ani.zip's `en-US` and TheTVDB's `en` are one language here.
+    let langs: Vec<Option<&str>> = logos
+        .iter()
+        .map(|(l, _)| l.as_deref().and_then(|l| l.split(['-', '_']).next()))
+        .collect();
     Ok(crate::logo::pick(&langs, want).map(|at| logos[at].1.clone()))
 }
 
@@ -433,7 +443,7 @@ impl Snapshot {
             e.aired_at = e.aired_at.or(aired_at);
         }
         let mut stmt = conn.prepare(
-            "SELECT a.kind, a.url, a.lang, i.path, i.logo_check = 0 FROM anizip_images a
+            "SELECT a.kind, a.url, a.lang, i.path, EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = a.url AND v.verdict = 0) FROM anizip_images a
              LEFT JOIN images i ON i.url = a.url
              WHERE a.anilist_id = ?1 ORDER BY a.rank",
         )?;
@@ -483,7 +493,7 @@ impl Snapshot {
             let borrowed: Option<String> = conn
                 .query_row(
                     "SELECT i.path FROM fallback_shows b JOIN images i ON i.url = b.logo_url
-                     WHERE b.anilist_id = ?1 AND coalesce(i.logo_check, 1) != 0",
+                     WHERE b.anilist_id = ?1 AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = b.logo_url AND v.verdict = 0)",
                     [anilist_id as i64],
                     |r| r.get(0),
                 )

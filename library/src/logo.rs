@@ -6,7 +6,9 @@ use anibeam_contract::{LogoLanguage, TitleLanguage};
 
 /// The language a logo is wanted in, `en` or `ja`. Following the titles,
 /// English titles want the English logo, and romaji or native ones the
-/// Japanese logo: a romaji title is the Japanese name, written out.
+/// Japanese logo: a romaji title is the Japanese name, written out. Native
+/// means Japanese here for every show, a Chinese or Korean one included,
+/// as the owner set it in #1470.
 pub fn wanted(logo: LogoLanguage, titles: TitleLanguage) -> &'static str {
     match logo {
         LogoLanguage::English => "en",

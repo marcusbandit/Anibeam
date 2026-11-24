@@ -99,12 +99,14 @@ const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN se
                 FROM anizip_images a
                 WHERE a.kind = 'Clearlogo'
                   AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
-                  AND NOT EXISTS (SELECT 1 FROM images x WHERE x.url = a.url AND x.logo_check = 0)
+                  AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = a.url AND v.verdict = 0)
              ) WHERE pick = 1)
      UNION SELECT b.logo_url FROM fallback_shows b
            WHERE b.logo_url IS NOT NULL
              AND b.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
-             AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')
+             AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo'
+                               AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0))
+             AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = b.logo_url AND v.verdict = 0)
      UNION SELECT url FROM tvdb_logo_wanted";
 
 /// What a fill goes and gets: everything an owned series draws, the covers
@@ -144,7 +146,7 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
                 FROM anizip_images a
                 WHERE a.kind = 'Clearlogo'
                   AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
-                  AND NOT EXISTS (SELECT 1 FROM images x WHERE x.url = a.url AND x.logo_check = 0)
+                  AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = a.url AND v.verdict = 0)
              ) WHERE pick = 1)
         UNION SELECT ze.still_url FROM anizip_episodes ze
                      JOIN series s ON s.anilist_id = ze.anilist_id AND s.provider = 'anilist'
@@ -152,7 +154,9 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
         UNION SELECT b.logo_url FROM fallback_shows b
            WHERE b.logo_url IS NOT NULL
              AND b.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
-             AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')
+             AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo'
+                               AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0))
+             AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = b.logo_url AND v.verdict = 0)
         UNION SELECT url FROM tvdb_logo_wanted
         UNION SELECT fe.still_url FROM fallback_episodes fe
                      JOIN series s ON s.anilist_id = fe.anilist_id AND s.provider = 'anilist'
@@ -184,6 +188,13 @@ pub fn key(url: &str) -> String {
 pub fn relative_path(url: &str, ext: &str) -> String {
     let hash = key(url);
     format!("{}/{hash}.{ext}", &hash[..2])
+}
+
+/// Where a clear logo trimmed to its mark is kept: a name of its own, so a
+/// view that already drew the untrimmed file at the old path loads it anew.
+pub fn trimmed_path(url: &str) -> String {
+    let hash = key(url);
+    format!("{}/{hash}.trim.png", &hash[..2])
 }
 
 /// What to call the file. The url's own extension wins, since AniList's CDN
@@ -660,30 +671,50 @@ fn missing_urls(conn: &Connection) -> Result<Vec<String>, CoreError> {
 // The fetch
 // ---------------------------------------------------------------------------
 
-/// A clear logo's file judged off the runtime (`logo_image`): the bytes to
-/// keep, trimmed to the mark where it had a transparent margin, and what
-/// `images.logo_check` records.
-async fn judge_logo(body: Vec<u8>) -> (Vec<u8>, i64) {
+/// A clear logo's file judged off the runtime (`logo_image`).
+struct Judged {
+    /// The bytes to keep: the file cut to its mark, or the file as it was.
+    body: Vec<u8>,
+    /// What `logo_checks.verdict` records.
+    verdict: i64,
+    /// Whether `body` is a trimmed file, which goes under `trimmed_path`.
+    trimmed: bool,
+}
+
+async fn judge_logo(body: Vec<u8>) -> Option<Judged> {
     let judged = tokio::task::spawn_blocking(move || {
         let file = logo_image::inspect(&body);
-        let check = file.check();
+        let verdict = file.check();
         match file {
             LogoFile::Clear {
                 trimmed: Some(trimmed),
-            } => (trimmed, check),
-            _ => (body, check),
+            } => Judged {
+                body: trimmed,
+                verdict,
+                trimmed: true,
+            },
+            _ => Judged {
+                body,
+                verdict,
+                trimmed: false,
+            },
         }
     })
     .await;
-    match judged {
-        Ok(judged) => judged,
-        // A judge that panicked keeps nothing: the logo is drawn as fetched
-        // next time it is fetched, and this time not at all.
-        Err(e) => {
-            tracing::warn!("judging a logo failed: {e}");
-            (Vec::new(), 2)
-        }
-    }
+    judged
+        .inspect_err(|e| tracing::warn!("judging a logo failed: {e}"))
+        .ok()
+}
+
+/// Records what the cache found a clear logo to be, apart from the cached
+/// file, so the verdict outlives it.
+fn record_verdict(c: &Connection, url: &str, verdict: i64, now: i64) -> Result<(), CoreError> {
+    c.execute(
+        "INSERT INTO logo_checks (url, verdict, checked_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(url) DO UPDATE SET verdict = excluded.verdict, checked_at = excluded.checked_at",
+        params![url, verdict, now],
+    )?;
+    Ok(())
 }
 
 impl ImageCache {
@@ -695,8 +726,9 @@ impl ImageCache {
             .store
             .read(|c| {
                 let mut stmt = c.prepare(
-                    "SELECT url, path FROM images
-                     WHERE logo_check IS NULL AND instr(lower(url), '/clearlogo/') > 0",
+                    "SELECT i.url, i.path FROM images i
+                     WHERE instr(lower(i.url), '/clearlogo/') > 0
+                       AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url)",
                 )?;
                 let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
                 Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -704,38 +736,48 @@ impl ImageCache {
             .unwrap_or_default();
         let mut changed = Vec::new();
         for (url, relative) in rows {
-            let path = self.dir.join(&relative);
-            let Ok(body) = tokio::fs::read(&path).await else {
+            let old = self.dir.join(&relative);
+            let Ok(body) = tokio::fs::read(&old).await else {
                 continue;
             };
-            let before = body.len();
-            let (body, check) = judge_logo(body).await;
-            if body.is_empty() {
+            let Some(judged) = judge_logo(body).await else {
                 continue;
-            }
-            let bytes = body.len() as i64;
-            if body.len() != before
-                && let Err(e) = atomic_file::write_async(&path, body).await
-            {
-                tracing::warn!("trimming the logo {url} failed: {e}");
-                continue;
-            }
-            let row_url = url.clone();
+            };
+            // A trimmed file goes under a name of its own, and the row
+            // moves to it, so a view that drew the old file reloads.
+            let relative = if judged.trimmed {
+                let trimmed = trimmed_path(&url);
+                if let Err(e) =
+                    atomic_file::write_async(&self.dir.join(&trimmed), judged.body.clone()).await
+                {
+                    tracing::warn!("trimming the logo {url} failed: {e}");
+                    continue;
+                }
+                trimmed
+            } else {
+                relative
+            };
+            let (row_url, row_path, verdict) = (url.clone(), relative.clone(), judged.verdict);
+            let bytes = judged.body.len() as i64;
+            let now = time::now_secs();
             if let Err(e) = self
                 .store
                 .write_async(move |c| {
                     c.execute(
-                        "UPDATE images SET logo_check = ?2, bytes = ?3 WHERE url = ?1",
-                        params![row_url, check, bytes],
+                        "UPDATE images SET path = ?2, bytes = ?3 WHERE url = ?1",
+                        params![row_url, row_path, bytes],
                     )?;
-                    Ok(())
+                    record_verdict(c, &row_url, verdict, now)
                 })
                 .await
             {
                 tracing::warn!("recording the logo {url} failed: {e}");
                 continue;
             }
-            if check != 1 || bytes as usize != before {
+            if judged.trimmed {
+                let _ = tokio::fs::remove_file(&old).await;
+            }
+            if judged.verdict != 1 || judged.trimmed {
                 changed.push(url);
             }
         }
@@ -764,19 +806,21 @@ async fn fetch_one(
             format!("image fetch failed: {}", response.text()),
         ));
     }
-    let relative = relative_path(url, extension(url, response.header("content-type")));
-    let path = dir.join(&relative);
-    let (body, check) = if crate::anizip::is_clear_logo(url) {
-        let (body, check) = judge_logo(response.body).await;
-        if body.is_empty() {
+    let mut relative = relative_path(url, extension(url, response.header("content-type")));
+    let (body, verdict) = if crate::anizip::is_clear_logo(url) {
+        let Some(judged) = judge_logo(response.body).await else {
             return Err(CoreError::internal(format!(
                 "judging the logo {url} failed"
             )));
+        };
+        if judged.trimmed {
+            relative = trimmed_path(url);
         }
-        (body, Some(check))
+        (judged.body, Some(judged.verdict))
     } else {
         (response.body, None)
     };
+    let path = dir.join(&relative);
     let bytes = body.len() as i64;
     atomic_file::write_async(&path, body).await?;
 
@@ -785,9 +829,12 @@ async fn fetch_one(
     store
         .write_async(move |c| {
             c.execute(
-                "INSERT OR REPLACE INTO images (url, path, bytes, fetched_at, used_at, logo_check) VALUES (?1, ?2, ?3, ?4, ?4, ?5)",
-                params![row_url, row_path, bytes, now, check],
+                "INSERT OR REPLACE INTO images (url, path, bytes, fetched_at, used_at) VALUES (?1, ?2, ?3, ?4, ?4)",
+                params![row_url, row_path, bytes, now],
             )?;
+            if let Some(verdict) = verdict {
+                record_verdict(c, &row_url, verdict, now)?;
+            }
             Ok(())
         })
         .await?;

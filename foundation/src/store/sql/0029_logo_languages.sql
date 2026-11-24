@@ -21,11 +21,16 @@ CREATE TABLE tvdb_logo_asks (
 );
 CREATE INDEX tvdb_logo_asks_tvdb ON tvdb_logo_asks(tvdb_id);
 
--- What the image cache found when it fetched a clear logo: 1 a clear logo (trimmed to its
--- mark if it had a transparent margin), 0 not a logo (no transparent pixel on its edge, so a
--- name on a solid rectangle), 2 a file it could not read. NULL for every other image, and for
--- a logo cached before this, which the next fill judges.
-ALTER TABLE images ADD COLUMN logo_check INTEGER;
+-- What the image cache found when it first fetched a clear logo, by url: 1 a clear logo
+-- (trimmed to its mark if it had a transparent margin), 0 not a logo (a name on a card), 2 a
+-- file it could not read. Apart from the images table, so the verdict outlives the cached
+-- file: a logo turned away is never fetched and judged again. A logo cached before this has
+-- no row, and the next fill judges it.
+CREATE TABLE logo_checks (
+    url         TEXT PRIMARY KEY,
+    verdict     INTEGER NOT NULL,
+    checked_at  INTEGER NOT NULL
+);
 
 -- The TheTVDB logos a series in the library may draw: for each entry, the first in English,
 -- the first in Japanese and the first in anything else, so whichever the logo language
@@ -41,5 +46,5 @@ SELECT anilist_id, url FROM (
     JOIN anizip_shows z ON z.anilist_id = k.anilist_id AND z.tvdb_id = k.tvdb_id
     JOIN tvdb_logos l ON l.tvdb_id = k.tvdb_id
     WHERE k.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
-      AND NOT EXISTS (SELECT 1 FROM images i WHERE i.url = l.url AND i.logo_check = 0)
+      AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = l.url AND v.verdict = 0)
 ) WHERE pick = 1;

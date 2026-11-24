@@ -282,7 +282,7 @@ pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, Cor
             SELECT i.url FROM anizip_images i
             WHERE i.anilist_id = ?1 AND i.kind = 'Clearlogo'
               AND EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = i.anilist_id AND s.provider = 'anilist')
-              AND NOT EXISTS (SELECT 1 FROM images x WHERE x.url = i.url AND x.logo_check = 0)
+              AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0)
             ORDER BY CASE WHEN lower(i.lang) LIKE 'en%' THEN 0 WHEN i.lang IS NULL THEN 1 ELSE 2 END, i.rank
             LIMIT 1
          )
@@ -297,7 +297,9 @@ pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, Cor
          SELECT b.logo_url FROM fallback_shows b
          WHERE b.anilist_id = ?1 AND b.logo_url IS NOT NULL
            AND EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = b.anilist_id AND s.provider = 'anilist')
-           AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')
+           AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo'
+                             AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = i.url AND v.verdict = 0))
+           AND NOT EXISTS (SELECT 1 FROM logo_checks v WHERE v.url = b.logo_url AND v.verdict = 0)
          UNION
          SELECT e.still_url FROM fallback_episodes e
             JOIN series s ON s.anilist_id = e.anilist_id AND s.provider = 'anilist'
