@@ -1,9 +1,10 @@
 //! ani.zip's episode details (#1036): a match writes every episode's title
 //! and still and the show's artwork, the titles merge ani.zip first, then
 //! AniList's streaming titles, then Jikan's, a placeholder never wins, the
-//! mapping's MAL id fills the one AniList left empty, and an outage deletes
-//! nothing and is not asked again inside its window. Every id, title and
-//! address here is invented.
+//! mapping's MAL id is what Jikan is asked with but never reaches the series
+//! MAL list writes go through, a releasing show is asked again by the airing
+//! refresh, and an outage deletes nothing and is not asked again inside its
+//! window. Every id, title and address here is invented.
 
 mod common;
 use common::started;
@@ -166,6 +167,13 @@ fn anizip_rows(core: &Core) -> i64 {
         .unwrap()
 }
 
+fn jikan_asked_with_mapping(http: &FakeHttp) -> usize {
+    http.requests()
+        .iter()
+        .filter(|r| r.url.contains("jikan.moe") && r.url.contains(&format!("/anime/{MAL_ID}/")))
+        .count()
+}
+
 fn series_mal(core: &Core, series: u64) -> Option<i64> {
     core.store()
         .read(move |c| {
@@ -206,7 +214,9 @@ fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     );
     // The special is kept beside the regular episodes.
     assert_eq!(anizip_rows(&core), 3);
-    assert_eq!(series_mal(&core, series), Some(MAL_ID as i64));
+    // The mapping asked Jikan and went no further.
+    assert_eq!(jikan_asked_with_mapping(&http), 1, "{:#?}", http.requests());
+    assert_eq!(series_mal(&core, series), None);
 
     let d = detail(&core, series);
     let titles: Vec<Option<&str>> = d.episodes.iter().map(|e| e.title.as_deref()).collect();
@@ -237,8 +247,9 @@ fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
 }
 
 /// An ani.zip that is down costs nothing: the match lands, every row the
-/// last answer wrote stays and still wins, the MAL id it mapped stays, the
-/// warning is said once, and the next match inside the window does not ask.
+/// last answer wrote stays and still wins, the MAL id it mapped still asks
+/// Jikan, the warning is said once, and the next match inside the window
+/// does not ask.
 #[test]
 fn an_anizip_outage_deletes_nothing_and_is_skipped_inside_the_window() {
     let http = FakeHttp::new();
@@ -260,7 +271,8 @@ fn an_anizip_outage_deletes_nothing_and_is_skipped_inside_the_window() {
     apply(&core, &c, series);
     assert_eq!(anizip_requests(&http), 2);
     assert_eq!(anizip_rows(&core), 3);
-    assert_eq!(series_mal(&core, series), Some(MAL_ID as i64));
+    assert_eq!(jikan_asked_with_mapping(&http), 2);
+    assert_eq!(series_mal(&core, series), None);
     let d = detail(&core, series);
     assert_eq!(d.episodes[0].title.as_deref(), Some("The Keeper's Lamp"));
     assert!(d.logo.is_some());
@@ -280,8 +292,9 @@ fn an_anizip_outage_deletes_nothing_and_is_skipped_inside_the_window() {
 }
 
 /// A series matched before ani.zip was asked gets its details from the
-/// launch's walk, which fills the MAL id AniList left empty and leaves the
-/// series owed Jikan's titles; a walk with nothing left to ask starts no job.
+/// launch's walk, which keeps the MAL id AniList left empty for Jikan alone
+/// and leaves the series owed Jikan's titles; a walk with nothing left to ask
+/// starts no job.
 #[test]
 fn the_walk_fills_a_series_matched_before_anizip_was_asked() {
     let http = FakeHttp::new();
@@ -300,7 +313,7 @@ fn the_walk_fills_a_series_matched_before_anizip_was_asked() {
     common::wait_job(&c, job);
 
     assert_eq!(anizip_rows(&core), 3);
-    assert_eq!(series_mal(&core, series), Some(MAL_ID as i64));
+    assert_eq!(series_mal(&core, series), None);
     let owed: Vec<u64> = core
         .store()
         .read(|c| Ok(anibeam_core::metadata::owed::owed(c)?.into_iter().collect()))
@@ -312,6 +325,63 @@ fn the_walk_fills_a_series_matched_before_anizip_was_asked() {
     assert!(d.logo.is_some());
 
     assert!(anibeam_core::metadata::anizip::start(core.metadata()).is_none());
+
+    core.shutdown();
+}
+
+/// A releasing show whose ani.zip answer is older than the airing window is
+/// asked again by the airing refresh, so an episode that aired after the
+/// match gets its title and still; one asked inside the window is not.
+#[test]
+fn the_airing_refresh_asks_again_for_a_releasing_show() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = show(&core);
+    fixtures::media(ANILIST_ID, "Toudai no Rei")
+        .episodes(12)
+        .status("RELEASING")
+        .insert(&core);
+    fixtures::match_series(&core, series, Some(ANILIST_ID), None);
+    let now = time::now_secs();
+    // An answer from a day ago that knew of episode 1 only.
+    core.store()
+        .write(move |c| {
+            c.execute_batch(&format!(
+                "INSERT INTO anizip_shows (anilist_id, found, mal_id, fetched_at) VALUES ({ANILIST_ID}, 1, {MAL_ID}, {});
+                 INSERT INTO anizip_episodes (anilist_id, key, number, title) VALUES ({ANILIST_ID}, '1', 1, 'The Keeper''s Lamp');",
+                now - 86_400
+            ))?;
+            Ok(())
+        })
+        .unwrap();
+
+    let schedule = serde_json::json!({ "data": { "Media": { "id": ANILIST_ID, "status": "RELEASING",
+        "nextAiringEpisode": { "episode": 4, "airingAt": now + 86_400 },
+        "airingSchedule": { "nodes": [] } } } });
+    http.push_for("anilist", 200, schedule.to_string());
+    http.push_for("jikan.moe", 200, jikan_page());
+    http.push_for("api.ani.zip", 200, anizip_json());
+    for url in [STILL_1, STILL_2, LOGO_EN] {
+        http.push_for(url, 200, b"image".to_vec());
+    }
+    let job = started(&core, Call::RefreshAiring { series });
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(done.body, EventBody::AiringRefreshed { updated: true, .. }),
+        "{done:?}"
+    );
+    assert_eq!(anizip_requests(&http), 1);
+    assert_eq!(anizip_rows(&core), 3);
+    let d = detail(&core, series);
+    assert!(d.episodes[1].still.is_some(), "{:#?}", d.episodes);
+    assert!(d.logo.is_some());
+
+    // Asked just now, so the next refresh leaves ani.zip alone.
+    http.push_for("anilist", 200, schedule.to_string());
+    http.push_for("jikan.moe", 200, jikan_page());
+    let job = started(&core, Call::RefreshAiring { series });
+    common::wait_job(&c, job);
+    assert_eq!(anizip_requests(&http), 1, "{:#?}", http.requests());
 
     core.shutdown();
 }

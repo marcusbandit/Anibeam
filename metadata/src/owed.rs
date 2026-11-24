@@ -114,9 +114,12 @@ struct Owed {
 fn read_owed(conn: &Connection) -> Result<Vec<Owed>, CoreError> {
     let mut out = Vec::new();
     for anilist_id in owed(conn)? {
+        // AniList's own MAL id, else the one ani.zip mapped it to (#1036),
+        // which is good enough to ask Jikan for titles with.
         let mal_id: Option<i64> = conn
             .query_row(
-                "SELECT mal_id FROM anilist_media WHERE id = ?1",
+                "SELECT coalesce(m.mal_id, (SELECT z.mal_id FROM anizip_shows z WHERE z.anilist_id = m.id))
+                 FROM anilist_media m WHERE m.id = ?1",
                 params![as_i64(anilist_id)],
                 |r| r.get(0),
             )
@@ -145,12 +148,42 @@ fn read_owed(conn: &Connection) -> Result<Vec<Owed>, CoreError> {
 
 /// Every owed series, one at a time, paced by the limiter. Returns how many
 /// gained a title, a date or a row they did not have.
+///
+/// The list is read again once a pass ends, and any series written down
+/// while it ran gets its turn too: the ani.zip walk (#1036) adds the ones
+/// whose MAL id it found, and a `start` from it while this runs starts
+/// nothing. A series already walked this run is never walked twice.
 async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> {
-    let work = metadata
-        .services
-        .store
-        .write_async(|c| read_owed(c))
-        .await?;
+    let mut seen: BTreeSet<u64> = BTreeSet::new();
+    let mut filled = 0u64;
+    loop {
+        let work: Vec<Owed> = metadata
+            .services
+            .store
+            .write_async(|c| read_owed(c))
+            .await?
+            .into_iter()
+            .filter(|item| !seen.contains(&item.anilist_id))
+            .collect();
+        if work.is_empty() {
+            return Ok(filled);
+        }
+        seen.extend(work.iter().map(|item| item.anilist_id));
+        let (gained, down) = walk_pass(metadata, ctx, work).await?;
+        filled += gained;
+        if down {
+            return Ok(filled);
+        }
+    }
+}
+
+/// One pass over `work`. Returns how many gained something, and whether
+/// Jikan was found down, which ends the walk.
+async fn walk_pass(
+    metadata: &Metadata,
+    ctx: &Arc<JobCtx>,
+    work: Vec<Owed>,
+) -> Result<(u64, bool), CoreError> {
     let total = work.len() as u64;
     let mut filled = 0u64;
     for (done, item) in work.into_iter().enumerate() {
@@ -208,10 +241,10 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> 
             }
         }
         if down {
-            break;
+            return Ok((filled, true));
         }
     }
-    Ok(filled)
+    Ok((filled, false))
 }
 
 /// One stored row: its number, title and date.

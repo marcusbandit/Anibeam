@@ -1,19 +1,28 @@
 //! ani.zip, the episode side-fetch by AniList id (#1036): every episode's
 //! title, synopsis, still, runtime, air date and TheTVDB numbering, the
-//! show's artwork, and its MAL id.
+//! show's artwork, and the MAL id its community mapping names.
 //!
 //! The rows live in their own tables (`anizip_*`), keyed by the AniList id,
-//! and the reads merge them in: an ani.zip title wins over AniList's
-//! streaming title, which wins over Jikan's (`record::merge_episodes`), and a
-//! placeholder such as `Episode 5` never wins over anything. Keeping them
-//! apart is what lets an ani.zip outage cost nothing: a fetch that failed
-//! writes nothing, so every row the last answer wrote stays, and AniList's
-//! and Jikan's own rows never depended on it.
+//! and the reads merge them in at read time: the series page
+//! (`anibeam_library::detail`) and the player's title
+//! (`anibeam_playback::session`) take an ani.zip title over the
+//! `anilist_episodes` one, where AniList's streaming title already beat
+//! Jikan's, and a placeholder such as `Episode 5` never wins over anything.
+//! Keeping them apart is what lets an ani.zip outage cost nothing: a fetch
+//! that failed writes nothing, so every row the last answer wrote stays, and
+//! AniList's and Jikan's own rows never depended on it.
 //!
-//! A match fetches it beside AniList (`fetch::fetch_and_write`). The series
-//! matched before ani.zip was asked are walked once at launch (`start`), one
-//! request each, and a walk that finds ani.zip down stops and keeps the rest
-//! for the next launch.
+//! The mapped MAL id is only ever used to ask Jikan for titles. It never
+//! reaches `series.mal_id` or `anilist_media.mal_id`, which the trackers
+//! write MAL lists through: a community mapping is not proof enough for
+//! that, and the MAL search (#782) checks its own answers.
+//!
+//! A match fetches it beside AniList (`fetch::fetch_and_write`), and the
+//! airing refresh asks again for a releasing show whose answer is older than
+//! the airing window, so episodes that air later get their rows too. The
+//! series matched before ani.zip was asked are walked once at launch
+//! (`start`), one request each, and a walk that finds ani.zip down stops and
+//! keeps the rest for the next launch.
 
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, LazyLock};
@@ -143,8 +152,7 @@ impl Metadata {
 /// episodes. A show ani.zip has no entry for is written down as asked and
 /// keeps whatever an earlier answer left. A failure writes nothing at all.
 ///
-/// The mapping's MAL id fills the media row's and the series' own where
-/// AniList had none, and never replaces one AniList gave.
+/// The mapping's MAL id is kept on `anizip_shows` only, for Jikan.
 pub fn write(
     tx: &Transaction,
     anilist_id: u64,
@@ -217,37 +225,58 @@ pub fn write(
             insert.execute(params![id, image.kind, image.url, image.lang, rank as i64])?;
         }
     }
-    if let Some(mal_id) = show.mal_id {
-        tx.execute(
-            "UPDATE anilist_media SET mal_id = ?2 WHERE id = ?1 AND mal_id IS NULL",
-            params![id, as_i64(mal_id)],
-        )?;
-        tx.execute(
-            "UPDATE series SET mal_id = ?2 WHERE anilist_id = ?1 AND provider = 'anilist' AND mal_id IS NULL",
-            params![id, as_i64(mal_id)],
-        )?;
-    }
     Ok(())
 }
 
-/// The images a series wants fetched now: its clear logo, and the still of
-/// every episode it has a file of. The rest of the artwork, and the stills
-/// of episodes not on disk, wait until something asks for them.
-pub fn image_urls(conn: &Connection, series: u64) -> Result<Vec<String>, CoreError> {
+/// Every episode row and artwork row behind `anilist_id`, as one string, so
+/// a refresh can tell whether an answer changed anything.
+pub fn fingerprint(conn: &Connection, anilist_id: u64) -> Result<String, CoreError> {
+    Ok(conn.query_row(
+        "SELECT coalesce((SELECT group_concat(key || '|' || coalesce(title, '') || '|' || coalesce(still_url, '') || '|' || coalesce(aired_at, air_date, ''), ';')
+                          FROM (SELECT * FROM anizip_episodes WHERE anilist_id = ?1 ORDER BY key)), '')
+                || '#' ||
+                coalesce((SELECT group_concat(url, ';') FROM (SELECT url FROM anizip_images WHERE anilist_id = ?1 ORDER BY rank)), '')",
+        params![as_i64(anilist_id)],
+        |r| r.get(0),
+    )?)
+}
+
+/// Whether the airing refresh should ask ani.zip again for `anilist_id`:
+/// it answered for the show once, and that answer is older than the airing
+/// window. A show it was never asked about is the launch walk's.
+pub fn due(conn: &Connection, anilist_id: u64, now: i64) -> Result<bool, CoreError> {
+    use rusqlite::OptionalExtension;
+    let fetched_at: Option<i64> = conn
+        .query_row(
+            "SELECT fetched_at FROM anizip_shows WHERE anilist_id = ?1 AND found = 1",
+            params![as_i64(anilist_id)],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let window = i64::try_from(crate::airing::TTL.as_secs()).unwrap_or(i64::MAX);
+    Ok(fetched_at.is_some_and(|at| now.saturating_sub(at) >= window))
+}
+
+/// The images a show wants fetched now: its one clear logo, English first,
+/// and the still of every episode a series matched to it has a file of. The
+/// rest of the artwork, and the stills of episodes not on disk, wait until
+/// something asks for them.
+pub fn image_urls(conn: &Connection, anilist_id: u64) -> Result<Vec<String>, CoreError> {
     let mut stmt = conn.prepare(
         "SELECT url FROM (
-            SELECT i.url, 0 AS part, CASE WHEN lower(i.lang) LIKE 'en%' THEN 0 WHEN i.lang IS NULL THEN 1 ELSE 2 END AS pick, i.rank
-            FROM anizip_images i JOIN series s ON s.anilist_id = i.anilist_id
-            WHERE s.id = ?1 AND s.provider = 'anilist' AND i.kind = 'Clearlogo'
-            ORDER BY pick, i.rank LIMIT 1
+            SELECT i.url FROM anizip_images i
+            WHERE i.anilist_id = ?1 AND i.kind = 'Clearlogo'
+              AND EXISTS (SELECT 1 FROM series s WHERE s.anilist_id = i.anilist_id AND s.provider = 'anilist')
+            ORDER BY CASE WHEN lower(i.lang) LIKE 'en%' THEN 0 WHEN i.lang IS NULL THEN 1 ELSE 2 END, i.rank
+            LIMIT 1
          )
          UNION
-         SELECT DISTINCT z.still_url FROM anizip_episodes z
-            JOIN series s ON s.anilist_id = z.anilist_id
+         SELECT z.still_url FROM anizip_episodes z
+            JOIN series s ON s.anilist_id = z.anilist_id AND s.provider = 'anilist'
             JOIN files f ON f.series_id = s.id AND f.kind != 'extra' AND f.number = z.number
-         WHERE s.id = ?1 AND s.provider = 'anilist' AND z.still_url IS NOT NULL",
+         WHERE z.anilist_id = ?1 AND z.still_url IS NOT NULL",
     )?;
-    let rows = stmt.query_map(params![as_i64(series)], |r| r.get::<_, String>(0))?;
+    let rows = stmt.query_map(params![as_i64(anilist_id)], |r| r.get::<_, String>(0))?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
@@ -330,6 +359,7 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> 
     let work = metadata.services.store.write_async(|c| unasked(c)).await?;
     let total = work.len() as u64;
     let mut filled = 0u64;
+    let mut owed_any = false;
     for (done, (anilist_id, series, name)) in work.into_iter().enumerate() {
         ctx.checkpoint()?;
         ctx.progress(done as u64, Some(total), &name);
@@ -346,9 +376,9 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> 
             .services
             .store
             .tx_async(move |tx| {
-                let before = mal_of(tx, anilist_id)?;
+                let before = jikan_mal(tx, anilist_id)?;
                 write(tx, anilist_id, &read, now)?;
-                let after = mal_of(tx, anilist_id)?;
+                let after = jikan_mal(tx, anilist_id)?;
                 // A MAL id just found is one Jikan was never asked about,
                 // so the series is owed Jikan's titles now (#1065).
                 let found = before.is_none() && after.is_some();
@@ -358,24 +388,27 @@ async fn walk(metadata: &Metadata, ctx: &Arc<JobCtx>) -> Result<u64, CoreError> 
                 Ok(found)
             })
             .await?;
+        owed_any |= filled_mal;
         if !answered {
             continue;
         }
         filled += 1;
+        let urls = metadata
+            .services
+            .store
+            .write_async(move |c| image_urls(c, anilist_id))
+            .await?;
+        metadata.net.images.ensure(&urls).await;
         for id in series {
-            let urls = metadata
-                .services
-                .store
-                .write_async(move |c| image_urls(c, id))
-                .await?;
-            metadata.net.images.ensure(&urls).await;
             if let Some(card) = card_for(&metadata.services, id).await? {
                 ctx.changed(card);
             }
         }
-        if filled_mal && let Some(this) = metadata.this() {
-            crate::owed::start(&this);
-        }
+    }
+    // Once, after every id is written down. A walk already running from the
+    // launch reads the list again before it ends, so it takes these too.
+    if owed_any && let Some(this) = metadata.this() {
+        crate::owed::start(&this);
     }
     Ok(filled)
 }
@@ -394,16 +427,16 @@ pub fn kept_mal(conn: &Connection, anilist_id: u64) -> Result<Option<u64>, CoreE
         .map(|v| v as u64))
 }
 
-fn mal_of(conn: &Connection, anilist_id: u64) -> Result<Option<i64>, CoreError> {
-    use rusqlite::OptionalExtension;
-    Ok(conn
-        .query_row(
-            "SELECT mal_id FROM anilist_media WHERE id = ?1",
-            params![as_i64(anilist_id)],
-            |r| r.get::<_, Option<i64>>(0),
-        )
-        .optional()?
-        .flatten())
+/// The MAL id Jikan is asked with for `anilist_id`: AniList's own, else
+/// the one ani.zip mapped it to.
+pub fn jikan_mal(conn: &Connection, anilist_id: u64) -> Result<Option<i64>, CoreError> {
+    Ok(conn.query_row(
+        "SELECT coalesce(
+            (SELECT mal_id FROM anilist_media WHERE id = ?1),
+            (SELECT mal_id FROM anizip_shows WHERE anilist_id = ?1))",
+        params![as_i64(anilist_id)],
+        |r| r.get::<_, Option<i64>>(0),
+    )?)
 }
 
 #[cfg(test)]
