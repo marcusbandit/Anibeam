@@ -129,6 +129,7 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
         run: |
+          python3 scripts/ci/check-structure.py
           python3 scripts/ci/affected-crates.py --self-test
           if [ "$EVENT" = pull_request ]; then pick="--base HEAD^1"; else pick=--all; fi
           echo "pick=$pick" >> "$GITHUB_OUTPUT"

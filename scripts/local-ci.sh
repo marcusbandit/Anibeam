@@ -95,6 +95,7 @@ if [ $quick -eq 1 ]; then
   step strings python3 scripts/ci/strings-check.py
   step "no sites" scripts/ci/no-site-names.sh
   step "one spelling" scripts/ci/one-spelling.sh
+  step "repo structure" python3 scripts/ci/check-structure.py
   step "affected crates self-test" python3 scripts/ci/affected-crates.py --self-test
 fi
 if [ $cargo -eq 1 ]; then

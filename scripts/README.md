@@ -6,6 +6,7 @@ Developer and CI helper scripts for the repository:
 - [`changelog-draft.sh`](changelog-draft.sh) — prints commits since the last stable release for `desktop` or `phone` when curating `CHANGELOG.md`.
 - [`ci/`](ci/) — individual check and release scripts shared between `local-ci.sh` and `.github/workflows/`:
   - `affected-crates.py` — computes affected crates from `cargo metadata` and validates workflow path filters (`--self-test`).
+  - `check-structure.py` — verifies top-level directory cleanliness and ensures every crate/workspace is documented in `ARCHITECTURE.md`.
   - `strings-check.py` / `strings-baseline.txt` — verifies all UI strings go through `i18n/`.
   - `no-site-names.sh` — enforces the no-download-sites policy across file contents and filenames.
   - `one-spelling.sh` — enforces consistent `Anibeam` casing.
