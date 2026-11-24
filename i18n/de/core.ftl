@@ -579,17 +579,26 @@ core-trackers-oauth-could-not-start = Anmeldung konnte nicht gestartet werden
 core-trackers-oauth-port-failed = Port { $port } auf diesem Computer ließ sich nicht öffnen: { $error }
 core-trackers-oauth-port-busy = Port { $port } auf diesem Computer wird von einem anderen Programm genutzt. Warte kurz und versuch es nochmal, oder schließ das Programm, falls er belegt bleibt.
 core-trackers-oauth-provider-error = { $site } hat einen Fehler gemeldet: { $error }
-core-trackers-page-connected = { $site } ist mit { $app } verbunden
-core-trackers-page-close-tab = Du kannst diesen Tab schließen.
+core-trackers-page-connected = { $site } und { $app } sind verknüpft
+core-trackers-page-signed-in = Angemeldet als { $username }
+core-trackers-page-close-tab = Alles bereit. Dieser Tab schließt sich gleich, oder du schließt ihn jetzt.
 core-trackers-page-failed-title = { $app }, Anmeldung fehlgeschlagen
-core-trackers-page-failed = Anmeldung nicht abgeschlossen
+core-trackers-page-failed = Bei der Anmeldung hakte es
 core-trackers-page-go-back = Geh zurück zu { $app } und versuch es nochmal.
-core-trackers-page-finishing-title = { $app }, wird noch abgeschlossen
-core-trackers-page-finishing = Wird noch abgeschlossen
-core-trackers-page-finishing-body = { $site } hat geantwortet, und Anibeam schließt die Anmeldung ab. Geh zurück zu { $app }, um fortzufahren.
+core-trackers-page-finishing-title = { $app }, fast fertig
+core-trackers-page-finishing = Noch einen Moment
+core-trackers-page-finishing-body = { $site } hat geantwortet, und die Anmeldung wird noch abgeschlossen. Geh zurück zu { $app }, um das Ergebnis zu sehen.
 core-trackers-page-cancelled-title = { $app }, Anmeldung abgebrochen
 core-trackers-page-cancelled = Anmeldung wurde abgebrochen
-core-trackers-page-cancelled-body = Du kannst diesen Tab schließen. Starte in { $app } neu, wenn du dich noch anmelden willst.
+core-trackers-page-cancelled-body = Du kannst diesen Tab schließen. Starte einfach in { $app } neu, sobald du willst.
+core-trackers-page-status-connected = Verbunden
+core-trackers-page-status-failed = Nicht verbunden
+core-trackers-page-status-finishing = Fast fertig
+core-trackers-page-status-cancelled = Abgebrochen
+core-trackers-page-status-connecting = Verbindet
+core-trackers-page-connecting-title = { $app }, verbindet
+core-trackers-page-connecting = Leite dich von { $site } weiter
+core-trackers-page-no-token = Diese Adresse enthielt kein Anmelde-Token. Geh zurück zu { $app } und versuch es nochmal.
 
 ## trackers/src/on_hold.rs
 

@@ -604,17 +604,26 @@ core-trackers-oauth-port-busy = このパソコンのポート{ $port }は別の
 core-trackers-oauth-provider-error = { $site }がエラーを返しました: { $error }
 # The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
-core-trackers-page-connected = { $site }と{ $app }を連携しました
-core-trackers-page-close-tab = このタブは閉じてかまいません。
+core-trackers-page-connected = { $site }と{ $app }がつながりました
+core-trackers-page-signed-in = { $username }でログイン中
+core-trackers-page-close-tab = 準備完了です。このタブはまもなく閉じますが、今すぐ閉じてもかまいません。
 core-trackers-page-failed-title = { $app }、ログイン失敗
-core-trackers-page-failed = ログインが完了しませんでした
+core-trackers-page-failed = ログインがうまくいきませんでした
 core-trackers-page-go-back = { $app }に戻って、もう一度お試しください。
-core-trackers-page-finishing-title = { $app }、処理中
-core-trackers-page-finishing = 処理中です
-core-trackers-page-finishing-body = { $site }から応答があり、Anibeamがログインを仕上げています。{ $app }に戻って続けてください。
+core-trackers-page-finishing-title = { $app }、もう少しです
+core-trackers-page-finishing = 仕上げています
+core-trackers-page-finishing-body = { $site }から応答があり、ログインの仕上げを進めています。{ $app }に戻って結果を確認してください。
 core-trackers-page-cancelled-title = { $app }、ログインをキャンセル
 core-trackers-page-cancelled = ログインはキャンセルされました
-core-trackers-page-cancelled-body = このタブは閉じてかまいません。ログインする場合は{ $app }からやり直してください。
+core-trackers-page-cancelled-body = このタブは閉じてかまいません。いつでも{ $app }からやり直せます。
+core-trackers-page-status-connected = 連携済み
+core-trackers-page-status-failed = 未連携
+core-trackers-page-status-finishing = もう少し
+core-trackers-page-status-cancelled = キャンセル
+core-trackers-page-status-connecting = 連携中
+core-trackers-page-connecting-title = { $app }、連携中
+core-trackers-page-connecting = { $site }から引き継いでいます
+core-trackers-page-no-token = このアドレスにはログイントークンがありませんでした。{ $app }に戻って、もう一度お試しください。
 
 ## trackers/src/on_hold.rs
 

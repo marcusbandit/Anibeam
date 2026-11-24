@@ -574,17 +574,26 @@ core-trackers-oauth-could-not-start = Impossibile avviare l'accesso
 core-trackers-oauth-port-failed = impossibile aprire la porta { $port } su questo computer: { $error }
 core-trackers-oauth-port-busy = la porta { $port } su questo computer è usata da un altro programma. Aspetta un attimo e riprova, o chiudi il programma che la usa se resta occupata.
 core-trackers-oauth-provider-error = { $site } ha restituito un errore: { $error }
-core-trackers-page-connected = { $site } è collegato a { $app }
-core-trackers-page-close-tab = Puoi chiudere questa scheda.
+core-trackers-page-connected = { $site } e { $app } sono collegati
+core-trackers-page-signed-in = Accesso come { $username }
+core-trackers-page-close-tab = Tutto pronto. Questa scheda si chiuderà tra poco, oppure puoi chiuderla ora.
 core-trackers-page-failed-title = { $app }, accesso non riuscito
-core-trackers-page-failed = L'accesso non è terminato
+core-trackers-page-failed = Qualcosa ha bloccato l'accesso
 core-trackers-page-go-back = Torna su { $app } e riprova.
 core-trackers-page-finishing-title = { $app }, quasi fatto
-core-trackers-page-finishing = Quasi fatto
-core-trackers-page-finishing-body = { $site } ha risposto e Anibeam sta completando l'accesso. Torna su { $app } per continuare.
+core-trackers-page-finishing = Ultimi ritocchi in corso
+core-trackers-page-finishing-body = { $site } ha risposto e l'accesso si sta ancora completando. Torna su { $app } per vedere com'è andata.
 core-trackers-page-cancelled-title = { $app }, accesso annullato
 core-trackers-page-cancelled = L'accesso è stato annullato
-core-trackers-page-cancelled-body = Puoi chiudere questa scheda. Se vuoi ancora accedere, ricomincia da { $app }.
+core-trackers-page-cancelled-body = Puoi chiudere questa scheda. Quando vuoi riprovare, ricomincia da { $app }.
+core-trackers-page-status-connected = Collegato
+core-trackers-page-status-failed = Non collegato
+core-trackers-page-status-finishing = Quasi fatto
+core-trackers-page-status-cancelled = Annullato
+core-trackers-page-status-connecting = Collegamento
+core-trackers-page-connecting-title = { $app }, collegamento
+core-trackers-page-connecting = Passaggio di consegne da { $site }
+core-trackers-page-no-token = Questo indirizzo non aveva nessun token di accesso. Torna su { $app } e riprova.
 
 ## trackers/src/on_hold.rs
 

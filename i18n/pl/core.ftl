@@ -637,17 +637,26 @@ core-trackers-oauth-port-busy = port { $port } na tym komputerze jest zajęty pr
 core-trackers-oauth-provider-error = { $site } zwrócił błąd: { $error }
 # The browser tab the sign-in leaves. $app is Anibeam's name, in the brand colour in the
 # page's body; keep it as a variable.
-core-trackers-page-connected = { $site } jest połączony z { $app }
-core-trackers-page-close-tab = Możesz zamknąć tę kartę.
+core-trackers-page-connected = { $site } i { $app } są już połączone
+core-trackers-page-signed-in = Zalogowano jako { $username }
+core-trackers-page-close-tab = Wszystko gotowe. Ta karta zaraz się zamknie, ale możesz ją zamknąć od razu.
 core-trackers-page-failed-title = { $app }, logowanie nie powiodło się
-core-trackers-page-failed = Logowanie się nie zakończyło
+core-trackers-page-failed = Logowanie utknęło po drodze
 core-trackers-page-go-back = Wróć do { $app } i spróbuj ponownie.
-core-trackers-page-finishing-title = { $app }, jeszcze kończy
-core-trackers-page-finishing = Jeszcze kończy
-core-trackers-page-finishing-body = { $site } odpowiedział, a Anibeam kończy logowanie. Wróć do { $app }, aby kontynuować.
+core-trackers-page-finishing-title = { $app }, już prawie
+core-trackers-page-finishing = Jeszcze chwila na domknięcie
+core-trackers-page-finishing-body = { $site } odpowiedział, a logowanie wciąż się kończy. Wróć do { $app }, żeby zobaczyć wynik.
 core-trackers-page-cancelled-title = { $app }, logowanie anulowane
 core-trackers-page-cancelled = Logowanie zostało anulowane
-core-trackers-page-cancelled-body = Możesz zamknąć tę kartę. Zacznij od nowa w { $app }, jeśli nadal chcesz się zalogować.
+core-trackers-page-cancelled-body = Możesz zamknąć tę kartę. Zacznij od nowa w { $app }, kiedy tylko zechcesz.
+core-trackers-page-status-connected = Połączono
+core-trackers-page-status-failed = Nie połączono
+core-trackers-page-status-finishing = Już prawie
+core-trackers-page-status-cancelled = Anulowano
+core-trackers-page-status-connecting = Łączenie
+core-trackers-page-connecting-title = { $app }, łączenie
+core-trackers-page-connecting = Przejmujemy połączenie z { $site }
+core-trackers-page-no-token = Ten adres nie zawierał tokenu logowania. Wróć do { $app } i spróbuj ponownie.
 
 ## trackers/src/on_hold.rs
 

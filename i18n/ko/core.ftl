@@ -566,17 +566,26 @@ core-trackers-oauth-could-not-start = 로그인을 시작하지 못했어요
 core-trackers-oauth-port-failed = 이 컴퓨터의 포트 { $port }을(를) 열지 못했어요: { $error }
 core-trackers-oauth-port-busy = 이 컴퓨터의 포트 { $port }을(를) 다른 프로그램이 쓰고 있어요. 잠시 후 다시 시도하거나, 계속 사용 중이면 그 프로그램을 닫으세요.
 core-trackers-oauth-provider-error = { $site }에서 오류를 보냈어요: { $error }
-core-trackers-page-connected = { $site }이(가) { $app }에 연결됐어요
-core-trackers-page-close-tab = 이 탭을 닫아도 돼요.
+core-trackers-page-connected = { $site }와(과) { $app }이 이어졌어요
+core-trackers-page-signed-in = { $username } 계정으로 로그인됨
+core-trackers-page-close-tab = 다 됐어요. 이 탭은 곧 닫히지만, 지금 바로 닫아도 돼요.
 core-trackers-page-failed-title = { $app }, 로그인 실패
-core-trackers-page-failed = 로그인을 마치지 못했어요
-core-trackers-page-go-back = { $app }(으)로 돌아가서 다시 시도하세요.
-core-trackers-page-finishing-title = { $app }, 마무리 중
-core-trackers-page-finishing = 마무리 중
-core-trackers-page-finishing-body = { $site }이(가) 응답했고 Anibeam이 로그인을 마무리하고 있어요. 계속하려면 { $app }(으)로 돌아가세요.
+core-trackers-page-failed = 로그인이 중간에 막혔어요
+core-trackers-page-go-back = { $app }으로 돌아가서 다시 시도하세요.
+core-trackers-page-finishing-title = { $app }, 거의 다 됐어요
+core-trackers-page-finishing = 마무리하는 중이에요
+core-trackers-page-finishing-body = { $site }에서 응답이 왔고 로그인을 마무리하고 있어요. { $app }으로 돌아가서 결과를 확인하세요.
 core-trackers-page-cancelled-title = { $app }, 로그인 취소됨
 core-trackers-page-cancelled = 로그인이 취소됐어요
-core-trackers-page-cancelled-body = 이 탭을 닫아도 돼요. 그래도 로그인하려면 { $app }에서 다시 시작하세요.
+core-trackers-page-cancelled-body = 이 탭을 닫아도 돼요. 준비되면 { $app }에서 다시 시작하세요.
+core-trackers-page-status-connected = 연결됨
+core-trackers-page-status-failed = 연결 안 됨
+core-trackers-page-status-finishing = 거의 완료
+core-trackers-page-status-cancelled = 취소됨
+core-trackers-page-status-connecting = 연결 중
+core-trackers-page-connecting-title = { $app }, 연결 중
+core-trackers-page-connecting = { $site }에서 넘겨받는 중이에요
+core-trackers-page-no-token = 이 주소에 로그인 토큰이 없었어요. { $app }으로 돌아가서 다시 시도하세요.
 
 ## trackers/src/on_hold.rs
 
