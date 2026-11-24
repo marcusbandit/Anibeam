@@ -102,10 +102,12 @@
     open.open = false;
     open.querySelector("summary").focus();
   });
-  // Back and forward over an in-page anchor stay on the page whose words are on screen
+  // Back and forward over an in-page anchor or wiki soft-nav stay out of language switching.
   const bare = (url) => new URL(url, location.href).href.split("#")[0];
-  addEventListener("popstate", () => {
+  addEventListener("popstate", (e) => {
+    if (e.state && e.state.wiki) return;
     if (bare(location.href) === bare(shown)) return;
+    if (kind(location.href) !== kind(shown)) return;
     go(location.href, false).catch(() => location.reload());
   });
 })();
