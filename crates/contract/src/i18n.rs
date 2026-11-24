@@ -186,15 +186,15 @@ macro_rules! files {
             [
                 (
                     "core.ftl",
-                    include_str!(concat!("../../i18n/", $code, "/core.ftl")),
+                    include_str!(concat!("../../../i18n/", $code, "/core.ftl")),
                 ),
                 (
                     "desktop.ftl",
-                    include_str!(concat!("../../i18n/", $code, "/desktop.ftl")),
+                    include_str!(concat!("../../../i18n/", $code, "/desktop.ftl")),
                 ),
                 (
                     "android.ftl",
-                    include_str!(concat!("../../i18n/", $code, "/android.ftl")),
+                    include_str!(concat!("../../../i18n/", $code, "/android.ftl")),
                 ),
             ],
         )

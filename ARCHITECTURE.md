@@ -13,8 +13,8 @@ anibeam/
 │   ├── phone/               #   Mobile app: Slint (Android & iOS) + companion crate
 │   ├── cli/                 #   Terminal CLI over anibeam-core
 │   └── relay/               #   Self-hosted Watch Together relay server
+├── crates/                  # 14 layered Rust core crates (listed below)
 ├── relay/worker/            # Cloudflare Worker WASM Watch Together relay
-├── contract/ … trackers/    # 14 layered Rust core crates (listed below)
 ├── i18n/                    # Fluent (.ftl) catalog for all 13 languages
 ├── assets/                  # Canonical brand logos & icon generators
 ├── site/                    # anibeam.app website, wiki, and installer scripts
@@ -44,20 +44,20 @@ The Rust workspace is split into focused crates arranged in strict dependency la
 
 | Crate | Package | Responsibility |
 | --- | --- | --- |
-| `contract/` | `anibeam-contract` | Public shell/core boundary: `Call`, `Reply`, `Event`, `Error`, records, and the `i18n/` Fluent catalog loader. |
-| `host-api/` | `anibeam-host-api` | Wire records and Ed25519 request-proof auth for Tailscale host ↔ phone communication. |
-| `room/` | `anibeam-room` | Pure, I/O-free Watch Together room protocol, state machine, rate limits, and join HTML page. Shared by desktop, phone, native relay, and Cloudflare Worker. |
-| `recs/` | `anibeam-recs` | Pure recommendation scoring and ranking algorithm. |
-| `foundation/` | `anibeam-foundation` | Shared infrastructure: SQLite store & migrations (`src/store/sql/`), event bus, job tracker, paths, prefs, profiles, OS keyring / file secrets, secret redaction, and `Services`. |
-| `net/` | `anibeam-net` | Rate-limited HTTP clients (`src/limiter.rs`) for AniList, MAL, Jikan, TVmaze, AniSkip, ani.zip, IMDb, and Wikidata, plus DoH, domain fronting, and image caching. |
-| `library/` | `anibeam-library` | Sources, folder walk, filesystem watcher, episode filename classifier, quick fixes, history, delete/trash, and library read models (cards, details, snapshot). |
-| `releases/` | `anibeam-releases` | Release title parsing, RSS/Torznab/JSON feed readers, best-fit ranking, refinement grid, rules, tracker scrape stats, and signed endpoint repos. |
-| `metadata/` | `anibeam-metadata` | Auto-matching, metadata fetching, franchise crawl & closure (`src/franchise/`), Airing now, calendar feed, and Recommendations wiring (`src/recommended/`). |
-| `trackers/` | `anibeam-trackers` | AniList & MyAnimeList OAuth, list cache, two-way writes, local lists, Watching, move-up, On hold, and Planning lists. |
-| `downloads/` | `anibeam-downloads` | Built-in native downloads engine, `anirss` sidecar, qBittorrent client, rolling downloads, episode watch, pruning, and phone torrent engine (`src/phone/` behind `phone` feature). |
-| `playback/` | `anibeam-playback` | Session rules (30s view, 85% mark, completion), track memory, skip windows, mpv options, Discord Rich Presence (`src/presence/`), Chromecast/DLNA casting (`src/cast/`, `cast` feature), and Watch Together room client (`src/room/`). |
-| `host/` | `anibeam-host` | Tailscale library host server, peer trust, ffmpeg transcoding, streaming, and JSON library export/import (`src/transfer/`). |
-| `core/` | `anibeam-core` | Top-level facade assembling all crates into `Core` and its call router, plus launch, auto-updater, changelog parser, schedule agent, watching stats, UniFFI exports, and end-to-end integration tests (`core/tests/`). |
+| `crates/contract/` | `anibeam-contract` | Public shell/core boundary: `Call`, `Reply`, `Event`, `Error`, records, and the `i18n/` Fluent catalog loader. |
+| `crates/host-api/` | `anibeam-host-api` | Wire records and Ed25519 request-proof auth for Tailscale host ↔ phone communication. |
+| `crates/room/` | `anibeam-room` | Pure, I/O-free Watch Together room protocol, state machine, rate limits, and join HTML page. Shared by desktop, phone, native relay, and Cloudflare Worker. |
+| `crates/recs/` | `anibeam-recs` | Pure recommendation scoring and ranking algorithm. |
+| `crates/foundation/` | `anibeam-foundation` | Shared infrastructure: SQLite store & migrations (`src/store/sql/`), event bus, job tracker, paths, prefs, profiles, OS keyring / file secrets, secret redaction, and `Services`. |
+| `crates/net/` | `anibeam-net` | Rate-limited HTTP clients (`src/limiter.rs`) for AniList, MAL, Jikan, TVmaze, AniSkip, ani.zip, IMDb, and Wikidata, plus DoH, domain fronting, and image caching. |
+| `crates/library/` | `anibeam-library` | Sources, folder walk, filesystem watcher, episode filename classifier, quick fixes, history, delete/trash, and library read models (cards, details, snapshot). |
+| `crates/releases/` | `anibeam-releases` | Release title parsing, RSS/Torznab/JSON feed readers, best-fit ranking, refinement grid, rules, tracker scrape stats, and signed endpoint repos. |
+| `crates/metadata/` | `anibeam-metadata` | Auto-matching, metadata fetching, franchise crawl & closure (`src/franchise/`), Airing now, calendar feed, and Recommendations wiring (`src/recommended/`). |
+| `crates/trackers/` | `anibeam-trackers` | AniList & MyAnimeList OAuth, list cache, two-way writes, local lists, Watching, move-up, On hold, and Planning lists. |
+| `crates/downloads/` | `anibeam-downloads` | Built-in native downloads engine, `anirss` sidecar, qBittorrent client, rolling downloads, episode watch, pruning, and phone torrent engine (`src/phone/` behind `phone` feature). |
+| `crates/playback/` | `anibeam-playback` | Session rules (30s view, 85% mark, completion), track memory, skip windows, mpv options, Discord Rich Presence (`src/presence/`), Chromecast/DLNA casting (`src/cast/`, `cast` feature), and Watch Together room client (`src/room/`). |
+| `crates/host/` | `anibeam-host` | Tailscale library host server, peer trust, ffmpeg transcoding, streaming, and JSON library export/import (`src/transfer/`). |
+| `crates/core/` | `anibeam-core` | Top-level facade assembling all crates into `Core` and its call router, plus launch, auto-updater, changelog parser, schedule agent, watching stats, UniFFI exports, and end-to-end integration tests (`crates/core/tests/`). |
 
 ## Standalone Cargo workspaces
 
@@ -74,18 +74,18 @@ Two directories intentionally define their own `[workspace]` and `Cargo.lock` so
 | Desktop video player or C++/Obj-C++ glue | `apps/linux/cpp/` (`videoitem.*`, `nowplaying.mm`) and `apps/linux/mpv.conf` |
 | Desktop installers / OS packaging | `apps/linux/packaging/{linux,macos,windows,aur,brew}/` and `Casks/anibeam.rb` |
 | A mobile screen, Android Java, or iOS setup | `apps/phone/ui/`, `apps/phone/src/`, `apps/phone/android/`, `apps/phone/ios/` |
-| Phone Tailscale companion client | `apps/phone/companion/src/` and `host-api/src/` |
+| Phone Tailscale companion client | `apps/phone/companion/src/` and `crates/host-api/src/` |
 | Any user-visible text or translation | `i18n/en/{core,desktop,android}.ftl` (then other `i18n/<lang>/` folders) |
-| A new core Call, Reply, or Event | `contract/src/{calls,records,events}.rs`, routed in `core/src/core.rs` |
-| SQLite schema or a new migration | `foundation/src/store/sql/` and `foundation/src/store/migrations.rs` |
-| Episode filename parsing / quick fixes | `library/src/classifier.rs`, `library/src/readings.rs`, `library/src/fixes.rs` |
-| External API client or rate limit | `net/src/` (always through `net/src/limiter.rs`) |
-| Auto-matching or franchise relation graph | `metadata/src/automatch.rs` and `metadata/src/franchise/` |
-| AniList / MyAnimeList sync or OAuth | `trackers/src/` |
-| Release parsing, feeds, or endpoint repos | `releases/src/` |
-| Torrent client, rolling downloads, or phone torrents | `downloads/src/` |
-| Playback rules, skip windows, Cast, Discord, or Rooms | `playback/src/` |
-| Tailscale host server or backup export/import | `host/src/` |
+| A new core Call, Reply, or Event | `crates/contract/src/{calls,records,events}.rs`, routed in `crates/core/src/core.rs` |
+| SQLite schema or a new migration | `crates/foundation/src/store/sql/` and `crates/foundation/src/store/migrations.rs` |
+| Episode filename parsing / quick fixes | `crates/library/src/classifier.rs`, `crates/library/src/readings.rs`, `crates/library/src/fixes.rs` |
+| External API client or rate limit | `crates/net/src/` (always through `crates/net/src/limiter.rs`) |
+| Auto-matching or franchise relation graph | `crates/metadata/src/automatch.rs` and `crates/metadata/src/franchise/` |
+| AniList / MyAnimeList sync or OAuth | `crates/trackers/src/` |
+| Release parsing, feeds, or endpoint repos | `crates/releases/src/` |
+| Torrent client, rolling downloads, or phone torrents | `crates/downloads/src/` |
+| Playback rules, skip windows, Cast, Discord, or Rooms | `crates/playback/src/` |
+| Tailscale host server or backup export/import | `crates/host/src/` |
 | Watch Together relay servers | `apps/relay/` (self-hosted) and `relay/worker/` (Cloudflare Worker) |
 | Website, wiki, or What's new pages | `site/` (`apps/linux/CHANGELOG.md` and `apps/phone/CHANGELOG.md` feed What's new) |
 | Security & trust surface audit | [docs/safety-audit.md](docs/safety-audit.md) |
@@ -94,9 +94,9 @@ Two directories intentionally define their own `[workspace]` and `Cargo.lock` so
 
 Every contributor (human or AI) should preserve these rules:
 
-- **Rate limiting:** Every outbound provider call (AniList, MAL, Jikan, TVmaze, AniSkip, etc.) goes through the shared limiter in `net/src/limiter.rs`. Never bypass it.
+- **Rate limiting:** Every outbound provider call (AniList, MAL, Jikan, TVmaze, AniSkip, etc.) goes through the shared limiter in `crates/net/src/limiter.rs`. Never bypass it.
 - **Signal-only activity log:** Record state changes, never per-asset, per-candidate, or per-browse chatter.
-- **Franchise closure boundaries:** `metadata/src/franchise/closure.rs` draws `CHARACTER` and `OTHER` edges but never walks across them, preventing crossover cameos from merging unrelated franchises.
+- **Franchise closure boundaries:** `crates/metadata/src/franchise/closure.rs` draws `CHARACTER` and `OTHER` edges but never walks across them, preventing crossover cameos from merging unrelated franchises.
 - **Keep provider score scales on write:** `average_score` is stored as received from the provider and normalized at read time.
 - **No polling the library:** Use the filesystem watcher plus a catch-up scan at launch—no periodic rescan intervals.
 - **One window, play on when hidden:** Never open a second window or external mpv process, and never auto-pause when the window is hidden.

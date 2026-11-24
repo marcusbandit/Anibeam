@@ -9,7 +9,9 @@ use std::path::Path;
 use anibeam_core::changelog;
 
 fn read(path: &str) -> String {
-    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(path);
+    let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(path);
     std::fs::read_to_string(&file).unwrap_or_else(|e| panic!("{}: {e}", file.display()))
 }
 

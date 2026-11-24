@@ -79,7 +79,7 @@ mod tests {
 
     fn fixture() -> Cache {
         let snapshot: Snapshot =
-            serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json"))
+            serde_json::from_str(include_str!("../../../../crates/host-api/fixtures/snapshot.json"))
                 .unwrap();
         Cache {
             address: "desktop:8790".into(),

@@ -14,10 +14,10 @@ build = "build.rs"
 # downloads crate's.
 [package.metadata.ci.test-reads]
 changelog = [
-  "../apps/linux/CHANGELOG.md",
-  "../apps/phone/CHANGELOG.md",
-  "../apps/phone/Cargo.toml",
-  "../apps/phone/android/AndroidManifest.xml",
+  "../../apps/linux/CHANGELOG.md",
+  "../../apps/phone/CHANGELOG.md",
+  "../../apps/phone/Cargo.toml",
+  "../../apps/phone/android/AndroidManifest.xml",
 ]
 
 [lib]
@@ -55,7 +55,7 @@ cast = ["anibeam-playback/cast"]
 [dev-dependencies]
 tempfile = "3"
 # The native relay, run in-process by the rooms tests.
-anibeam-relay = { path = "../apps/relay" }
+anibeam-relay = { path = "../../apps/relay" }
 # What the integration tests make their inputs with: a signed endpoint repo and its base64 key
 # (#143), a signed host request (#555), and the gzipped IMDb data.
 base64 = "0.23"

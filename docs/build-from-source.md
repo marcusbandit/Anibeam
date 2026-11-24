@@ -53,9 +53,7 @@ and `bundle.sh` do the same for the installer and the zip. `.github/workflows/ma
 
 ## Working on it
 
-The Rust core lives in `core/`, the Qt shell in `apps/linux/` (it builds for the Mac and
-Windows too), the phone app in `apps/phone/`, and a terminal shell over the same core in
-`apps/cli/`.
+The Rust core crates live under `crates/` (with `crates/core/` as the top-level facade), the Qt shell in `apps/linux/` (it builds for macOS and Windows too), the phone app in `apps/phone/`, and a terminal shell over the same core in `apps/cli/`. See [ARCHITECTURE.md](../ARCHITECTURE.md) for the full map.
 
 ```bash
 cargo build --release -p anibeam-cli   # target/release/anibeam-cli
@@ -102,7 +100,7 @@ anibeam-cli list --tab all --sort alpha --direction asc
 
 With Share over Tailscale on, Anibeam listens on port 8790 on this computer's Tailscale
 addresses only. See what it serves with `curl http://<address>:8790/api/v1/hello` and
-`/api/v1/snapshot`; `host-api/src/lib.rs` describes the JSON. `ANIBEAM_HOST_BIND=127.0.0.1:8790`
+`/api/v1/snapshot`; `crates/host-api/src/lib.rs` describes the JSON. `ANIBEAM_HOST_BIND=127.0.0.1:8790`
 picks the address by hand, and `0.0.0.0:8790` lets an Android emulator reach it at
 `10.0.2.2`.
 

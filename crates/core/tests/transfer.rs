@@ -9,7 +9,7 @@ use anibeam_core::transfer::format;
 use anibeam_core::*;
 
 /// The spec's own example document, version 1 as Electron wrote it.
-const FIXTURE: &str = include_str!("fixtures/anibeam-export-v1.json");
+const FIXTURE: &str = include_str!("../../host/fixtures/anibeam-export-v1.json");
 
 fn summary_of(event: Event) -> ImportSummary {
     match event.body {

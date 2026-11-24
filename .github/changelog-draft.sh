@@ -12,11 +12,11 @@ since="${2:-}"
 case "$app" in
   desktop)
     pattern='v[0-9]*.[0-9]*.[0-9]*'
-    paths=(contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n apps/linux apps/cli)
+    paths=(crates i18n apps/linux apps/cli)
     ;;
   phone)
     pattern='android-v[0-9]*.[0-9]*.[0-9]*'
-    paths=(apps/phone contract foundation net library releases metadata trackers downloads playback host core host-api room recs i18n)
+    paths=(apps/phone crates i18n)
     ;;
   *)
     echo "usage: changelog-draft.sh [desktop|phone] [since-tag]" >&2

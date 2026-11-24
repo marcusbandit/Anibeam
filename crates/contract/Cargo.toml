@@ -10,7 +10,7 @@ description = "Anibeam's contract: the calls, replies, records, events and error
 # Files outside this folder the build reads, so a change to one checks this crate and what
 # builds on it (.github/affected-crates.py): the catalog compiles in i18n/.
 [package.metadata.ci]
-reads = ["../i18n"]
+reads = ["../../i18n"]
 
 [lib]
 name = "anibeam_contract"

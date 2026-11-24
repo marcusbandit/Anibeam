@@ -469,7 +469,7 @@ impl Document {
 mod tests {
     use super::*;
 
-    const FIXTURE: &str = include_str!("../../../core/tests/fixtures/anibeam-export-v1.json");
+    const FIXTURE: &str = include_str!("../../fixtures/anibeam-export-v1.json");
 
     #[test]
     fn the_version_1_document_parses_with_its_keys_and_no_track_choice() {

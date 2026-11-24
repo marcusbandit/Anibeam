@@ -946,18 +946,19 @@ def self_test():
         bad += 1
         print(f"self-test: missing lists read as {problems}", file=sys.stderr)
     with open(os.path.join(root, ".github/workflows/android.yml")) as f:
-        lists[".github/workflows/android.yml"] = f.read().replace("      - 'room/**'\n", "", 1) \
-            .replace("      - 'core/**'\n", "      - 'core/**'\n      - '!core/src/**'\n") \
+        lists[".github/workflows/android.yml"] = f.read() \
+            .replace("      - 'crates/**'\n", "      - 'crates/**'\n      - '!crates/room/**'\n", 1) \
+            .replace("      - 'crates/**'\n", "      - 'crates/**'\n      - '!crates/core/src/**'\n") \
             .replace("      - 'i18n/**'\n", "      - '!i18n/**'\n      - 'i18n/**'\n")
     total += 1
     problems = [p for p in unlisted(real, root, lists, files, phone) if "android.yml" in p]
-    want = [".github/workflows/android.yml: push leaves out room (anibeam-room builds into it)",
-            ".github/workflows/android.yml: push excludes core/src/",
-            ".github/workflows/android.yml: pull_request excludes core/src/"]
+    want = [".github/workflows/android.yml: push leaves out crates/room (anibeam-room builds into it)",
+            ".github/workflows/android.yml: push excludes crates/core/src/",
+            ".github/workflows/android.yml: pull_request excludes crates/core/src/"]
     if len(problems) != 3 or not all(p.startswith(w) for p, w in zip(sorted(problems),
                                                                        sorted(want))):
         bad += 1
-        print(f"self-test: a list without room/ reads as {problems}", file=sys.stderr)
+        print(f"self-test: a list without crates/room reads as {problems}", file=sys.stderr)
     # A phone crate that reads a file outside the phone needs it listed.
     total += 1
     extra = phone + [{"dir": PHONE_APP, "reads": ["docs"], "paths": []}]
@@ -970,12 +971,12 @@ def self_test():
         print(f"self-test: {problem}", file=sys.stderr)
     bad += 1 if problems else 0
     total += 1
-    got, _, _, _ = select(real, ["foundation/src/x.rs"])
+    got, _, _, _ = select(real, ["crates/foundation/src/x.rs"])
     want = {"anibeam-foundation", "anibeam-net", "anibeam-library", "anibeam-trackers",
             "anibeam-core", "anibeam-cli", "anibeam"}
     if not want <= set(got) or "anibeam-contract" in got:
         bad += 1
-        print(f"self-test: a change in foundation/ picks {got}", file=sys.stderr)
+        print(f"self-test: a change in crates/foundation/ picks {got}", file=sys.stderr)
     # Which fenced doc blocks rustdoc runs.
     blocks = doc_blocks("/// ```\n/// a\n/// ```\n//! ```text\n//! x\n//! ```\n"
                         "/// ```rust,no_run\n/// b\n/// ```\n/// ```ignore\n/// ```\n")

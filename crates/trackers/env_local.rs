@@ -9,11 +9,11 @@ use std::path::Path;
 /// build script compiles for `option_env!`. A value that comes out empty is not passed on
 /// at all, which `option_env!` reads as no credential.
 fn bundle(names: &[&str]) {
-    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.env.local");
+    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.env.local");
     // Watched only when it exists: Cargo reads a missing file as changed, which would rerun
     // this script and rebuild the crate on every build of a clone without one. The cost is
     // that a newly created .env.local goes unnoticed until both scripts that read it are
-    // touched: `touch trackers/build.rs playback/build.rs`.
+    // touched: `touch crates/trackers/build.rs crates/playback/build.rs`.
     if file.exists() {
         println!("cargo:rerun-if-changed={}", file.display());
     }

@@ -238,7 +238,7 @@ mod tests {
     fn a_store_from_before_settings_keeps_the_computer_its_cache_came_from() {
         let store = Store::open(scratch("upgrade")).unwrap();
         let snapshot: Snapshot =
-            serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json"))
+            serde_json::from_str(include_str!("../../../../crates/host-api/fixtures/snapshot.json"))
                 .unwrap();
         let cache = Cache {
             address: "desktop:8790".into(),
@@ -262,7 +262,7 @@ mod tests {
     fn the_cache_and_settings_round_trip() {
         let store = Store::open(scratch("roundtrip")).unwrap();
         let snapshot: Snapshot =
-            serde_json::from_str(include_str!("../../../../host-api/fixtures/snapshot.json"))
+            serde_json::from_str(include_str!("../../../../crates/host-api/fixtures/snapshot.json"))
                 .unwrap();
         let cache = Cache {
             address: "10.0.2.2:8790".into(),

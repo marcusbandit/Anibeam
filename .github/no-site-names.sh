@@ -18,8 +18,8 @@ pattern="(?<!(?-i:[a-z0-9]))(${names})(?!(?-i:[a-z0-9]))"
 skip=(
   ':(exclude)**/CHANGELOG.md'
   ':(exclude)CHANGELOG.md'
-  ':(exclude)foundation/src/store/sql/'
-  ':(exclude)releases/src/kinds.rs'
+  ':(exclude)crates/foundation/src/store/sql/'
+  ':(exclude)crates/releases/src/kinds.rs'
   ':(exclude)*.lock'
   ':(exclude).github/no-site-names.sh'
 )

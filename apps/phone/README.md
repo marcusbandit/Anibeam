@@ -6,7 +6,7 @@ AniList and MyAnimeList. It can also show another Anibeam's library over your ta
 only.
 
 Everything is Rust: the UI is [Slint](https://slint.dev) on its Android backend, behind
-the stock `android.app.NativeActivity`, and the core is `anibeam-core` from `core/`. There
+the stock `android.app.NativeActivity`, and the core is `anibeam-core` from `crates/core/`. There
 is no Gradle in the build.
 
 ## What it does

@@ -41,17 +41,7 @@ DEV_ONLY = {
 
 # The files whose ID uses are checked against the English catalog.
 CODE = UI + [
-    "contract/src/**/*.rs",
-    "foundation/src/**/*.rs",
-    "net/src/**/*.rs",
-    "library/src/**/*.rs",
-    "releases/src/**/*.rs",
-    "metadata/src/**/*.rs",
-    "trackers/src/**/*.rs",
-    "downloads/src/**/*.rs",
-    "playback/src/**/*.rs",
-    "host/src/**/*.rs",
-    "core/src/**/*.rs",
+    "crates/*/src/**/*.rs",
     "apps/linux/src/**/*.rs",
     "apps/cli/src/**/*.rs",
     "apps/phone/src/**/*.rs",
