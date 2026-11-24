@@ -919,7 +919,7 @@ Item {
     }
 
     // ---- Continue (#1033): one card a series, the episode to go on with. The still of that
-    // episode at 16:9 (the banner, then the poster, where the record has none), how far into
+    // episode at 16:9 (a frame from its own file where it has none, else a plain face), how far into
     // it you stopped as a thin bar along its foot, then the show and the episode. A click,
     // Return or Space plays it from where it stopped; the series is in the context menu, from
     // a right click or Shift+F10 / the Menu key on a focused card. Every series Continue holds
