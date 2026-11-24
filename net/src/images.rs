@@ -83,9 +83,29 @@ const REFERENCED_SQL: &str =
            WHERE e.still_url IS NOT NULL
              AND NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = e.anilist_id AND ze2.number IS NOT NULL)";
 
+/// The AniList ids of the series a backdrop is drawn for before anyone
+/// opens their page (#1475): the ones Home's Continue may hold, played here
+/// or being watched on a tracker with episodes seen. Their first background
+/// is fetched up front and pinned; any other series' waits until its page
+/// opens and then lives by the cap like any other image.
+macro_rules! drawn_anilist_ids {
+    () => {
+        "SELECT s.anilist_id FROM series s LEFT JOIN anilist_media m ON m.id = s.anilist_id
+         WHERE s.provider = 'anilist' AND s.anilist_id IS NOT NULL AND (
+            EXISTS (SELECT 1 FROM views v WHERE v.series_id = s.id)
+            OR EXISTS (SELECT 1 FROM tracker_entries t
+                       WHERE t.status IN ('watching', 'repeating') AND t.progress > 0
+                         AND ((t.tracker = 'anilist' AND t.media_id = s.anilist_id)
+                              OR (t.tracker = 'mal' AND t.media_id = m.mal_id))))"
+    };
+}
+
+/// `drawn_anilist_ids!` for the queries outside this file.
+pub const DRAWN_ANILIST_IDS_SQL: &str = drawn_anilist_ids!();
+
 /// The urls of a series the library actually owns. These are never evicted
 /// by the cap: losing them is the one loss a user would see at once.
-const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.cover_url IS NOT NULL
+const PINNED_SQL: &str = concat!("SELECT m.cover_url AS url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.cover_url IS NOT NULL
      UNION SELECT m.banner_url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.banner_url IS NOT NULL
      UNION SELECT t.poster_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.poster_url IS NOT NULL
      UNION SELECT t.background_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.background_url IS NOT NULL
@@ -102,22 +122,23 @@ const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN se
                 SELECT a.url, row_number() OVER (PARTITION BY a.anilist_id ORDER BY a.rank) AS pick
                 FROM anizip_images a
                 WHERE a.kind = 'Fanart'
-                  AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
+                  AND a.anilist_id IN (", drawn_anilist_ids!(), ")
              ) WHERE pick = 1)
      UNION SELECT b.logo_url FROM fallback_shows b
            WHERE b.logo_url IS NOT NULL
              AND b.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
-             AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')";
+             AND NOT EXISTS (SELECT 1 FROM anizip_images i WHERE i.anilist_id = b.anilist_id AND i.kind = 'Clearlogo')");
 
 /// What a fill goes and gets: everything an owned series draws, the covers
 /// of what it recommends, the covers behind the watching list, and the
 /// covers of every entry in an owned series' franchise, walked the way the
 /// graph closes it (CHARACTER and OTHER edges are never crossed), so the
 /// series page's Related stones have their art offline too. From ani.zip
-/// (#1036), an owned series' one clear logo, English first, its first
-/// background (#1475), and the stills of the episodes it has a file of; the
-/// rest of its artwork waits until something asks.
-const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
+/// (#1036), an owned series' one clear logo, English first, the first
+/// background of a series Continue may show (#1475), and the stills of the
+/// episodes it has a file of; the rest of its artwork waits until something
+/// asks.
+const MISSING_SQL: &str = concat!("WITH RECURSIVE franchise(id) AS (
         SELECT anilist_id FROM series WHERE anilist_id IS NOT NULL
         UNION SELECT r.to_id FROM relations r JOIN franchise f ON r.from_id = f.id
               WHERE r.relation NOT IN ('CHARACTER', 'OTHER')
@@ -151,7 +172,7 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
                 SELECT a.url, row_number() OVER (PARTITION BY a.anilist_id ORDER BY a.rank) AS pick
                 FROM anizip_images a
                 WHERE a.kind = 'Fanart'
-                  AND a.anilist_id IN (SELECT anilist_id FROM series WHERE provider = 'anilist')
+                  AND a.anilist_id IN (", drawn_anilist_ids!(), ")
              ) WHERE pick = 1)
         UNION SELECT ze.still_url FROM anizip_episodes ze
                      JOIN series s ON s.anilist_id = ze.anilist_id AND s.provider = 'anilist'
@@ -166,7 +187,7 @@ const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
                      WHERE NOT EXISTS (SELECT 1 FROM anizip_episodes ze2 WHERE ze2.anilist_id = fe.anilist_id AND ze2.number IS NOT NULL)
      )
      WHERE url IS NOT NULL AND url NOT IN (SELECT url FROM images)
-     ORDER BY url";
+     ORDER BY url");
 
 // ---------------------------------------------------------------------------
 // The pure rules
@@ -250,6 +271,13 @@ pub struct ImageCache {
     /// When a fill last actually started. A coalesced call does not touch
     /// it, so the five minute gate measures real fills.
     fill_started_at: Mutex<Option<Instant>>,
+    /// Urls a page asked for that no fill goes and gets by itself (#1475):
+    /// the background of a series opened outside Continue. The next fill
+    /// takes them, and a running one takes them before it finishes.
+    wanted: Mutex<HashSet<String>>,
+    /// Wanted urls that failed once, so a page that keeps opening does not
+    /// start a fill for them every time. Forgotten with the process.
+    refused: Mutex<HashSet<String>>,
 }
 
 impl ImageCache {
@@ -260,7 +288,25 @@ impl ImageCache {
             http,
             permits: Arc::new(Semaphore::new(CONCURRENCY)),
             fill_started_at: Mutex::new(None),
+            wanted: Mutex::new(HashSet::new()),
+            refused: Mutex::new(HashSet::new()),
         })
+    }
+
+    /// Asks the next fill for `url`, which nothing fetches up front. True
+    /// when it was not asked for already and has not failed before, which
+    /// is when the caller should start a fill.
+    pub fn want(&self, url: &str) -> bool {
+        if recover(&self.refused).contains(url) {
+            return false;
+        }
+        recover(&self.wanted).insert(url.to_string())
+    }
+
+    fn take_wanted(&self) -> Vec<String> {
+        let mut wanted: Vec<String> = recover(&self.wanted).drain().collect();
+        wanted.sort_unstable();
+        wanted
     }
 
     pub fn dir(&self) -> &Path {
@@ -719,44 +765,53 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
         .jobs
         .clone()
         .start(JobKind::FillImages, move |ctx| async move {
-            let urls = owner
+            let mut urls = owner
                 .services
                 .store
                 .write_async(|c| missing_urls(c))
                 .await?;
-            let total = urls.len() as u64;
+            // A fill of only what pages asked for is chatter, not news.
+            let asked_only = urls.is_empty();
+            urls.extend(owner.images.take_wanted());
             let (mut fetched, mut failed) = (0u64, 0u64);
             let mut touched: HashSet<u64> = HashSet::new();
 
-            for (round, batch) in urls.chunks(BATCH).enumerate() {
-                ctx.checkpoint()?;
-                ctx.progress(
-                    (round * BATCH) as u64,
-                    Some(total),
-                    &anibeam_contract::i18n::tr("core-images-progress-fetching", &[]),
-                );
-                let mut arrived: Vec<String> = Vec::new();
-                for (url, outcome) in owner.images.ensure(batch).await {
-                    match outcome {
-                        Ok(_) => {
-                            fetched += 1;
-                            arrived.push(url);
-                        }
-                        Err(e) => {
-                            failed += 1;
-                            tracing::warn!("image {url} was not fetched: {e}");
+            // What a page asks for while this runs is taken on before it
+            // ends, so no ask waits for the next fill.
+            while !urls.is_empty() {
+                let total = urls.len() as u64;
+                for (round, batch) in urls.chunks(BATCH).enumerate() {
+                    ctx.checkpoint()?;
+                    ctx.progress(
+                        (round * BATCH) as u64,
+                        Some(total),
+                        &anibeam_contract::i18n::tr("core-images-progress-fetching", &[]),
+                    );
+                    let mut arrived: Vec<String> = Vec::new();
+                    for (url, outcome) in owner.images.ensure(batch).await {
+                        match outcome {
+                            Ok(_) => {
+                                fetched += 1;
+                                arrived.push(url);
+                            }
+                            Err(e) => {
+                                failed += 1;
+                                tracing::warn!("image {url} was not fetched: {e}");
+                                recover(&owner.images.refused).insert(url);
+                            }
                         }
                     }
+                    if !arrived.is_empty() {
+                        touched.extend(
+                            owner
+                                .services
+                                .store
+                                .write_async(move |c| series_for_urls(c, &arrived))
+                                .await?,
+                        );
+                    }
                 }
-                if !arrived.is_empty() {
-                    touched.extend(
-                        owner
-                            .services
-                            .store
-                            .write_async(move |c| series_for_urls(c, &arrived))
-                            .await?,
-                    );
-                }
+                urls = owner.images.take_wanted();
             }
 
             if !touched.is_empty() {
@@ -780,7 +835,7 @@ pub fn start_fill(net: &Arc<Net>) -> u64 {
                 // Every launch runs this, and on most of them there is
                 // nothing to fill: a line saying so belongs in the trace
                 // rather than in a log of state changes.
-                level: if fetched == 0 && failed == 0 {
+                level: if asked_only || (fetched == 0 && failed == 0) {
                     Level::Debug
                 } else {
                     Level::Info

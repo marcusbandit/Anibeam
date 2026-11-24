@@ -190,8 +190,9 @@ fn series_mal(core: &Core, series: u64) -> Option<i64> {
 /// A match through ani.zip: its titles win, a placeholder of its falls to
 /// AniList's streaming title, an episode it has no title for falls to
 /// Jikan's, which the mapped MAL id let the match ask, and the stills of
-/// the episodes on disk, the English clear logo and the background are on
-/// disk as files, the background as the page's backdrop (#1475).
+/// the episodes on disk and the English clear logo are on disk as files.
+/// The background of a series outside Continue waits until its page opens,
+/// which fetches it for the page's backdrop (#1475).
 #[test]
 fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     let http = FakeHttp::new();
@@ -225,6 +226,7 @@ fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     assert_eq!(jikan_asked_with_mapping(&http), 1, "{:#?}", http.requests());
     assert_eq!(series_mal(&core, series), None);
 
+    let fills_before = fill_jobs(&c).len();
     let d = detail(&core, series);
     let titles: Vec<Option<&str>> = d.episodes.iter().map(|e| e.title.as_deref()).collect();
     assert_eq!(
@@ -244,16 +246,96 @@ fn a_match_writes_anizips_episodes_and_artwork_and_its_titles_win() {
     assert!(logo.ends_with(".png") && std::path::Path::new(logo).is_file());
     let kinds: Vec<&str> = d.artwork.iter().map(|a| a.kind.as_str()).collect();
     assert_eq!(kinds, ["Fanart", "Clearlogo", "Clearlogo", "Poster"]);
-    // Only the logo and the background are fetched up front.
-    let fanart = d.artwork[0].path.as_deref().expect("the background");
-    assert!(fanart.ends_with(".jpg") && std::path::Path::new(fanart).is_file());
-    assert_eq!(d.backdrop.as_deref(), Some(fanart));
+    // Only the logo is fetched up front.
+    assert_eq!(d.artwork[0].path, None);
+    assert_eq!(d.backdrop, None);
     assert_eq!(d.artwork[2].url, LOGO_EN);
     assert_eq!(d.artwork[2].path.as_deref(), Some(logo));
     assert_eq!(d.artwork[3].path, None);
     assert!(!http.requests().iter().any(|r| r.url == LOGO_JA));
 
+    // Opening the page asked for the background: a fill brings it, and the
+    // next read draws it.
+    let fill = wait_new_fill(&c, fills_before);
+    common::wait_job(&c, fill);
+    let d = detail(&core, series);
+    let fanart = d.artwork[0].path.as_deref().expect("the background");
+    assert!(fanart.ends_with(".jpg") && std::path::Path::new(fanart).is_file());
+    assert_eq!(d.backdrop.as_deref(), Some(fanart));
+    assert_eq!(
+        http.requests().iter().filter(|r| r.url == FANART).count(),
+        1
+    );
+
     core.shutdown();
+}
+
+/// A series played here is one Continue may show, so its background comes
+/// with the match and is the backdrop on the first read (#1475).
+#[test]
+fn a_series_in_continue_gets_its_background_with_the_match() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let series = show(&core);
+    fixtures::insert_view(&core, series, "1", time::now_secs());
+
+    queue_anilist(&http);
+    http.push_for("api.ani.zip", 200, anizip_json());
+    http.push_for("jikan.moe", 200, jikan_page());
+    for url in [STILL_1, STILL_2, LOGO_EN] {
+        http.push_for(url, 200, b"image".to_vec());
+    }
+    http.push_for(
+        FANART,
+        200,
+        anibeam_core::net::dimensions::testing::jpeg(1920, 1080),
+    );
+    apply(&core, &c, series);
+
+    let d = detail(&core, series);
+    let fanart = d.artwork[0].path.as_deref().expect("the background");
+    assert_eq!(d.backdrop.as_deref(), Some(fanart));
+
+    core.shutdown();
+}
+
+/// The ids of the image fills started so far.
+fn fill_jobs(c: &anibeam_core::events::Collector) -> Vec<u64> {
+    c.events()
+        .into_iter()
+        .filter(|e| {
+            matches!(
+                e.body,
+                EventBody::JobStarted {
+                    kind: JobKind::FillImages
+                }
+            )
+        })
+        .filter_map(|e| e.job.map(|j| j.id))
+        .collect()
+}
+
+/// The first image fill started after `before` of them had.
+fn wait_new_fill(c: &anibeam_core::events::Collector, before: usize) -> u64 {
+    let arrived = c.wait_for(
+        |events| {
+            events
+                .iter()
+                .filter(|e| {
+                    matches!(
+                        e.body,
+                        EventBody::JobStarted {
+                            kind: JobKind::FillImages
+                        }
+                    )
+                })
+                .count()
+                > before
+        },
+        std::time::Duration::from_secs(5),
+    );
+    assert!(arrived, "no fill started; saw {:#?}", c.events());
+    fill_jobs(c)[before]
 }
 
 /// An ani.zip that is down costs nothing: the match lands, every row the

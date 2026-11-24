@@ -131,7 +131,7 @@ What ani.zip adds to an AniList match, asked by AniList id beside the match: eac
 _Avoid_: episode metadata, thumbnails
 
 **Backdrop**:
-The wide picture behind the Home hero and the series head: the show's background from ani.zip (TheTVDB's fanart, usually 1920x1080) once it is on disk, else the AniList banner when it is at least 1600 pixels wide. With neither the shells draw the poster blurred in its place, since a narrow banner stretched across a window reads as a blur.
+The wide picture behind the Home hero and the series head: the show's background from ani.zip (TheTVDB's fanart, usually 1920x1080) once it is on disk, else the AniList banner, each only when it is at least 1600 pixels wide. With neither the shells draw the poster blurred in its place, since a narrow picture stretched across a window reads as a blur. The backgrounds of the series Continue may show are fetched up front and kept; any other series' is fetched when its page opens.
 _Avoid_: hero image, wallpaper
 
 **Provider order**:

@@ -262,7 +262,18 @@ pub fn get_series(library: &Library, series: u64) -> Result<Reply, CoreError> {
             if let Some(incoming) = library.incoming.get() {
                 incoming.overlay_detail(&mut detail);
             }
-            after_read(library, &gaps, poster.into_iter().collect());
+            // The first background (#1475): marked used when it is on
+            // disk, so the cap keeps the ones people open, and asked for
+            // when it is not, since only Continue's are fetched up front.
+            let mut used: Vec<String> = poster.into_iter().collect();
+            if let Some(fanart) = detail.artwork.iter().find(|a| a.kind == "Fanart") {
+                if fanart.path.is_some() {
+                    used.push(fanart.url.clone());
+                } else if library.net.images.want(&fanart.url) {
+                    images::start_fill(&library.net);
+                }
+            }
+            after_read(library, &gaps, used);
             Ok(Reply::SeriesDetail {
                 detail: Box::new(detail),
             })
