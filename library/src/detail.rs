@@ -123,7 +123,10 @@ impl Snapshot {
                             .file_name()
                             .and_then(|n| classifier::file_episode_title(&n.to_string_lossy()))
                     }),
-                air_date: air.and_then(|a| a.aired_at).map(time::from_secs),
+                air_date: air
+                    .and_then(|a| a.aired_at)
+                    .or_else(|| detail.and_then(|d| d.aired_at))
+                    .map(time::from_secs),
                 path: f.path.clone(),
                 sidecars: f.sidecars.clone(),
                 resume: self.resume_of(id, &f.episode_key),
@@ -316,14 +319,14 @@ impl Snapshot {
 
     /// What ani.zip keeps for an AniList series (#1036): each regular
     /// episode's title and still, the clear logo, and the artwork. Nothing
-    /// for a TVmaze match or an unmatched folder, whose numbering ani.zip's
-    /// does not follow. A path is handed out only when the image cache holds
+    /// for any other match or an unmatched folder, the same rule the image
+    /// cache fetches and pins by. A path is handed out only when the image cache holds
     /// the file's row.
     fn anizip_of(&self, conn: &Connection, row: &SeriesRow) -> Result<AniZipView, CoreError> {
         let mut view = AniZipView::default();
         let Some(anilist_id) = row
             .anilist_id
-            .filter(|_| row.provider != Some(Provider::Tvmaze))
+            .filter(|_| row.provider == Some(Provider::Anilist))
         else {
             return Ok(view);
         };
@@ -374,7 +377,7 @@ impl Snapshot {
                 r.get::<_, Option<String>>(3)?,
             ))
         })?;
-        let mut logos: Vec<(u8, Option<String>)> = Vec::new();
+        let mut logos: Vec<(bool, u8, Option<String>)> = Vec::new();
         for row in rows {
             let (kind, url, lang, path) = row?;
             let path = local(path);
@@ -386,12 +389,14 @@ impl Snapshot {
                     None => 1,
                     Some(_) => 2,
                 };
-                logos.push((pick, path.clone()));
+                logos.push((path.is_none(), pick, path.clone()));
             }
             view.artwork.push(Artwork { kind, url, path });
         }
-        logos.sort_by_key(|(pick, _)| *pick);
-        view.logo = logos.into_iter().next().and_then(|(_, path)| path);
+        // A logo on disk wins over a better one that is not, so a page
+        // never goes without while a usable file is there.
+        logos.sort_by_key(|(missing, pick, _)| (*missing, *pick));
+        view.logo = logos.into_iter().next().and_then(|(_, _, path)| path);
         Ok(view)
     }
 
