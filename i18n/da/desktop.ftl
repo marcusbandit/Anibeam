@@ -335,16 +335,7 @@ home-continue-fact = { $count } serier i gang
 home-on-hold = På pause
 home-on-hold-fact = { $count } serier at vende tilbage til
 home-hero-open = Åbn { $title }
-home-hero-downloading = Downloader { $count ->
-    [one] { $count } afsnit
-   *[other] { $count } afsnit
-}
 home-hero-min-left = { $count } min. tilbage
-home-hero-watched = { $watched } af { $total } set
-home-hero-resume = Fortsæt afsnit { $number }
-home-hero-play = Afspil afsnit { $number }
-home-hero-resume-unnumbered = Fortsæt afsnit
-home-hero-play-unnumbered = Afspil afsnit
 home-hero-previous = Forrige serie
 home-hero-next = Næste serie
 home-card-episode = Afs. { $number }
