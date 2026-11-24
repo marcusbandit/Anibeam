@@ -55,6 +55,8 @@ check() {
 
 package() {
   _src
-  # The same tree the anibeam-bin tarball holds: install-tree.sh lays out both.
-  apps/linux/packaging/linux/install-tree.sh . "$pkgdir" target/release/anibeam
+  # The same tree the anibeam-bin tarball holds: install-tree.sh lays out both. It ships Join
+  # from Discord's entry for the Discord id build() compiled in, the builder's own first.
+  ANIBEAM_DISCORD_CLIENT_ID="${ANIBEAM_DISCORD_CLIENT_ID:-${_discord_client_id:-}}" \
+    apps/linux/packaging/linux/install-tree.sh . "$pkgdir" target/release/anibeam
 }

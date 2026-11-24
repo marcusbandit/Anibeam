@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # usage: install-tree.sh <checkout> <destdir> <anibeam binary>
 # Lays out what a Linux package installs under <destdir>/usr: the binary, the launcher entry,
-# the icons, mpv.conf, the themes, the host's user unit and the shell completions. The AUR's
-# anibeam (package()) and the anibeam-bin tarball (bin-tarball.sh) both call it, so the two
-# packages install the same files.
+# the icons, mpv.conf, the themes, the host's user unit, the shell completions and, for a build
+# with a Discord application (ANIBEAM_DISCORD_CLIENT_ID), the hidden entry Join from Discord
+# opens (discord-entry.sh). The AUR's anibeam (package()) and the anibeam-bin tarball
+# (bin-tarball.sh) both call it, so the two packages install the same files.
 set -euo pipefail
 src="${1:?usage: install-tree.sh <checkout> <destdir> <binary>}"
 dest="${2:?usage: install-tree.sh <checkout> <destdir> <binary>}"
@@ -13,6 +14,7 @@ shell="$src/apps/linux"
 install -Dm755 "$bin" "$dest/usr/bin/anibeam"
 install -Dm644 "$shell/com.marcusrosado.Anibeam.desktop" \
   "$dest/usr/share/applications/com.marcusrosado.Anibeam.desktop"
+"$shell/packaging/linux/discord-entry.sh" "$bin" "$dest/usr/share/applications"
 for size in 16 24 32 48 64 128 256 512; do
   install -Dm644 "$shell/assets/hicolor/default/$size.png" \
     "$dest/usr/share/icons/hicolor/${size}x${size}/apps/com.marcusrosado.Anibeam.png"
