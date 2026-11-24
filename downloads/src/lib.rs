@@ -99,6 +99,10 @@ struct State {
     endpoint_sync: EndpointSync,
     torrent: TorrentClientStatus,
     endpoints: Vec<SearchEndpoint>,
+    /// A sidecar started and marked Ready whose endpoints no read has kept yet: the next
+    /// call through `ensure_client` reads them, and keeps trying until one read is kept
+    /// (#1433).
+    endpoints_unread: bool,
     /// The torrent client with its session, built from the settings on
     /// first use and dropped when they change or a test is asked for.
     qbt: Option<Arc<QbtClient>>,
@@ -251,8 +255,6 @@ struct Reached {
     client: AnirssClient,
     generation: u64,
     own: bool,
-    /// This call started the sidecar: it says Ready, and nothing has read its endpoints yet.
-    started: bool,
 }
 
 /// The anirss client when one is already there: the remote server, or a
@@ -278,7 +280,6 @@ async fn running(downloads: &Downloads) -> Result<Option<Reached>, CoreError> {
         client: AnirssClient::new(&sc.server(), &sc.token, downloads.services.http.clone()),
         generation,
         own: true,
-        started: false,
     }))
 }
 
@@ -287,8 +288,8 @@ async fn running(downloads: &Downloads) -> Result<Option<Reached>, CoreError> {
 /// reads `GetDownloads` after a failure sees why.
 async fn ensure_client(downloads: &Downloads) -> Result<AnirssClient, CoreError> {
     let reached = reach(downloads).await?;
-    if reached.started {
-        read_started(downloads, &reached).await;
+    if reached.own && downloads.state().endpoints_unread {
+        read_unread(downloads, &reached).await;
     }
     Ok(reached.client)
 }
@@ -296,15 +297,26 @@ async fn ensure_client(downloads: &Downloads) -> Result<AnirssClient, CoreError>
 /// A sidecar a search or another call started, not a connect: `reach` marked it Ready, so
 /// its endpoints are read now and the shells told. Without this the status said Ready with
 /// the list a failure had cleared, and the settings dotted Downloads for a search helper
-/// whose own config has sources (#1433). A read that fails leaves the call to go on.
-async fn read_started(downloads: &Downloads, reached: &Reached) {
-    if read_anirss(downloads, reached).await != Ok(Read::Kept) {
+/// whose own config has sources (#1433). Under the connect lock, so a start queued behind
+/// it waits for the read; a read that fails is logged, leaves the call to go on, and the
+/// next call tries again.
+async fn read_unread(downloads: &Downloads, reached: &Reached) {
+    let _one_at_a_time = downloads.connecting.lock().await;
+    if !downloads.state().endpoints_unread {
         return;
+    }
+    match read_anirss(downloads, reached).await {
+        Ok(Read::Kept) => {}
+        Ok(Read::Dropped) => return,
+        Err(e) => {
+            tracing::warn!("could not read the endpoints of the anirss just started: {e}");
+            return;
+        }
     }
     if let Ok(status) = status_async(downloads).await {
         downloads.services.bus.debug(
             Stage::Downloads,
-            "Search endpoints read from the restarted anirss",
+            "Search endpoints read from the anirss just started",
             EventBody::DownloadsStatusChanged { status },
         );
     }
@@ -335,7 +347,6 @@ async fn reach(downloads: &Downloads) -> Result<Reached, CoreError> {
             client: AnirssClient::new(&s.anirss_url, &token, downloads.services.http.clone()),
             generation,
             own: false,
-            started: false,
         });
     }
     let one_at_a_time = downloads.connecting.lock().await;
@@ -352,7 +363,6 @@ async fn reach(downloads: &Downloads) -> Result<Reached, CoreError> {
                     ),
                     generation,
                     own: true,
-                    started: false,
                 });
             }
             st.sidecar = None;
@@ -441,6 +451,7 @@ async fn reach(downloads: &Downloads) -> Result<Reached, CoreError> {
                     st.endpoint_sync = sync_of(true, unattended, current);
                     st.anirss.url = sidecar.server();
                     st.anirss.message.clear();
+                    st.endpoints_unread = true;
                     st.sidecar = Some(sidecar);
                 } else {
                     // The client was switched while this one started: it
@@ -458,7 +469,6 @@ async fn reach(downloads: &Downloads) -> Result<Reached, CoreError> {
                 client,
                 generation,
                 own: true,
-                started: true,
             })
         }
         Err(message) => {
@@ -511,6 +521,7 @@ fn write_anirss_failure(st: &mut State, state: AnirssState, message: &str) {
     st.endpoint_sync = EndpointSync::default();
     st.anirss.url.clear();
     st.endpoints.clear();
+    st.endpoints_unread = false;
 }
 
 /// The password of the client in use and where it came from: the one saved
@@ -1110,6 +1121,7 @@ async fn read_anirss(downloads: &Downloads, reached: &Reached) -> Result<Read, C
     st.anirss.qbt_authenticated = view.authenticated;
     st.anirss.qbt_login_failed = view.login_failed;
     st.endpoints = endpoints;
+    st.endpoints_unread = false;
     Ok(Read::Kept)
 }
 
@@ -3833,7 +3845,6 @@ mod tests {
             client,
             generation: teams.downloads.state().generation,
             own: true,
-            started: false,
         };
         assert_eq!(
             teams
@@ -3902,7 +3913,6 @@ mod tests {
             client: AnirssClient::new("http://anirss.test", "tok", http.clone()),
             generation: teams.downloads.state().generation,
             own,
-            started: false,
         };
         assert_eq!(
             teams
@@ -4015,7 +4025,6 @@ mod tests {
             client,
             generation: teams.downloads.state().generation,
             own: true,
-            started: false,
         };
         assert_eq!(
             teams
@@ -4057,7 +4066,6 @@ mod tests {
             client: AnirssClient::new("http://127.0.0.1:1", "tok", http.clone()),
             generation: teams.downloads.state().generation,
             own,
-            started: false,
         };
         let own = reached(true);
         let remote = reached(false);

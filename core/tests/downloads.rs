@@ -327,10 +327,17 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         .args(["-9", pid.trim()])
         .status()
         .unwrap();
-    // Dead, a zombie until the core reaps it, before the search asks whether it is alive
-    let stat = format!("/proc/{}/stat", pid.trim());
+    // Dead, a zombie until the core reaps it, before the search asks whether it is alive.
+    // ps, not /proc, so the wait holds on macOS too.
     let deadline = Instant::now() + Duration::from_secs(10);
-    while std::fs::read_to_string(&stat).is_ok_and(|s| !s.contains(") Z ")) {
+    while std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", pid.trim()])
+        .output()
+        .is_ok_and(|o| {
+            let stat = String::from_utf8_lossy(&o.stdout);
+            !stat.trim().is_empty() && !stat.trim_start().starts_with('Z')
+        })
+    {
         assert!(
             Instant::now() < deadline,
             "the fake anirss outlived kill -9"
