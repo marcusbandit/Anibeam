@@ -446,11 +446,14 @@ fn used_bytes(dir: &std::path::Path) -> u64 {
 /// else (the engine then tries the link itself). Err when the site did not answer: the
 /// engine would only ask it again, so the caller stops there (#135).
 #[cfg(feature = "phone")]
-async fn torrent_file(services: &Services, link: &str) -> Result<Option<Vec<u8>>, CoreError> {
+async fn torrent_file(
+    services: &std::sync::Arc<Services>,
+    link: &str,
+) -> Result<Option<Vec<u8>>, CoreError> {
     if !(link.starts_with("http://") || link.starts_with("https://")) {
         return Ok(None);
     }
-    let http = anibeam_releases::repos::endpoint_http(services);
+    let http = crate::endpoint_http(services).await?;
     let reply = anibeam_net::Http::send(
         &http,
         anibeam_net::HttpRequest::get(link).timeout(std::time::Duration::from_secs(30)),
@@ -912,14 +915,14 @@ pub fn unsubscribe(
 /// the one whose address the feed is.
 #[cfg(feature = "phone")]
 async fn feed(
-    services: &Services,
+    services: &std::sync::Arc<Services>,
     url: &str,
     name: &str,
     endpoint: &str,
     sources: &[anibeam_releases::Endpoint],
 ) -> Result<Vec<Release>, CoreError> {
     let timeout = anibeam_releases::fetch::DEFAULT_TIMEOUT;
-    let http = anibeam_releases::repos::endpoint_http(services);
+    let http = crate::endpoint_http(services).await?;
     if is_json_feed(sources, url, endpoint) {
         anibeam_releases::json_feed::fetch(&http, url, name, timeout).await
     } else {
@@ -970,7 +973,12 @@ async fn poll_with(downloads: &Downloads, engine: &engine::Engine) {
     // One round at a time: a subscribe's round and the timer's would add the same releases.
     let _one = downloads.phone.poll_lock.lock().await;
     let store = rules_store(&downloads.services);
-    let fillers = anibeam_releases::repos::fillers(&downloads.services);
+    let services = downloads.services.clone();
+    let Ok(fillers) =
+        tokio::task::spawn_blocking(move || anibeam_releases::repos::fillers(&services)).await
+    else {
+        return;
+    };
     let from = feed_sources(&downloads.services, &fillers);
     for rule in store.load().into_iter().filter(|r| r.enabled) {
         let Some(url) =
