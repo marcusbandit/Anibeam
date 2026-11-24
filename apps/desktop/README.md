@@ -1,4 +1,4 @@
-# Anibeam Desktop Shell
+# Anibeam desktop shell
 
 Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone (supports Linux, macOS, and Windows). See [ARCHITECTURE.md](../../ARCHITECTURE.md) and [CONTEXT.md](../../CONTEXT.md) for the overall design and shared vocabulary.
 
@@ -185,7 +185,7 @@ would only show empty states. `target/debug/anibeam-cli --root <dir> list` print
 you) can open any page, read what is on screen, click, type and capture without a mouse and
 without installing anything (#1205). The window listens on `anibeam-control.sock` in its
 runtime directory, mode 600, and `--root` picks the window started with that root. A request
-is one line of JSON with `--drive` steps, run by `qml/Control.qml` against the live window, so
+is one line of JSON with `--drive` steps, run by `qml/dev/Control.qml` against the live window, so
 everything in the drive step list above works here too, and a drive script runs unchanged with
 `anibeam ctl run script.json`.
 

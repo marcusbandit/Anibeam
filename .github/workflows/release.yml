@@ -22,7 +22,7 @@ name: Release
 # android-v2.4.3-nightly.20261113.41, ships as android-v2.4.3, an APK built from that commit.
 # It is never the Latest release, which stays the desktop's for the site and install.sh. Then
 # the phone moves to its next minor version (2.5.0) with a heading in apps/phone/CHANGELOG.md.
-# CONTRIBUTING.md, under Releases, has the whole line.
+# docs/releasing.md has the whole line.
 on:
   workflow_dispatch:
     inputs:
@@ -72,7 +72,7 @@ jobs:
           if [ "$APP" = phone ]; then prefix=android-v notes=apps/phone; else prefix=v notes=apps/desktop; fi
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             if [ "$GITHUB_REF" != refs/heads/main ]; then
-              echo "::error::A stable version is promoted from main. A fix for a shipped version is a tag on its release branch; see CONTRIBUTING.md, Releases."
+              echo "::error::A stable version is promoted from main. A fix for a shipped version is a tag on its release branch; see docs/releasing.md."
               exit 1
             fi
             tag="$NIGHTLY"
@@ -90,21 +90,17 @@ jobs:
               echo "::error::$prefix$version is out already. Main moves to the next version after a release; check the version on main."
               exit 1
             fi
-            # What's new shows the newest heading's curated notes, so a release with nothing
-            # written under its heading has nothing to say to the people it reaches.
-            notes_path="$notes"
-            if [ "$APP" = desktop ] && ! git cat-file -e "$sha:$notes_path/CHANGELOG.md" 2>/dev/null; then
-              notes_path=apps/linux
-            fi
-            if ! git show "$sha:$notes_path/CHANGELOG.md" |
-              awk '/<!--/{c=1} c{if(/-->/)c=0; next} /^## /{n++; next} n==2{exit} n==1 && /[^ \t\r]/{found=1} END{exit !found}'; then
-              echo "::error::$notes_path/CHANGELOG.md has no notes under $version at $tag. Curate its entry before promoting this release."
-              exit 1
-            fi
             # GitHub refuses GITHUB_TOKEN a new tag whose workflow files differ from main's,
-            # and only after every platform has built, so stop here instead.
+            # and only after every platform has built, so stop here first.
             if ! git diff --quiet "$sha" HEAD -- .github/workflows; then
               echo "::error::$tag (${sha::7}) has different workflow files from main, so GitHub will not let this workflow tag it. Run the Nightly workflow with force, then run this again."
+              exit 1
+            fi
+            # What's new shows the newest heading's curated notes, so a release with nothing
+            # written under its heading has nothing to say to the people it reaches.
+            if ! git show "$sha:$notes/CHANGELOG.md" |
+              awk '/<!--/{c=1} c{if(/-->/)c=0; next} /^## /{n++; next} n==2{exit} n==1 && /[^ \t\r]/{found=1} END{exit !found}'; then
+              echo "::error::$notes/CHANGELOG.md has no notes under $version at $tag. Curate its entry before promoting this release."
               exit 1
             fi
             echo "Promoting $tag (${sha::7}) to $prefix$version"
@@ -116,7 +112,7 @@ jobs:
             branch="release/${version%.*}"
             sha="$GITHUB_SHA"
             if ! git merge-base --is-ancestor "$sha" "origin/$branch" 2> /dev/null; then
-              echo "::error::$GITHUB_REF_NAME is not on $branch. A tag ships a fix from its own release branch; a new version is promoted from a nightly. See CONTRIBUTING.md, Releases."
+              echo "::error::$GITHUB_REF_NAME is not on $branch. A tag ships a fix from its own release branch; a new version is promoted from a nightly. See docs/releasing.md."
               exit 1
             fi
             echo "Shipping the fix $GITHUB_REF_NAME from $branch"

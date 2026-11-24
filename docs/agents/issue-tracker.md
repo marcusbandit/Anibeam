@@ -62,7 +62,7 @@ What an agent does, on top of what the workflow does:
      with why it stays.
   4. Add `full ci` and `automerge`: `gh pr edit <n> --add-label "full ci" --add-label automerge`.
      Then hand back and stop: do not watch the checks or merge by hand. The PR merges itself
-     once every check and Full CI pass on its head (CONTRIBUTING.md, "Merging on its own").
+     once every check and Full CI pass on its head (docs/releasing.md, "Automerge workflow").
 
   A red check leaves it open; fixing it is a new commit on the branch, which Full CI builds
   again. Leave `automerge` off a PR the owner should look at before it merges, such as one

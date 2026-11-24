@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- No versionCode or versionName here: build.sh writes both into the APK from the version
-     in Cargo.toml, or the one CI ships it as (CONTRIBUTING.md, Releases). -->
+     in Cargo.toml, or the one CI ships it as (docs/releasing.md). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.marcusrosado.anibeam">
 

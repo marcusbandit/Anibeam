@@ -12,11 +12,20 @@ since="${2:-}"
 case "$app" in
   desktop)
     pattern='v[0-9]*.[0-9]*.[0-9]*'
-    paths=(crates i18n apps/desktop apps/cli)
+    # Include pre-move paths so commits merged between the last stable tag and the move stay visible.
+    paths=(
+      crates i18n apps/desktop apps/cli
+      contract foundation net library releases metadata trackers downloads playback host core host-api room recs
+      apps/linux
+    )
     ;;
   phone)
     pattern='android-v[0-9]*.[0-9]*.[0-9]*'
-    paths=(apps/phone crates i18n)
+    paths=(
+      apps/phone crates i18n
+      apps/android
+      contract foundation net library releases metadata trackers downloads playback host core host-api room recs
+    )
     ;;
   *)
     echo "usage: changelog-draft.sh [desktop|phone] [since-tag]" >&2

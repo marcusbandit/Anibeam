@@ -106,8 +106,8 @@ picks the address by hand, and `0.0.0.0:8790` lets an Android emulator reach it 
 
 ## Where to read next
 
-- `CONTRIBUTING.md`: issues, branch and commit names, the PR flow, patch notes and releases.
-- `apps/desktop/README.md`: sandboxed runs, offscreen captures with `scripts/shoot.sh` and
-  scripted drives with `scripts/drive.sh`.
+- `CONTRIBUTING.md`: issues, branch and commit names, the PR flow, and patch notes (`docs/releasing.md` covers releases).
+- `apps/desktop/README.md`: sandboxed runs, offscreen captures with `apps/desktop/scripts/shoot.sh`, and
+  scripted drives with `apps/desktop/scripts/drive.sh`.
 - `apps/phone/README.md`: building and sideloading the phone app.
 - `CONTEXT.md`: the vocabulary the code and the docs share.

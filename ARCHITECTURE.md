@@ -1,6 +1,6 @@
 # Architecture
 
-Anibeam is a local anime library, video player, and tracker built around **one Rust core** and **thin per-platform shells**. All business rules—scanning, matching, tracker sync, downloads, playback rules, watch-together rooms, and Tailscale streaming—live in Rust library crates. Shells handle windows, UI, input, OS integration, and the video surface.
+Anibeam is a local anime library, video player, and tracker built around one Rust core and thin per-platform shells. All business rules (scanning, matching, tracker sync, downloads, playback rules, watch-together rooms, and Tailscale streaming) live in Rust library crates. Shells handle windows, UI, input, OS integration, and the video surface.
 
 For domain vocabulary shared across code and docs, see [CONTEXT.md](CONTEXT.md).
 
@@ -28,8 +28,8 @@ anibeam/
 
 ### UI directory layout
 
-- **Desktop QML (`apps/desktop/qml/`):** `Main.qml` at root, organized into `shell/` (frame, nav, rail, drawers, onboarding), `ui/` (tokens, i18n, shared primitives), `pages/` (top-level rail pages), `series/`, `player/`, `room/`, `downloads/`, `settings/`, and `dev/` (drive/ctl/HUD tools).
-- **Phone Slint (`apps/phone/ui/`):** `app.slint` at root, organized into `core/` (theme, i18n, data, widgets, sheets), `pages/` (main tabs & player), `show/` (series/show detail sheets & sections), `more/` (settings/stats/backup sub-views), plus `fonts/` and `icons/`.
+- Desktop QML lives in `apps/desktop/qml/`, with `Main.qml` at the root and subfolders `shell/` (frame, nav, rail, drawers, onboarding), `ui/` (tokens, i18n, shared primitives), `pages/` (top-level rail pages), `series/`, `player/`, `room/`, `downloads/`, `settings/`, and `dev/` (drive, ctl, and HUD tools).
+- Phone Slint lives in `apps/phone/ui/`, with `app.slint` at the root and subfolders `core/` (theme, i18n, data, widgets, sheets), `pages/` (main tabs and player), `show/` (series and show detail sheets and sections), and `more/` (settings, stats, and backup sub-views), plus `fonts/` and `icons/`.
 
 ## Crate layers
 
@@ -52,15 +52,15 @@ The Rust workspace is split into focused crates arranged in strict dependency la
 | Crate | Package | Responsibility |
 | --- | --- | --- |
 | `crates/contract/` | `anibeam-contract` | Public shell/core boundary: `Call`, `Reply`, `Event`, `Error`, records, and the `i18n/` Fluent catalog loader. |
-| `crates/host-api/` | `anibeam-host-api` | Wire records and Ed25519 request-proof auth for Tailscale host ↔ phone communication. |
+| `crates/host-api/` | `anibeam-host-api` | Wire records and Ed25519 request-proof auth for Tailscale host and phone communication. |
 | `crates/room/` | `anibeam-room` | Pure, I/O-free Watch Together room protocol, state machine, rate limits, and join HTML page. Shared by desktop, phone, native relay, and Cloudflare Worker. |
 | `crates/recs/` | `anibeam-recs` | Pure recommendation scoring and ranking algorithm. |
-| `crates/foundation/` | `anibeam-foundation` | Shared infrastructure: SQLite store & migrations (`src/store/sql/`), event bus, job tracker, paths, prefs, profiles, OS keyring / file secrets, secret redaction, and `Services`. |
+| `crates/foundation/` | `anibeam-foundation` | Shared infrastructure: SQLite store and migrations (`src/store/sql/`), event bus, job tracker, paths, prefs, profiles, OS keyring and file secrets, secret redaction, and `Services`. |
 | `crates/net/` | `anibeam-net` | Rate-limited HTTP clients (`src/limiter.rs`) for AniList, MAL, Jikan, TVmaze, AniSkip, ani.zip, IMDb, and Wikidata, plus DoH, domain fronting, and image caching. |
-| `crates/library/` | `anibeam-library` | Sources, folder walk, filesystem watcher, episode filename classifier, quick fixes, history, delete/trash, and library read models (cards, details, snapshot). |
+| `crates/library/` | `anibeam-library` | Sources, folder walk, filesystem watcher, episode filename classifier, quick fixes, history, delete and trash, and library read models (cards, details, snapshot). |
 | `crates/releases/` | `anibeam-releases` | Release title parsing, RSS/Torznab/JSON feed readers, best-fit ranking, refinement grid, rules, tracker scrape stats, and signed endpoint repos. |
-| `crates/metadata/` | `anibeam-metadata` | Auto-matching, metadata fetching, franchise crawl & closure (`src/franchise/`), Airing now, calendar feed, and Recommendations wiring (`src/recommended/`). |
-| `crates/trackers/` | `anibeam-trackers` | AniList & MyAnimeList OAuth, list cache, two-way writes, local lists, Watching, move-up, On hold, and Planning lists. |
+| `crates/metadata/` | `anibeam-metadata` | Auto-matching, metadata fetching, franchise crawl and closure (`src/franchise/`), Airing now, calendar feed, and Recommendations wiring (`src/recommended/`). |
+| `crates/trackers/` | `anibeam-trackers` | AniList and MyAnimeList OAuth, list cache, two-way writes, local lists, Watching, move-up, On hold, and Planning lists. |
 | `crates/downloads/` | `anibeam-downloads` | Built-in native downloads engine, `anirss` sidecar, qBittorrent client, rolling downloads, episode watch, pruning, and phone torrent engine (`src/phone/` behind `phone` feature). |
 | `crates/playback/` | `anibeam-playback` | Session rules (30s view, 85% mark, completion), track memory, skip windows, mpv options, Discord Rich Presence (`src/presence/`), Chromecast/DLNA casting (`src/cast/`, `cast` feature), and Watch Together room client (`src/room/`). |
 | `crates/host/` | `anibeam-host` | Tailscale library host server, peer trust, ffmpeg transcoding, streaming, and JSON library export/import (`src/transfer/`). |
@@ -70,10 +70,10 @@ The Rust workspace is split into focused crates arranged in strict dependency la
 
 Two directories intentionally define their own `[workspace]` and `Cargo.lock` so `cargo test --workspace` at the repo root stays fast and does not require mobile NDKs or WASM toolchains:
 
-- **`apps/phone/`** (members: `.` and `companion/`): builds the Android native library and iOS executable on top of `anibeam-core` with `--features phone,cast`.
-- **`relay/worker/`**: builds the `wasm32-unknown-unknown` Cloudflare Worker on top of `anibeam-room`.
+- `apps/phone/` (members `.` and `companion/`) builds the Android native library and iOS executable on top of `anibeam-core` with `--features phone,cast`.
+- `relay/worker/` builds the `wasm32-unknown-unknown` Cloudflare Worker on top of `anibeam-room`.
 
-## Where do I go to change…
+## Where to make changes
 
 | Task | Start here |
 | --- | --- |
@@ -95,20 +95,20 @@ Two directories intentionally define their own `[workspace]` and `Cargo.lock` so
 | Tailscale host server or backup export/import | `crates/host/src/` |
 | Watch Together relay servers | `relay/server/` (self-hosted) and `relay/worker/` (Cloudflare Worker) |
 | Website, wiki, or What's new pages | `site/` (`apps/desktop/CHANGELOG.md` and `apps/phone/CHANGELOG.md` feed What's new) |
-| Security & trust surface audit | [docs/safety-audit.md](docs/safety-audit.md) |
+| Security and trust surface audit | [docs/safety-audit.md](docs/safety-audit.md) |
 
 ## Cross-cutting invariants
 
 Every contributor (human or AI) should preserve these rules:
 
-- **Rate limiting:** Every outbound provider call (AniList, MAL, Jikan, TVmaze, AniSkip, etc.) goes through the shared limiter in `crates/net/src/limiter.rs`. Never bypass it.
-- **Signal-only activity log:** Record state changes, never per-asset, per-candidate, or per-browse chatter.
-- **Franchise closure boundaries:** `crates/metadata/src/franchise/closure.rs` draws `CHARACTER` and `OTHER` edges but never walks across them, preventing crossover cameos from merging unrelated franchises.
-- **Keep provider score scales on write:** `average_score` is stored as received from the provider and normalized at read time.
-- **No polling the library:** Use the filesystem watcher plus a catch-up scan at launch—no periodic rescan intervals.
-- **One window, play on when hidden:** Never open a second window or external mpv process, and never auto-pause when the window is hidden.
-- **Self-contained desktop behavior:** No compositor-specific coupling (e.g., no `hyprctl` or Hyprland window rules).
-- **Native desktop scrolling:** Every `Flickable` uses `WheelStep.qml`'s wheel handling (100 px per notch glided to one target).
-- **No shipped download sources:** Nothing in this repo names or points at a download site—not in code, defaults, tests, fixtures, or docs. The core defines generic endpoint *kinds* (RSS, Torznab, JSON) only; users add signed endpoint repos themselves. Enforced by `scripts/ci/no-site-names.sh`.
-- **All UI copy lives in `i18n/`:** Shells never hardcode user-facing English strings; code looks up Fluent message IDs. Enforced by `scripts/ci/strings-check.py`.
-- **Curated patch notes:** Regular PRs do not edit `CHANGELOG.md`. Curate `apps/desktop/CHANGELOG.md` and `apps/phone/CHANGELOG.md` before releases; `site/whats-new.py` builds `anibeam.app/whats-new/` directly from them.
+- Every outbound provider call (AniList, MAL, Jikan, TVmaze, AniSkip, and the rest of `crates/net/src/`) goes through the shared rate limiter in `crates/net/src/limiter.rs`. Never bypass it.
+- Keep the activity log signal-only: record state changes, never per-asset, per-candidate, or per-browse chatter.
+- Preserve franchise closure boundaries: `crates/metadata/src/franchise/closure.rs` draws `CHARACTER` and `OTHER` edges but never walks across them, preventing crossover cameos from merging unrelated franchises.
+- Keep provider score scales on write: store `average_score` as received from the provider and normalize it at read time.
+- Never poll the library on a timer: rely on the filesystem watcher plus a catch-up scan at launch, with no periodic rescan intervals.
+- Keep playback in one window and playing when hidden: never open a second window or external mpv process, and never auto-pause when the window is hidden.
+- Keep desktop behavior self-contained with no compositor-specific coupling (such as `hyprctl` or Hyprland window rules).
+- Keep desktop scrolling native: every `Flickable` uses `apps/desktop/qml/ui/WheelStep.qml` wheel handling (100 px per notch glided to one target).
+- Ship no download sources: nothing in this repo names or points at a download site, in code, defaults, tests, fixtures, or docs. The core defines generic endpoint kinds (RSS, Torznab, JSON) only, and users add signed endpoint repos themselves. Enforced by `scripts/ci/no-site-names.sh`.
+- Keep all UI copy in `i18n/`: shells never hardcode user-facing English strings and look up Fluent message IDs instead. Enforced by `scripts/ci/strings-check.py`.
+- Keep patch notes curated for people: regular PRs do not edit `CHANGELOG.md`. Curate `apps/desktop/CHANGELOG.md` and `apps/phone/CHANGELOG.md` before releases; `site/whats-new.py` builds `anibeam.app/whats-new/` directly from them.

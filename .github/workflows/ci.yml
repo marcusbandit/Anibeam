@@ -9,11 +9,12 @@ name: CI
 # (#986), which sets those up for the AppImage. Runs on main
 # too, so rust-cache keeps a cache every pull request can restore. The toolchain comes from
 # rust-toolchain.toml, which every workflow reads (#526).
-# A change that only touches markdown or docs/ skips it (#428). The two CHANGELOG.md files
-# still run it: the apps compile them in and core/tests/changelog.rs checks them. Later
-# patterns win, so those lines have to stay after the markdown exclusion. A pull request
-# always starts the workflow and the `changes` job makes the same call, so the `ci` job
-# at the end reports on every pull request: main's ruleset requires it to pass.
+# A change that only touches markdown or docs/ skips Cargo checks (#428). The two CHANGELOG.md
+# files still run them (the apps compile them in and crates/core/tests/changelog.rs checks them),
+# and ARCHITECTURE.md still triggers pushes on main so the repo structure guard runs on edits to it.
+# Later patterns win, so those lines have to stay after the markdown exclusion. A pull request
+# always starts the workflow, checks repo structure, and makes the code-change call in `changes`,
+# so the `ci` job at the end reports on every pull request: main's ruleset requires it to pass.
 on:
   push:
     branches: [main]
@@ -21,6 +22,7 @@ on:
       - '**'
       - '!**.md'
       - '!docs/**'
+      - 'ARCHITECTURE.md'
       - '**/CHANGELOG.md'
   pull_request:
   workflow_dispatch:
@@ -45,9 +47,11 @@ jobs:
       code: ${{ steps.pick.outputs.code }}
     steps:
       - uses: actions/checkout@v4
-        if: github.event_name == 'pull_request'
         with:
-          fetch-depth: 2
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      - name: Repo structure
+        run: python3 scripts/ci/check-structure.py
 
       - id: pick
         env:
@@ -129,7 +133,6 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
         run: |
-          python3 scripts/ci/check-structure.py
           python3 scripts/ci/affected-crates.py --self-test
           if [ "$EVENT" = pull_request ]; then pick="--base HEAD^1"; else pick=--all; fi
           echo "pick=$pick" >> "$GITHUB_OUTPUT"

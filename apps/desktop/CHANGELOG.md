@@ -4,7 +4,7 @@
 The app shows this file in What's new, and anibeam.app/whats-new/ builds from it.
 Write for people who use Anibeam, not as a commit log:
 - Pull requests do not add lines here. Curate each release from git history before
-  shipping (`.github/changelog-draft.sh desktop`), or update the newest heading as a
+  shipping (`scripts/changelog-draft.sh desktop`), or update the newest heading as a
   living draft for major milestones.
 - Start a release with a warm, natural intro saying what we're happy to bring to the
   app, followed by a short list of the actual highlights (`- **Feature.** ...`), an

@@ -11,8 +11,7 @@ name: Nightly
 # (the day and the number of the run that built it), and published as the pre-release
 # v2.5.0-nightly.20261030.12 once every platform's files are on it. An app on the Nightly
 # track hears about it; the Stable track never does. release.yml promotes the newest nightly
-# to a stable version. The ten newest nightlies are kept. CONTRIBUTING.md, under Releases,
-# has the whole line.
+# to a stable version. The ten newest nightlies are kept. docs/releasing.md has the whole line.
 #
 # The phone rides the same train under its own number: when the phone or what it builds on
 # changed since its last nightly, a build of its APK from apps/phone/Cargo.toml's version,

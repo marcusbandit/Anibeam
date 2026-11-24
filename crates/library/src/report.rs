@@ -490,7 +490,7 @@ fn prompt(f: &Facts) -> String {
         String::new(),
         "Past the name, Anibeam applies one rule: a series whose record is format SPECIAL or OVA and that holds no regular episode reads its numbered specials as its episodes.".to_string(),
         String::new(),
-        "The name reader, library/src/classifier.rs:".to_string(),
+        "The name reader, crates/library/src/classifier.rs:".to_string(),
         String::new(),
         "```rust".to_string(),
         CLASSIFIER.to_string(),
