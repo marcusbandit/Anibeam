@@ -3,12 +3,14 @@
 // on it the poster, the other titles on one quiet line (panned on hover, unfolded on a click
 // when they run past), the logo or the title, the facts and the genres as pills, the studio,
 // the progress, and one row of actions of one height. Under it two columns on a wide window:
-// the episodes (then the extras and the stray files) as flat rows at the left, and at the
-// right the synopsis, the characters, the recommendations, the tags and the franchise. One
-// GetSeries draws it all; the relations come from GetFranchiseGraph and follow the crawl
-// through graphChanged. An unmatched series draws the same head off its folder name, with
-// the match where the synopsis would be.
+// at the left three tabs (#1454): the episodes (then the extras and the stray files) as flat
+// rows, the seasons and relations, and the artwork and music; at the right, beside every tab,
+// the synopsis, the characters, the tags and the recommendations. One GetSeries draws it all;
+// the seasons and relations come from GetFranchiseGraph and follow the crawl through
+// graphChanged. An unmatched series draws the same head off its folder name, with the match
+// where the synopsis would be.
 import QtQuick
+import QtCore
 import com.marcusrosado.Anibeam
 
 Item {
@@ -33,6 +35,15 @@ Item {
     // Escape leaves picking files to delete before it leaves the page
     function escapePressed() { if (page.deleting) { page.deleting = false; page.deleteError = ""; return true } return false }
     property bool spoilers: false
+    // The body's tab: 0 the episodes, 1 the seasons and relations, 2 the artwork and music
+    property int tab: 0
+    // The episode stills, shown or hidden for every series at once (#1453), kept across launches
+    Settings { id: kept; location: Shell.settingsUrl; category: "series"; property bool stills: true }
+    readonly property bool stillsShown: kept.stills
+    readonly property bool anyStill: episodeRows.some(function(r) { return !!r.still })
+    // Picking files to delete belongs to the Episodes tab and ends when it is left, or the
+    // next Escape would go to a bar nobody can see
+    onTabChanged: if (tab !== 0 && deleting) { deleting = false; deleteError = "" }
     property bool synopsisOpen: false
     property bool tagsOpen: false
     property real nowMs: Date.now()
@@ -296,7 +307,11 @@ Item {
         function onMatchApplied(series) { if (series === page.props.id) reloadDebounce.restart() }
         // The crawl fills the franchise in behind the first read; its root is an AniList id
         function onGraphChanged(root) { if (page.graph === null || page.graph.root === root) graphDebounce.restart() }
-        function onCrawlFinished(fetched, deferred) { if (page.detail && page.detail.has_graph) graphDebounce.restart() }
+        function onCrawlFinished(fetched, deferred) {
+            if (page.detail && page.detail.has_graph) graphDebounce.restart()
+            // A series whose franchise was still unread may have one now
+            else if (page.detail && !page.detail.relations_known && page.anilistUrl !== "") reloadDebounce.restart()
+        }
         // The core resolves card.title (and every other localised field) at query time,
         // so a title-language flip from the rail's JP/EN switch needs a fresh GetSeries;
         // Door reports every preference write here regardless of what changed, exactly
@@ -323,13 +338,6 @@ Item {
         if (isMovie) return words.t("anilist-format-film")
         if (!f) return words.t("series-format-series")
         return words.formatLabel(f) || f.replace(/_/g, " ")
-    }
-    // AniList's relation types, as a person reads them; one it adds later reads off its code
-    function relationLabel(r) {
-        if (!r) return ""
-        var said = words.relationLabel(r)
-        if (said) return said
-        var s = String(r).replace(/_/g, " ").toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1)
     }
     // An episode's name: Fmt.episodeName, the one rule the player and the feed share (its
     // own title, else "Episode 13"; the file name is never a title). A lone film is the film.
@@ -421,10 +429,12 @@ Item {
     readonly property var episodeRows: {
         if (!detail) return []
         var absent = (detail.absent || []).map(function(a) {
-            return { number: a.number, season: a.season, code: a.code, title: a.title, air_date: a.air_date, cube: a.cube, absent: true, watched: false, next_up: false }
+            return { number: a.number, season: a.season, code: a.code, title: a.title, air_date: a.air_date, cube: a.cube, absent: true, watched: false, next_up: false,
+                     still: a.still || null, synopsis: a.synopsis || "" }
         })
         var ahead = (detail.upcoming || []).map(function(u) {
-            return { number: u.number, season: u.season, code: u.code, title: u.title, air_date: u.at, predicted: u.predicted, cube: "f", upcoming: true, watched: false, next_up: false }
+            return { number: u.number, season: u.season, code: u.code, title: u.title, air_date: u.at, predicted: u.predicted, cube: "f", upcoming: true, watched: false, next_up: false,
+                     still: u.still || null, synopsis: u.synopsis || "" }
         })
         return grouped(episodes).concat(absent, ahead).sort(function(a, b) {
             return ((a.season || 1) - (b.season || 1)) || (a.number - b.number)
@@ -540,7 +550,37 @@ Item {
     readonly property string synopsisText: detail ? detail.synopsis : ""
     readonly property var tagList: detail ? detail.tags.filter(function(t) { return page.spoilers || (!t.spoiler && !t.adult) }).sort(function(a, b) { return b.rank - a.rank }) : []
     readonly property bool anySpoiler: detail ? detail.tags.some(function(t) { return t.spoiler || t.adult }) : false
-    readonly property var relationNodes: graph ? graph.nodes.filter(function(n) { return !n.current }).sort(function(a, b) { return a.y - b.y || a.x - b.x }) : []
+    // The franchise (#1454, #784): the main line's seasons in watch order, then every other
+    // entry, grouped by the season it hangs off and in release order within it
+    readonly property var seasonNodes: graph ? graph.nodes.filter(function(n) { return !!n.main_line })
+        .sort(function(a, b) { return a.chain_position - b.chain_position }) : []
+    // A season's place on the line, by its AniList id
+    readonly property var seasonAt: {
+        var at = {}
+        seasonNodes.forEach(function(n, i) { at[n.anilist_id] = i })
+        return at
+    }
+    readonly property var relationNodes: graph ? graph.nodes.filter(function(n) { return !n.current && !n.main_line }).sort(function(a, b) {
+        var sa = page.seasonAt[a.anchor], sb = page.seasonAt[b.anchor]
+        sa = sa === undefined ? 1e9 : sa; sb = sb === undefined ? 1e9 : sb
+        return sa - sb || (a.year || 1e9) - (b.year || 1e9) || a.y - b.y || a.x - b.x
+    }) : []
+    // Owned opens its page; the rest open AniList
+    function openNode(n) {
+        if (n.current) return
+        if (n.owned !== null && n.owned !== undefined) frame.go("series", { id: n.owned }, n.title)
+        else frame.openLink(n.site_url || "https://anilist.co/anime/" + n.anilist_id)
+    }
+    // A node's place in the library, in words: in it, not out yet, or on AniList
+    function nodeState(n) {
+        return n.owned !== null && n.owned !== undefined ? words.t("series-relation-owned")
+             : !n.released ? words.t("series-relation-unreleased") : words.t("series-relation-on-anilist")
+    }
+    // The format and the year, the plain series format left out
+    function nodeFacts(n) {
+        return [n.format ? page.nodeFormat(n.format) : "", n.year ? String(n.year) : ""].filter(function(s) { return s !== "" }).join(", ")
+    }
+    function nodeFormat(f) { return words.formatLabel(f) || f.replace(/_/g, " ") }
 
     // ---- The band's colour: the poster's tone over a dark base, so white ink holds in
     // both modes; the ink accent is the tone lifted toward white (HomePage's hero). Both
@@ -1172,153 +1212,200 @@ Item {
                 width: body.twoCol ? Math.floor((body.width - body.gap) * 0.6) : body.width
                 spacing: body.sectionGap
 
-                // A misreading the core can see, with its fix one click away (#170)
-                Corner {
-                    objectName: "series-suggested-fix"
-                    visible: !!page.detail && !!page.detail.suggested_fix && !page.deleting
-                    width: parent.width
-                    height: visible ? suggestedRow.implicitHeight + theme.space(3) * 2 : 0
-                    radius: theme.radiusTile
-                    smoothing: theme.cornerSmoothing
-                    color: theme.accentSoft
-                    Row {
-                        id: suggestedRow
-                        x: theme.space(4)
-                        width: parent.width - theme.space(8)
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: theme.space(3)
-                        Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "sparkles"; size: theme.space(4.5); color: theme.accent }
-                        Label {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - theme.space(7.5) - suggestedFix.width - parent.spacing * 2
-                            text: page.detail && page.detail.suggested_fix ? page.detail.suggested_fix.text : ""
-                            role: "ui"; color: theme.text; wrapMode: Text.Wrap
-                        }
-                        Button {
-                            id: suggestedFix
-                            objectName: "series-suggested-fix-open"
-                            anchors.verticalCenter: parent.verticalCenter
-                            small: true; primary: true
-                            msg: "series-quick-fix"; icon: "wrench"
-                            onClicked: page.openFix(page.detail.suggested_fix, true)
-                        }
-                    }
+                // The tabs (#1454): the episodes, the franchise, the art
+                Seg {
+                    id: tabs
+                    objectName: "series-tabs"
+                    visible: !!page.detail
+                    options: [{ text: page.isMovie ? words.t("series-film") : words.t("series-episodes"), name: "episodes" },
+                              { text: words.t("series-tab-seasons"), name: "seasons", count: page.graph && page.graph.nodes.length > 1 ? page.graph.nodes.length - 1 : undefined },
+                              { text: words.t("series-tab-art"), name: "art" }]
+                    index: page.tab
+                    accessibleName: page.title
+                    onPicked: function(i) { page.tab = i }
                 }
 
-                // The episodes
                 Column {
-                    objectName: "series-episodes"
-                    visible: page.episodeRows.length > 0
+                    objectName: "series-tab-episodes"
+                    visible: page.tab === 0
                     width: parent.width
-                    spacing: theme.space(4)
-                    Heading {
-                        text: page.isMovie ? words.t("series-film") : words.t("series-episodes")
-                        // Episodes, not files: the same while picking, when each file has a row
-                        count: page.episodeRows.filter(function(r) { return !r.upcoming }).length - (page.deleting ? page.extraVersions : 0)
-                        fact: page.episodesFact
-                        action: DeleteButton { where: "episodes" }
-                    }
-                    DeleteBar { where: "episodes" }
-                    Column {
+                    spacing: body.sectionGap
+
+                    // A misreading the core can see, with its fix one click away (#170)
+                    Corner {
+                        objectName: "series-suggested-fix"
+                        visible: !!page.detail && !!page.detail.suggested_fix && !page.deleting
                         width: parent.width
-                        spacing: theme.space(4)
-                        Repeater {
-                            model: page.episodeRows
-                            EpisodeRow {
-                                required property var modelData
-                                required property int index
-                                objectName: "episode-row-" + index
-                                episode: modelData
-                                hasTracker: page.hasTracker
-                                title: page.episodeName(modelData)
-                                watched: page.watchedWithOptimism(modelData)
-                                versions: page.deleting ? [] : (modelData.versions || [])
-                                onPlay: page.openFile(modelData.file)
-                                onPlayVersion: function(file) { page.openFile(file) }
-                                onMarker: page.marker(modelData)
-                                picking: page.deleting
-                                picked: page.deletePicked.indexOf(modelData.file) >= 0
-                                onPick: page.togglePick(modelData.file)
-                                gettable: !page.isMovie
-                                onDownload: page.getEpisodes()
+                        height: visible ? suggestedRow.implicitHeight + theme.space(3) * 2 : 0
+                        radius: theme.radiusTile
+                        smoothing: theme.cornerSmoothing
+                        color: theme.accentSoft
+                        Row {
+                            id: suggestedRow
+                            x: theme.space(4)
+                            width: parent.width - theme.space(8)
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: theme.space(3)
+                            Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "sparkles"; size: theme.space(4.5); color: theme.accent }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - theme.space(7.5) - suggestedFix.width - parent.spacing * 2
+                                text: page.detail && page.detail.suggested_fix ? page.detail.suggested_fix.text : ""
+                                role: "ui"; color: theme.text; wrapMode: Text.Wrap
+                            }
+                            Button {
+                                id: suggestedFix
+                                objectName: "series-suggested-fix-open"
+                                anchors.verticalCenter: parent.verticalCenter
+                                small: true; primary: true
+                                msg: "series-quick-fix"; icon: "wrench"
+                                onClicked: page.openFix(page.detail.suggested_fix, true)
                             }
                         }
                     }
-                }
 
-                // Openings, endings and the rest, grouped
-                Column {
-                    visible: !!page.detail && page.detail.extras.length > 0
-                    width: parent.width
-                    spacing: theme.space(4)
-                    Heading { text: words.t("series-extras"); count: page.detail ? page.grouped(page.detail.extras).length : 0; action: DeleteButton { where: "extras" } }
-                    DeleteBar { where: "extras" }
-                    Repeater {
-                        // The extra's kind from the core, and the message that names it
-                        model: [["Op", "series-extras-openings"], ["Ed", "series-extras-endings"], ["Pv", "series-extras-previews"], ["Sp", "series-extras-specials"], ["Other", "series-extras-other"]] // i18n: none
+                    // The episodes
+                    Column {
+                        objectName: "series-episodes"
+                        visible: page.episodeRows.length > 0
+                        width: parent.width
+                        spacing: theme.space(4)
+                        Heading {
+                            text: page.isMovie ? words.t("series-film") : words.t("series-episodes")
+                            // Episodes, not files: the same while picking, when each file has a row
+                            count: page.episodeRows.filter(function(r) { return !r.upcoming }).length - (page.deleting ? page.extraVersions : 0)
+                            fact: page.episodesFact
+                            action: Row {
+                                spacing: theme.space(2)
+                                // Every still on or off at once; the rows close up without them
+                                Button {
+                                    objectName: "series-stills"
+                                    visible: page.anyStill && !page.deleting
+                                    small: true; flat: true
+                                    icon: page.stillsShown ? "eye-off" : "image"
+                                    text: page.stillsShown ? words.t("series-stills-hide") : words.t("series-stills-show")
+                                    onClicked: kept.stills = !kept.stills
+                                }
+                                DeleteButton { where: "episodes" }
+                            }
+                        }
+                        DeleteBar { where: "episodes" }
                         Column {
-                            required property var modelData
-                            // Two releases of one extra are one row, as for an episode (#468)
-                            readonly property var group: page.detail ? page.grouped(page.detail.extras.filter(function(x) { return x.kind === modelData[0] })) : []
-                            visible: group.length > 0
                             width: parent.width
-                            spacing: theme.space(2)
-                            Caption { text: words.t("series-extras-group", { kind: words.t(modelData[1]), count: group.length }) }
+                            spacing: theme.space(4)
+                            Repeater {
+                                model: page.episodeRows
+                                EpisodeRow {
+                                    required property var modelData
+                                    required property int index
+                                    objectName: "episode-row-" + index
+                                    episode: modelData
+                                    hasTracker: page.hasTracker
+                                    title: page.episodeName(modelData)
+                                    watched: page.watchedWithOptimism(modelData)
+                                    versions: page.deleting ? [] : (modelData.versions || [])
+                                    onPlay: page.openFile(modelData.file)
+                                    onPlayVersion: function(file) { page.openFile(file) }
+                                    onMarker: page.marker(modelData)
+                                    picking: page.deleting
+                                    picked: page.deletePicked.indexOf(modelData.file) >= 0
+                                    onPick: page.togglePick(modelData.file)
+                                    gettable: !page.isMovie
+                                    onDownload: page.getEpisodes()
+                                    stillsShown: page.stillsShown
+                                }
+                            }
+                        }
+                    }
+
+                    // Openings, endings and the rest, grouped
+                    Column {
+                        visible: !!page.detail && page.detail.extras.length > 0
+                        width: parent.width
+                        spacing: theme.space(4)
+                        Heading { text: words.t("series-extras"); count: page.detail ? page.grouped(page.detail.extras).length : 0; action: DeleteButton { where: "extras" } }
+                        DeleteBar { where: "extras" }
+                        Repeater {
+                            // The extra's kind from the core, and the message that names it
+                            model: [["Op", "series-extras-openings"], ["Ed", "series-extras-endings"], ["Pv", "series-extras-previews"], ["Sp", "series-extras-specials"], ["Other", "series-extras-other"]] // i18n: none
                             Column {
+                                required property var modelData
+                                // Two releases of one extra are one row, as for an episode (#468)
+                                readonly property var group: page.detail ? page.grouped(page.detail.extras.filter(function(x) { return x.kind === modelData[0] })) : []
+                                visible: group.length > 0
                                 width: parent.width
-                                spacing: theme.space(4)
-                                Repeater {
-                                    model: group
-                                    EpisodeRow {
-                                        required property var modelData
-                                        episode: ({ code: modelData.code, title: modelData.label, resume: modelData.resume, watched: false, next_up: false })
-                                        title: modelData.label
-                                        versions: page.deleting ? [] : (modelData.versions || [])
-                                        onPlay: page.openFile(modelData.file)
-                                        onPlayVersion: function(file) { page.openFile(file) }
-                                        picking: page.deleting
-                                        picked: page.deletePicked.indexOf(modelData.file) >= 0
-                                        onPick: page.togglePick(modelData.file)
+                                spacing: theme.space(2)
+                                Caption { text: words.t("series-extras-group", { kind: words.t(modelData[1]), count: group.length }) }
+                                Column {
+                                    width: parent.width
+                                    spacing: theme.space(4)
+                                    Repeater {
+                                        model: group
+                                        EpisodeRow {
+                                            required property var modelData
+                                            episode: ({ code: modelData.code, title: modelData.label, resume: modelData.resume, watched: false, next_up: false })
+                                            title: modelData.label
+                                            versions: page.deleting ? [] : (modelData.versions || [])
+                                            onPlay: page.openFile(modelData.file)
+                                            onPlayVersion: function(file) { page.openFile(file) }
+                                            picking: page.deleting
+                                            picked: page.deletePicked.indexOf(modelData.file) >= 0
+                                            onPick: page.togglePick(modelData.file)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                // Files numbered past the matched count: named by their file, since that is
-                // what needs reviewing
-                Column {
-                    visible: !!page.detail && page.detail.unmatched_files.length > 0
-                    width: parent.width
-                    spacing: theme.space(4)
-                    Heading { text: words.t("series-extra-files"); count: page.detail ? page.detail.unmatched_files.length : 0; action: DeleteButton { where: "stray" } }
-                    DeleteBar { where: "stray" }
-                    Row {
-                        width: parent.width
-                        spacing: theme.space(2)
-                        Icon { glyph: "triangle-alert"; size: theme.space(4); color: theme.yellow }
-                        Label {
-                            width: parent.width - theme.space(6)
-                            wrapMode: Text.Wrap; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim
-                            text: page.detail ? words.t("series-extra-files-warning", { count: page.detail.unmatched_files.length, total: card.total_episodes || 0 }) : ""
-                        }
-                    }
+                    // Files numbered past the matched count: named by their file, since that is
+                    // what needs reviewing
                     Column {
+                        visible: !!page.detail && page.detail.unmatched_files.length > 0
                         width: parent.width
                         spacing: theme.space(4)
-                        Repeater { model: page.detail ? page.detail.unmatched_files : []
-                            EpisodeRow {
-                                required property var modelData
-                                episode: modelData; extra: true
-                                title: words.episodeName(modelData.title || "", modelData.number)
-                                detailText: Fmt.baseName(modelData.path)
-                                onPlay: page.openFile(modelData.file)
-                                picking: page.deleting
-                                picked: page.deletePicked.indexOf(modelData.file) >= 0
-                                onPick: page.togglePick(modelData.file)
-                            } }
+                        Heading { text: words.t("series-extra-files"); count: page.detail ? page.detail.unmatched_files.length : 0; action: DeleteButton { where: "stray" } }
+                        DeleteBar { where: "stray" }
+                        Row {
+                            width: parent.width
+                            spacing: theme.space(2)
+                            Icon { glyph: "triangle-alert"; size: theme.space(4); color: theme.yellow }
+                            Label {
+                                width: parent.width - theme.space(6)
+                                wrapMode: Text.Wrap; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim
+                                text: page.detail ? words.t("series-extra-files-warning", { count: page.detail.unmatched_files.length, total: card.total_episodes || 0 }) : ""
+                            }
+                        }
+                        Column {
+                            width: parent.width
+                            spacing: theme.space(4)
+                            Repeater { model: page.detail ? page.detail.unmatched_files : []
+                                EpisodeRow {
+                                    required property var modelData
+                                    episode: modelData; extra: true
+                                    title: words.episodeName(modelData.title || "", modelData.number)
+                                    detailText: Fmt.baseName(modelData.path)
+                                    onPlay: page.openFile(modelData.file)
+                                    picking: page.deleting
+                                    picked: page.deletePicked.indexOf(modelData.file) >= 0
+                                    onPick: page.togglePick(modelData.file)
+                                } }
+                        }
                     }
+                }
+
+                SeasonsTab {
+                    visible: page.tab === 1
+                    width: parent.width
+                }
+
+                // Artwork and music (#1455) come here
+                Item {
+                    objectName: "series-tab-art"
+                    visible: page.tab === 2
+                    width: parent.width
+                    height: theme.space(80)
+                    EmptyState { icon: "image"; title: words.t("series-art-soon") }
                 }
             }
 
@@ -1418,28 +1505,6 @@ Item {
                     Flow { width: parent.width; spacing: theme.space(3); Repeater { model: page.detail ? page.detail.characters : []; PersonCard { required property var modelData; person: modelData } } }
                 }
 
-                // Relations: the franchise as small rows, in the crawl's own order
-                Column {
-                    objectName: "series-relations"
-                    visible: page.relationNodes.length > 0
-                    width: parent.width
-                    spacing: theme.space(3)
-                    Heading { text: words.t("series-related"); count: page.relationNodes.length }
-                    Flow {
-                        id: relationFlow
-                        width: parent.width
-                        spacing: theme.space(3)
-                        // As many a row as fit at theme.space(64), the row filled
-                        readonly property int per: Math.max(1, Math.floor((width + spacing) / (theme.space(64) + spacing)))
-                        readonly property real stoneW: (width - (per - 1) * spacing) / per
-                        Repeater {
-                            model: page.relationNodes
-                            RelationStone { required property var modelData; node: modelData; width: relationFlow.stoneW }
-                        }
-                    }
-                    Caption { visible: !!page.graph && !page.graph.complete; msg: "series-related-filling" }
-                }
-
                 // Tags by rank; spoiler and adult tags behind the toggle
                 Column {
                     visible: !!page.detail && page.detail.tags.length > 0
@@ -1491,7 +1556,9 @@ Item {
                     readonly property int cols: count < 1 ? 1
                         : (width - (count - 1) * gap) / count >= theme.space(28) ? count
                         : Math.min(Math.ceil(count / 2), fit)
-                    readonly property real cardW: Math.max(0, Math.floor((width - (cols - 1) * gap) / cols))
+                    // Never wider than a poster in a full row of eight on a wide window, so three
+                    // stay poster-sized at the left instead of filling the column
+                    readonly property real cardW: Math.max(0, Math.min(theme.space(44), Math.floor((width - (cols - 1) * gap) / cols)))
                     Heading { text: words.t("series-recommendations"); count: page.detail ? page.detail.recommendations.length : 0 }
                     Grid { columns: recCol.cols; spacing: recCol.gap
                         Repeater { model: page.detail ? page.detail.recommendations : []
@@ -1502,52 +1569,367 @@ Item {
         }
     }
 
-    // One related entry: a poster sliver, the title, the relation and year. Owned opens its
-    // page; the rest open AniList.
-    component RelationStone: Corner {
-        id: rel
-        property var node: ({})
-        readonly property bool owned: node.owned !== null && node.owned !== undefined
-        height: theme.space(24)
-        radius: theme.radiusTile
-        smoothing: theme.cornerSmoothing
-        color: relMouse.containsMouse ? theme.raised : theme.tile
-        objectName: "relation-" + node.anilist_id
-        Corner {
-            id: relThumb
-            width: height / 1.5; height: parent.height
-            radius: parent.radius; smoothing: theme.cornerSmoothing
-            color: theme.tileSunken
-            fillItem: relArt.status === Image.Ready ? relArt : null
-            Image { id: relArt; visible: false; width: parent.width; height: parent.height
-                source: rel.node.poster ? Fmt.fileUrl(rel.node.poster) : ""
-                sourceSize: Qt.size(Math.ceil(parent.width * theme.devicePixelRatio), Math.ceil(parent.height * theme.devicePixelRatio))
-                fillMode: Image.PreserveAspectCrop; asynchronous: true }
-        }
+    // ---- Seasons & relations (#1454): the main line as one row of season cards on their
+    // banners in watch order, each joined to the one before; under it every other entry on
+    // its poster, with what it is and the season it hangs off
+    component SeasonsTab: Column {
+        id: st
+        objectName: "series-tab-seasons"
+        spacing: theme.space(8)
+        // The gap between two seasons carries the line that joins them
+        readonly property real gap: theme.space(8)
+        readonly property int fit: Math.max(1, Math.floor((width + gap) / (theme.space(62) + gap)))
+        readonly property int cols: Math.max(1, Math.min(page.seasonNodes.length, fit))
+        readonly property real seasonW: Math.min(theme.space(110), Math.floor((width - (cols - 1) * gap) / cols))
+        readonly property bool empty: page.seasonNodes.length === 0 && page.relationNodes.length === 0
+
         Column {
-            x: relThumb.width + theme.space(3)
-            width: parent.width - x - theme.space(3)
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: theme.space(1)
-            Label { width: parent.width; text: rel.node.title || ""; role: "title"; font.pointSize: theme.typeNormal; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; color: rel.node.pending ? theme.textDim : theme.text }
-            Label { width: parent.width; role: "ledger"; color: theme.textDim; elide: Text.ElideRight
-                text: [page.relationLabel(rel.node.relation), page.formatLabel(rel.node.format), rel.node.year ? String(rel.node.year) : ""].filter(function(s) { return s !== "" && s !== words.t("series-format-series") }).join(", ") }
-            Row {
-                spacing: theme.space(1.5)
-                StatusDot { anchors.verticalCenter: parent.verticalCenter; status: rel.node.list_status || "" }
-                Label { role: "ledger"; text: rel.owned ? words.t("series-relation-owned") : !rel.node.released ? words.t("series-relation-unreleased") : words.t("series-relation-on-anilist"); color: rel.owned ? theme.accent : theme.textDim }
+            visible: page.seasonNodes.length > 0
+            width: parent.width
+            spacing: theme.space(4)
+            Heading { text: words.t("series-seasons"); count: page.seasonNodes.length }
+            Grid {
+                objectName: "series-seasons"
+                columns: st.cols
+                columnSpacing: st.gap
+                rowSpacing: theme.space(5)
+                Repeater {
+                    model: page.seasonNodes
+                    SeasonCard {
+                        required property var modelData
+                        required property int index
+                        node: modelData
+                        number: index + 1
+                        width: st.seasonW
+                        joined: index % st.cols !== 0
+                        gap: st.gap
+                    }
+                }
             }
         }
-        MouseArea {
-            Accessible.role: Accessible.Button
-            Accessible.onPressAction: rel.owned ? frame.go("series", { id: rel.node.owned }, rel.node.title) : (rel.node.site_url ? frame.openLink(rel.node.site_url) : frame.openLink("https://anilist.co/anime/" + rel.node.anilist_id))
-            Accessible.name: theme.nameNear(parent)
-            id: relMouse
-            anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-            onClicked: rel.owned ? frame.go("series", { id: rel.node.owned }, rel.node.title) : (rel.node.site_url ? frame.openLink(rel.node.site_url) : frame.openLink("https://anilist.co/anime/" + rel.node.anilist_id))
+
+        Column {
+            visible: page.relationNodes.length > 0
+            width: parent.width
+            spacing: theme.space(4)
+            Heading { text: words.t("series-relations"); count: page.relationNodes.length }
+            Grid {
+                id: relationGrid
+                objectName: "series-relations"
+                readonly property real gap: theme.space(4)
+                columns: Math.max(1, Math.floor((st.width + gap) / (theme.space(84) + gap)))
+                columnSpacing: gap
+                rowSpacing: gap
+                readonly property real cardW: Math.floor((st.width - (columns - 1) * gap) / columns)
+                Repeater {
+                    model: page.relationNodes
+                    RelationCard { required property var modelData; node: modelData; width: relationGrid.cardW }
+                }
+            }
+        }
+
+        // Still being read: a graph the crawl is filling in, or an AniList match whose
+        // relations nobody has fetched yet
+        Caption {
+            visible: (!!page.graph && !page.graph.complete)
+                || (!!page.detail && !page.detail.has_graph && !page.detail.relations_known && page.anilistUrl !== "")
+            msg: "series-related-filling"
+        }
+
+        // Only a franchise known to be empty says so; while the graph loads, nothing
+        Item {
+            visible: st.empty && !!page.detail && !page.detail.has_graph && !!page.detail.relations_known
+            width: parent.width
+            height: theme.space(80)
+            EmptyState { icon: "git-branch"; title: words.t("series-seasons-none") }
         }
     }
 
+    // A season's number in watch order, in a round badge; the accent on the one this page is
+    component SeasonBadge: Rectangle {
+        property int number: 1
+        property bool here: false
+        property bool small: false
+        width: Math.max(height, badgeLabel.implicitWidth + theme.space(small ? 2 : 3))
+        height: theme.space(small ? 5 : 7)
+        radius: height / 2
+        antialiasing: true
+        color: here ? theme.accent : Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.62)
+        border.color: Qt.rgba(1, 1, 1, here ? 0 : 0.18)
+        border.width: 1
+        Label {
+            id: badgeLabel
+            anchors.centerIn: parent
+            text: String(parent.number)
+            role: "ledger"
+            font.pointSize: parent.small ? theme.typeSmall : theme.typeNormal
+            font.weight: 600
+            color: parent.here ? theme.accentText : theme.onPoster
+        }
+    }
+
+    // One season of the main line, on its banner (the poster's tone without one): its number,
+    // the title, the format, the year and the score, and where it stands with the library.
+    // The one this page is wears the accent edge; a line joins each to the season before.
+    component SeasonCard: Item {
+        id: sc
+        property var node: ({})
+        property int number: 1
+        property bool joined: false
+        property real gap: 0
+        readonly property bool here: !!node.current
+        readonly property bool owned: node.owned !== null && node.owned !== undefined
+        readonly property bool hasScore: node.score !== null && node.score !== undefined
+        objectName: "season-" + node.anilist_id
+        height: Math.round(width * 0.5)
+        activeFocusOnTab: !here
+        Keys.onReturnPressed: page.openNode(node)
+        Keys.onSpacePressed: page.openNode(node)
+        scale: theme.reducedMotion || here ? 1 : (scMouse.pressed ? 0.98 : 1)
+
+        PosterTone { id: scTone; source: sc.node.poster ? Fmt.fileUrl(sc.node.poster) : "" }
+
+        // The line from the season before, ending in an arrow at this one
+        Item {
+            visible: sc.joined
+            x: -sc.gap
+            width: sc.gap
+            height: theme.space(4)
+            y: Math.round((sc.height - height) / 2)
+            Rectangle {
+                x: theme.space(1.5)
+                width: parent.width - theme.space(3.5)
+                height: 2
+                radius: 1
+                anchors.verticalCenter: parent.verticalCenter
+                color: theme.textFaint
+            }
+            Icon {
+                anchors.right: parent.right
+                anchors.rightMargin: theme.space(0.5)
+                anchors.verticalCenter: parent.verticalCenter
+                glyph: "chevron-right"
+                size: parent.height
+                color: theme.textFaint
+            }
+        }
+
+        Corner {
+            anchors.fill: parent
+            radius: theme.radiusTile
+            smoothing: theme.cornerSmoothing
+            color: theme.bandBase(scTone.tone, sc.node.poster ? 0.5 : 0.25)
+            fillItem: banner.status === Image.Ready ? banner : null
+            Image {
+                id: banner
+                visible: false
+                width: parent.width; height: parent.height
+                source: sc.node.banner ? Fmt.fileUrl(sc.node.banner) : ""
+                sourceSize.width: Math.ceil(width * theme.devicePixelRatio * 1.5)
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+            }
+        }
+        // The words sit on a scrim rising from the foot
+        Rectangle {
+            anchors.fill: parent
+            radius: theme.radiusTile
+            antialiasing: true
+            gradient: Gradient {
+                GradientStop { position: 0; color: Qt.rgba(theme.posterScrim.r, theme.posterScrim.g, theme.posterScrim.b, 0.15) }
+                GradientStop { position: 0.4; color: Qt.rgba(theme.posterScrim.r, theme.posterScrim.g, theme.posterScrim.b, scMouse.containsMouse ? 0.55 : 0.4) }
+                GradientStop { position: 1; color: theme.posterScrim }
+            }
+        }
+
+        SeasonBadge { x: theme.space(2.5); y: theme.space(2.5); number: sc.number; here: sc.here }
+        Rectangle {
+            visible: sc.here
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: theme.space(2.5)
+            width: hereLabel.implicitWidth + theme.space(4)
+            height: theme.space(7)
+            radius: theme.radiusSm
+            antialiasing: true
+            color: Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.62)
+            border.color: Qt.rgba(1, 1, 1, 0.14)
+            border.width: 1
+            Label { id: hereLabel; anchors.centerIn: parent; msg: "series-seasons-here"; role: "ledger"; color: theme.accentOnPoster }
+        }
+
+        Column {
+            x: theme.space(3.5)
+            width: parent.width - theme.space(7)
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: theme.space(3)
+            spacing: theme.space(1)
+            Label {
+                width: parent.width
+                text: sc.node.title || ""
+                role: "title"
+                font.pointSize: theme.typeNormal
+                color: sc.node.pending ? theme.onPosterDim : theme.onPoster
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+                lineHeight: 0.95
+            }
+            Row {
+                width: parent.width
+                spacing: theme.space(3)
+                Label { id: scFacts; text: page.nodeFacts(sc.node); role: "ledger"; color: theme.onPosterDim; visible: text !== "" }
+                Row {
+                    visible: sc.hasScore
+                    spacing: theme.space(1)
+                    Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "star"; size: theme.space(3.5); color: theme.accentOnPoster }
+                    Label { text: sc.hasScore ? words.score(sc.node.score) : ""; role: "ledger"; color: theme.onPoster }
+                }
+            }
+            Row {
+                spacing: theme.space(1.5)
+                StatusDot { anchors.verticalCenter: parent.verticalCenter; status: sc.node.list_status || "" }
+                Label { text: page.nodeState(sc.node); role: "ledger"; color: sc.owned ? theme.accentOnPoster : theme.onPosterDim }
+            }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            visible: sc.here || scMouse.containsMouse || sc.activeFocus
+            radius: theme.radiusTile
+            antialiasing: true
+            color: "transparent"
+            border.color: sc.activeFocus ? theme.focusRing : theme.accent
+            border.width: sc.here || sc.activeFocus ? 2 : 1
+        }
+        MouseArea {
+            id: scMouse
+            anchors.fill: parent
+            enabled: !sc.here
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: page.openNode(sc.node)
+            Accessible.role: Accessible.Button
+            Accessible.name: theme.nameNear(parent)
+            Accessible.onPressAction: page.openNode(sc.node)
+        }
+    }
+
+    // One entry off the main line, on its poster: what it is to this show, the title, the
+    // format, the year and the score, where it stands with the library, and the season it
+    // hangs off by that season's badge
+    component RelationCard: Corner {
+        id: rc
+        property var node: ({})
+        readonly property bool owned: node.owned !== null && node.owned !== undefined
+        readonly property bool hasScore: node.score !== null && node.score !== undefined
+        readonly property int seasonIndex: node.anchor !== null && node.anchor !== undefined && page.seasonAt[node.anchor] !== undefined ? page.seasonAt[node.anchor] : -1
+        readonly property var season: seasonIndex >= 0 ? page.seasonNodes[seasonIndex] : null
+        objectName: "relation-" + node.anilist_id
+        height: theme.space(36)
+        radius: theme.radiusTile
+        smoothing: theme.cornerSmoothing
+        color: rcMouse.containsMouse ? theme.raised : theme.tile
+        activeFocusOnTab: true
+        Keys.onReturnPressed: page.openNode(node)
+        Keys.onSpacePressed: page.openNode(node)
+
+        Corner {
+            id: rcThumb
+            width: Math.round(height * 2 / 3)
+            height: parent.height
+            radius: parent.radius
+            smoothing: theme.cornerSmoothing
+            color: theme.tileSunken
+            fillItem: rcArt.status === Image.Ready ? rcArt : null
+            Image {
+                id: rcArt
+                visible: false
+                width: parent.width; height: parent.height
+                source: rc.node.poster ? Fmt.fileUrl(rc.node.poster) : ""
+                sourceSize: Qt.size(Math.ceil(parent.width * theme.devicePixelRatio), Math.ceil(parent.height * theme.devicePixelRatio))
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+            }
+        }
+        Column {
+            x: rcThumb.width + theme.space(4)
+            width: parent.width - x - theme.space(4)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: theme.space(1)
+            Label { width: parent.width; text: rc.node.relation || ""; role: "ledger"; color: theme.accent; elide: Text.ElideRight; visible: text !== "" }
+            Label {
+                width: parent.width
+                text: rc.node.title || ""
+                role: "title"
+                font.pointSize: theme.typeNormal
+                color: rc.node.pending ? theme.textDim : theme.text
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+            }
+            Row {
+                spacing: theme.space(3)
+                Label { text: page.nodeFacts(rc.node); role: "ledger"; color: theme.textDim; visible: text !== "" }
+                Row {
+                    visible: rc.hasScore
+                    spacing: theme.space(1)
+                    Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "star"; size: theme.space(3.5); color: theme.accent }
+                    Label { text: rc.hasScore ? words.score(rc.node.score) : ""; role: "ledger"; color: theme.text }
+                }
+            }
+            Row {
+                spacing: theme.space(1.5)
+                StatusDot { anchors.verticalCenter: parent.verticalCenter; status: rc.node.list_status || "" }
+                Label { text: page.nodeState(rc.node); role: "ledger"; color: rc.owned ? theme.accent : theme.textDim }
+            }
+            // The season it hangs off, by its badge and its title. The card's MouseArea takes
+            // the hover, so the tip here follows its pointer by hand
+            Item {
+                id: rcSeasonRow
+                objectName: "relation-season-" + rc.node.anilist_id
+                visible: !!rc.season
+                width: parent.width
+                height: rcBadge.height
+                readonly property bool pointed: {
+                    if (!visible || !rcMouse.containsMouse) return false
+                    var p = mapFromItem(rcMouse, rcMouse.mouseX, rcMouse.mouseY)
+                    return p.x >= 0 && p.y >= 0 && p.x <= width && p.y <= height
+                }
+                onPointedChanged: pointed ? rcTip.show() : rcTip.release()
+                SeasonBadge { id: rcBadge; small: true; number: rc.seasonIndex + 1; here: !!rc.season && !!rc.season.current }
+                Label {
+                    x: rcBadge.width + theme.space(1.5)
+                    width: parent.width - x
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: rc.season ? rc.season.title : ""
+                    role: "ledger"
+                    color: theme.textFaint
+                    elide: Text.ElideRight
+                }
+                Tooltip { id: rcTip; manual: true; held: rcSeasonRow.pointed; text: rc.season ? words.t("series-relations-joins", { title: rc.season.title }) : "" }
+            }
+        }
+        Rectangle {
+            anchors.fill: parent
+            visible: rc.activeFocus
+            radius: theme.radiusTile
+            antialiasing: true
+            color: "transparent"
+            border.color: theme.focusRing
+            border.width: 2
+        }
+        MouseArea {
+            id: rcMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: page.openNode(rc.node)
+            Accessible.role: Accessible.Button
+            Accessible.name: theme.nameNear(parent)
+            Accessible.onPressAction: page.openNode(rc.node)
+        }
+    }
     ScorePicker { id: scorePicker; parent: frame.overlay
         // A score kept on this device has no job to report back, so it says so here (#213)
         onSaved: function(v) { page.saveScore(v) }

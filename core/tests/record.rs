@@ -332,6 +332,7 @@ fn a_stub_fills_blanks_and_never_overwrites_a_value_with_null() {
         status: None,
         year: None,
         cover_url: None,
+        banner_url: None,
         site_url: None,
         episodes: Some(12),
         average_score: Some(77),
