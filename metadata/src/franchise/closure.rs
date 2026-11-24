@@ -30,6 +30,10 @@ pub struct Node {
     pub title_romaji: Option<String>,
     pub title_english: Option<String>,
     pub cover_url: Option<String>,
+    /// The wide art a season of a chain is drawn on (#1454).
+    pub banner_url: Option<String>,
+    /// AniList's 0 to 100, as it came; the read normalises it.
+    pub average_score: Option<u32>,
     /// Whether the crawl has taken this node's edges. False means the row
     /// carries no edges rather than that the node has none.
     pub relations_fetched: bool,
@@ -141,7 +145,7 @@ fn load(conn: &Connection, id: u64, now: i64) -> Result<Node, CoreError> {
     let row = conn
         .prepare_cached(
             "SELECT media_type, format, status, year, site_url, title_romaji, title_english, cover_url,
-                    relations_fetched_at, crawl_deferred_until
+                    relations_fetched_at, crawl_deferred_until, banner_url, average_score
              FROM anilist_media WHERE id = ?1",
         )?
         .query_row(params![as_i64(id)], |r| {
@@ -157,6 +161,8 @@ fn load(conn: &Connection, id: u64, now: i64) -> Result<Node, CoreError> {
                     cover_url: r.get(7)?,
                     relations_fetched: r.get::<_, Option<i64>>(8)?.is_some(),
                     deferred_until: r.get::<_, Option<i64>>(9)?.filter(|until| *until > now),
+                    banner_url: r.get(10)?,
+                    average_score: r.get::<_, Option<i64>>(11)?.and_then(|v| u32::try_from(v).ok()),
                 })
             },
         )
@@ -388,7 +394,8 @@ mod tests {
         media(&c, 1, true);
         c.execute(
             "UPDATE anilist_media SET format = 'TV', status = 'FINISHED', year = 2020,
-                    site_url = 'https://anilist.co/anime/1', title_english = 'One', cover_url = 'https://img/1.jpg'
+                    site_url = 'https://anilist.co/anime/1', title_english = 'One', cover_url = 'https://img/1.jpg',
+                    banner_url = 'https://img/b1.jpg', average_score = 81
              WHERE id = 1",
             [],
         )
@@ -407,6 +414,8 @@ mod tests {
                 title_romaji: Some("T1".to_string()),
                 title_english: Some("One".to_string()),
                 cover_url: Some("https://img/1.jpg".to_string()),
+                banner_url: Some("https://img/b1.jpg".to_string()),
+                average_score: Some(81),
                 relations_fetched: true,
                 deferred_until: None,
             }

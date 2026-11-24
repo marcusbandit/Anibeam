@@ -62,7 +62,8 @@ QtObject {
     // takes AniList's own codes (RELEASING) and the core's (Releasing) alike.
     function formatLabel(code) {
         var id = ({ TV: "anilist-format-tv", TV_SHORT: "anilist-format-tv-short", MOVIE: "anilist-format-film", SPECIAL: "anilist-format-special",
-                    OVA: "anilist-format-ova", ONA: "anilist-format-ona", MUSIC: "anilist-format-music" })[code]
+                    OVA: "anilist-format-ova", ONA: "anilist-format-ona", MUSIC: "anilist-format-music", MANGA: "anilist-format-manga",
+                    NOVEL: "anilist-format-novel", ONE_SHOT: "anilist-format-one-shot" })[code]
         return id ? t(id) : ""
     }
     function releaseStatus(code) {

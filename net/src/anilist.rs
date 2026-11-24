@@ -159,6 +159,8 @@ pub const ENRICHMENT_QUERY: &str = r"
       coverImage {
         large
       }
+      bannerImage
+      averageScore
       streamingEpisodes {
         title
         thumbnail
@@ -245,6 +247,8 @@ pub const ENRICHMENT_QUERY: &str = r"
             coverImage {
               large
             }
+            bannerImage
+            averageScore
           }
         }
       }
@@ -573,6 +577,11 @@ pub struct RelatedNode {
     pub site_url: Option<String>,
     pub title: Option<Title>,
     pub cover_image: Option<CoverLarge>,
+    /// Asked for on a relation's other end only: a recommendation's reply
+    /// leaves both out.
+    pub banner_image: Option<String>,
+    /// AniList's 0 to 100, as it came.
+    pub average_score: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -627,6 +636,9 @@ pub struct Enrichment {
     pub site_url: Option<String>,
     pub title: Option<Title>,
     pub cover_image: Option<CoverLarge>,
+    pub banner_image: Option<String>,
+    /// AniList's 0 to 100, as it came.
+    pub average_score: Option<u32>,
     #[serde(default, deserialize_with = "null_to_default")]
     pub streaming_episodes: Vec<StreamingEpisode>,
     #[serde(default, deserialize_with = "null_to_default")]

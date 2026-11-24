@@ -552,7 +552,14 @@ fn label_of(relation: &str) -> String {
         "CHARACTER" => "core-franchise-relation-character",
         "CONTAINS" => "anilist-relation-contains",
         "OTHER" => "anilist-relation-other",
-        other => return other.replace('_', " ").to_lowercase(),
+        other => {
+            let words = other.replace('_', " ").to_lowercase();
+            let mut letters = words.chars();
+            return match letters.next() {
+                Some(first) => first.to_uppercase().chain(letters).collect(),
+                None => words,
+            };
+        }
     };
     anibeam_contract::i18n::tr(id, &[])
 }
@@ -599,11 +606,18 @@ fn relation_to(current: u64, node: u64, chains: &[Chain], edges: &[Edge]) -> Opt
 }
 
 /// Everything one read of the graph needs: where each node goes, the edges
-/// as they are drawn, and what each node is to the series being read.
+/// as they are drawn, what each node is to the series being read, which
+/// chain it is in and where, and the season each node off the main line
+/// hangs off.
 pub(crate) struct Plan {
     pub positions: HashMap<u64, (f64, f64)>,
     pub edges: Vec<Edge>,
     pub labels: HashMap<u64, String>,
+    /// A chained node's chain, by row order, and its place in it.
+    pub chains: HashMap<u64, (u32, u32)>,
+    /// The chain the series is read from: its own, else the first.
+    pub main_line: Option<u32>,
+    pub anchors: HashMap<u64, u64>,
 }
 
 pub(crate) fn plan(closure: &Closure, current: u64) -> Plan {
@@ -637,11 +651,72 @@ pub(crate) fn plan(closure: &Closure, current: u64) -> Plan {
         .collect();
 
     let labels = labels(closure, current, &rows, &edges);
+    let chains: HashMap<u64, (u32, u32)> = rows
+        .iter()
+        .enumerate()
+        .flat_map(|(row, chain)| {
+            chain.iter().enumerate().map(move |(at, id)| {
+                (
+                    *id,
+                    (
+                        u32::try_from(row).unwrap_or(u32::MAX),
+                        u32::try_from(at).unwrap_or(u32::MAX),
+                    ),
+                )
+            })
+        })
+        .collect();
+    // The series' own chain, else the root's, else the first run with
+    // anything on screen in it. A run of novel or manga volumes is never a
+    // line of seasons: `order_rows` puts what the root was adapted from
+    // above it, so on a lone film's page the first row is often a book's.
+    let on_screen = |chain: &Chain| chain.iter().any(|id| !is_print(by_id.get(id)));
+    let main_line = rows
+        .iter()
+        .position(|chain| chain.contains(&current))
+        .or_else(|| {
+            rows.iter()
+                .position(|chain| chain.contains(&closure.root) && on_screen(chain))
+        })
+        .or_else(|| rows.iter().position(on_screen));
+    let anchors = main_line
+        .map(|i| anchors(&rows[i], &edges))
+        .unwrap_or_default();
     Plan {
         positions,
         edges,
         labels,
+        chains,
+        main_line: main_line.map(|i| u32::try_from(i).unwrap_or(u32::MAX)),
+        anchors,
     }
+}
+
+/// The season every other node hangs off: a walk outwards from all of the
+/// main line at once, each node taking the season the walk reached it
+/// from. So the nearest season wins, and of two as near the earlier one,
+/// since the walk sets off in watch order. A node the walk never reaches
+/// has no season.
+fn anchors(main: &[u64], edges: &[Edge]) -> HashMap<u64, u64> {
+    let mut out: HashMap<u64, u64> = HashMap::new();
+    let mut seen: HashSet<u64> = main.iter().copied().collect();
+    let mut queue: VecDeque<(u64, u64)> = main.iter().map(|id| (*id, *id)).collect();
+    while let Some((id, season)) = queue.pop_front() {
+        for x in edges {
+            let far = if x.from == id {
+                x.to
+            } else if x.to == id {
+                x.from
+            } else {
+                continue;
+            };
+            if seen.insert(far) {
+                out.insert(far, season);
+                queue.push_back((far, season));
+            }
+        }
+    }
+    out
 }
 
 /// A label for every node the reader is not standing on. What the edges
@@ -958,7 +1033,12 @@ mod tests {
 
     #[test]
     fn an_unknown_relation_reads_as_its_own_words() {
-        assert_eq!(label_of("WEIRD_NEW_TYPE"), "weird new type");
+        assert_eq!(
+            label_of("WEIRD_NEW_TYPE"),
+            "Weird new type",
+            "in sentence case, like every relation the catalog names"
+        );
+        assert_eq!(label_of(""), "");
         assert_eq!(label_of("CHARACTER"), "Shared characters");
         assert_eq!(
             relation_to(1, 7, &[], &[]),
@@ -1138,5 +1218,170 @@ mod tests {
             positions[&3].1 + 1,
             "the row above the second chain is taken, so it hangs below"
         );
+    }
+
+    // -- 6. The main line ---------------------------------------------------
+
+    /// Two runs of sequels: 1, 2, 3 and an alternative telling 20, 21. A
+    /// film 30 hangs off season 2, and a special 31 off the film.
+    fn two_lines() -> Closure {
+        closure_of(
+            1,
+            vec![
+                anime(1, 2000),
+                anime(2, 2001),
+                anime(3, 2002),
+                anime(20, 2010),
+                anime(21, 2011),
+                node(30, "ANIME", "MOVIE", Some(2003)),
+                node(31, "ANIME", "SPECIAL", Some(2004)),
+            ],
+            vec![
+                e(2, 1, "PREQUEL"),
+                e(2, 3, "SEQUEL"),
+                e(20, 21, "SEQUEL"),
+                e(1, 20, "ALTERNATIVE"),
+                e(2, 30, "SIDE_STORY"),
+                e(30, 31, "SIDE_STORY"),
+            ],
+            &[],
+        )
+    }
+
+    #[test]
+    fn the_main_line_is_the_chain_the_series_is_in_with_its_places_in_watch_order() {
+        let p = plan(&two_lines(), 2);
+        let main = p
+            .main_line
+            .expect("a franchise with chains has a main line");
+        let mut line: Vec<(u32, u64)> = p
+            .chains
+            .iter()
+            .filter(|(_, (chain, _))| *chain == main)
+            .map(|(id, (_, at))| (*at, *id))
+            .collect();
+        line.sort();
+        assert_eq!(line, vec![(0, 1), (1, 2), (2, 3)]);
+
+        let other = plan(&two_lines(), 21);
+        let main = other.main_line.unwrap();
+        assert_eq!(
+            other.chains[&20],
+            (main, 0),
+            "read from the alternative, its own run is the line"
+        );
+        assert_eq!(other.chains[&21], (main, 1));
+    }
+
+    #[test]
+    fn a_series_in_no_chain_reads_the_first_chain_as_its_main_line() {
+        let p = plan(&two_lines(), 30);
+        assert_eq!(p.main_line, Some(p.chains[&1].0));
+        assert!(!p.chains.contains_key(&30));
+    }
+
+    /// The anime 1, 2 was adapted from the novels 10, 11, which sit above
+    /// it as the first row. A film in neither run still reads the anime as
+    /// its seasons, never the books.
+    #[test]
+    fn a_series_in_no_chain_never_takes_a_run_of_books_as_its_seasons() {
+        let closure = closure_of(
+            1,
+            vec![
+                anime(1, 2010),
+                anime(2, 2011),
+                node(10, "MANGA", "NOVEL", Some(2005)),
+                node(11, "MANGA", "NOVEL", Some(2006)),
+                node(30, "ANIME", "MOVIE", Some(2012)),
+            ],
+            vec![
+                e(1, 2, "SEQUEL"),
+                e(10, 11, "SEQUEL"),
+                e(10, 1, "ADAPTATION"),
+                e(2, 30, "SIDE_STORY"),
+            ],
+            &[],
+        );
+        let p = plan(&closure, 30);
+        assert_eq!(p.chains[&10].0, 0, "the books are the first row");
+        assert_eq!(p.main_line, Some(p.chains[&1].0));
+        assert_eq!(p.anchors.get(&30), Some(&2));
+
+        // With the root a book, the first run on screen still wins.
+        let mut books_first = closure;
+        books_first.root = 10;
+        let p = plan(&books_first, 30);
+        assert_eq!(p.main_line, Some(p.chains[&1].0));
+    }
+
+    #[test]
+    fn only_books_in_chains_is_no_main_line() {
+        let closure = closure_of(
+            10,
+            vec![
+                node(10, "MANGA", "MANGA", Some(2005)),
+                node(11, "MANGA", "MANGA", Some(2006)),
+                anime(30, 2012),
+            ],
+            vec![e(10, 11, "SEQUEL"), e(10, 30, "ADAPTATION")],
+            &[],
+        );
+        assert_eq!(plan(&closure, 30).main_line, None);
+    }
+
+    #[test]
+    fn everything_off_the_main_line_hangs_off_the_nearest_season() {
+        let p = plan(&two_lines(), 1);
+        assert_eq!(
+            p.anchors.get(&30),
+            Some(&2),
+            "the film is season 2's side story"
+        );
+        assert_eq!(
+            p.anchors.get(&31),
+            Some(&2),
+            "the special reaches the line through the film"
+        );
+        assert_eq!(p.anchors.get(&20), Some(&1));
+        assert_eq!(
+            p.anchors.get(&21),
+            Some(&1),
+            "a chain off the line hangs where it joins it"
+        );
+        assert!(!p.anchors.contains_key(&1), "a season hangs off nothing");
+        assert!(!p.anchors.contains_key(&3));
+    }
+
+    #[test]
+    fn a_node_joined_to_two_seasons_hangs_off_the_earlier() {
+        let closure = closure_of(
+            1,
+            vec![
+                anime(1, 2000),
+                anime(2, 2001),
+                node(9, "ANIME", "OVA", Some(2002)),
+            ],
+            vec![
+                e(1, 2, "SEQUEL"),
+                e(2, 9, "SIDE_STORY"),
+                e(1, 9, "SIDE_STORY"),
+            ],
+            &[],
+        );
+        assert_eq!(plan(&closure, 2).anchors.get(&9), Some(&1));
+    }
+
+    #[test]
+    fn no_chain_at_all_is_no_main_line() {
+        let closure = closure_of(
+            1,
+            vec![anime(1, 2000), node(9, "ANIME", "OVA", Some(2002))],
+            vec![e(1, 9, "SIDE_STORY")],
+            &[],
+        );
+        let p = plan(&closure, 1);
+        assert_eq!(p.main_line, None);
+        assert!(p.chains.is_empty());
+        assert!(p.anchors.is_empty());
     }
 }
