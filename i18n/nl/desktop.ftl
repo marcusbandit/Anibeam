@@ -335,8 +335,6 @@ home-continue-fact = { $count } series bezig
 home-on-hold = In de wacht
 home-on-hold-fact = { $count } series om naar terug te keren
 home-hero-open = { $title } openen
-home-hero-pick-up = Ga verder waar je stopte
-home-hero-up-next = Hierna
 home-hero-downloading = { $count ->
     [one] { $count } aflevering
    *[other] { $count } afleveringen

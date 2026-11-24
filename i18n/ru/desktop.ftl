@@ -381,8 +381,6 @@ home-continue-fact = В процессе: { $count }
 home-on-hold = Отложено
 home-on-hold-fact = Ждут возвращения: { $count }
 home-hero-open = Открыть «{ $title }»
-home-hero-pick-up = Продолжить с того же места
-home-hero-up-next = Далее
 home-hero-downloading = Скачивается { $count ->
     [one] { $count } серия
     [few] { $count } серии

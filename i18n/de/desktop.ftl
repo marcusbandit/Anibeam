@@ -335,8 +335,6 @@ home-continue-fact = { $count } Serien angefangen
 home-on-hold = Pausiert
 home-on-hold-fact = { $count } Serien zum Wiederaufnehmen
 home-hero-open = { $title } öffnen
-home-hero-pick-up = Da weiter, wo du warst
-home-hero-up-next = Als Nächstes
 home-hero-downloading = Lade { $count ->
     [one] { $count } Folge
    *[other] { $count } Folgen

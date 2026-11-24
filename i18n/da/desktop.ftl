@@ -335,8 +335,6 @@ home-continue-fact = { $count } serier i gang
 home-on-hold = På pause
 home-on-hold-fact = { $count } serier at vende tilbage til
 home-hero-open = Åbn { $title }
-home-hero-pick-up = Fortsæt, hvor du stoppede
-home-hero-up-next = Næste
 home-hero-downloading = Downloader { $count ->
     [one] { $count } afsnit
    *[other] { $count } afsnit

@@ -385,8 +385,6 @@ home-continue-fact = Seriale w trakcie: { $count }
 home-on-hold = Wstrzymane
 home-on-hold-fact = Seriale do powrotu: { $count }
 home-hero-open = Otwórz { $title }
-home-hero-pick-up = Oglądaj od miejsca przerwania
-home-hero-up-next = Następny
 home-hero-downloading = Pobieranie: { $count ->
     [one] { $count } odcinek
     [few] { $count } odcinki

@@ -337,8 +337,6 @@ home-continue-fact = { $count } series in progress
 home-on-hold = On hold
 home-on-hold-fact = { $count } series to come back to
 home-hero-open = Open { $title }
-home-hero-pick-up = Pick up where you stopped
-home-hero-up-next = Up next
 home-hero-downloading = Downloading { $count ->
     [one] { $count } episode
    *[other] { $count } episodes

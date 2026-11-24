@@ -15,6 +15,7 @@
 // rows of the season's shows had nothing to do with the person who opened it.
 import QtQuick
 import QtQuick.Shapes
+import QtQuick.Window
 import com.marcusrosado.Anibeam
 
 Item {
@@ -97,8 +98,30 @@ Item {
         return out
     }
     property var continueList: []   // [{ card, detail, episode, partial }]
-    // The hero's turn: the first few of Continue, one at a time
+    // The hero's turn: the first few of Continue, one at a time. Its slides hang off a model of
+    // series ids kept in place across reloads (syncHero), so a read that leaves a series in the
+    // hero keeps its slide, a crossfade under way and the focus inside it; each slide reads its
+    // entry from heroEntries by id, which a reload replaces.
     readonly property var heroList: continueList.slice(0, 8)
+    readonly property var heroEntries: {
+        var m = {}
+        for (var i = 0; i < heroList.length; i++) m[heroList[i].card.id] = heroList[i]
+        return m
+    }
+    ListModel { id: heroIds }
+    function syncHero() {
+        var want = heroList.map(function(e) { return e.card.id })
+        for (var i = heroIds.count - 1; i >= 0; i--)
+            if (want.indexOf(heroIds.get(i).sid) < 0) heroIds.remove(i)
+        for (var k = 0; k < want.length; k++) {
+            var at = -1
+            for (var j = k; j < heroIds.count; j++) if (heroIds.get(j).sid === want[k]) { at = j; break }
+            if (at < 0) heroIds.insert(k, { sid: want[k] })
+            else if (at !== k) heroIds.move(at, k, 1)
+        }
+        hero.afterSync()
+    }
+    onHeroListChanged: syncHero()
     readonly property var continueIds: {
         var m = {}
         for (var i = 0; i < continueList.length; i++) m[continueList[i].card.id] = true
@@ -372,22 +395,23 @@ Item {
     readonly property var catchUpList: {
         var month = 45 * 86400, now = nowMs / 1000
         return shelf.filter(function(c) {
-            if (page.continueIds[c.id] || page.airingIds[c.id] || page.droppedOf(c)) return false
+            if (page.continueIds[c.id] || page.airingIds[c.id] || page.droppedOf(c) || page.pausedOf(c)) return false
             if (c.watched_state === "Behind") return true
             return page.viewedAt(c) > now - month && c.watched_state !== "CaughtUp"
         })
     }
     // The series a file arrived in over the last fortnight, newest first; one Continue holds
-    // already is left out, since its new episode is the card there (#1464)
+    // already is left out, since its new episode is the card there, and one on hold has its
+    // own shelf (#1464)
     readonly property var downloadedList: {
         var since = nowMs / 1000 - 14 * 86400
-        return shelf.filter(function(c) { return c.downloaded_at && c.downloaded_at >= since && !page.continueIds[c.id] })
+        return shelf.filter(function(c) { return c.downloaded_at && c.downloaded_at >= since && !page.continueIds[c.id] && !page.pausedOf(c) })
             .sort(function(a, b) { return b.downloaded_at - a.downloaded_at })
     }
     // Never started, best rated first
     readonly property var freshList: {
         var list = shelf.filter(function(c) {
-            return !page.continueIds[c.id] && !page.airingIds[c.id] && !page.droppedOf(c) && page.viewedAt(c) === 0
+            return !page.continueIds[c.id] && !page.airingIds[c.id] && !page.droppedOf(c) && !page.pausedOf(c) && page.viewedAt(c) === 0
                 && page.watchedOf(c) === 0 && (c.episodes_on_disk || 0) > 0
         })
         return list.sort(function(a, b) { return (b.community_score || 0) - (a.community_score || 0) })
@@ -896,8 +920,10 @@ Item {
 
     // ---- Continue (#1033): one card a series, the episode to go on with. The still of that
     // episode at 16:9 (the banner, then the poster, where the record has none), how far into
-    // it you stopped as a thin bar along its foot, then the show and the episode. A click
-    // plays it from where it stopped; the series is in the right-click menu.
+    // it you stopped as a thin bar along its foot, then the show and the episode. A click,
+    // Return or Space plays it from where it stopped; the series is in the context menu, from
+    // a right click or Shift+F10 / the Menu key on a focused card. Every series Continue holds
+    // is shown, as many rows as it takes, since the shelves below leave all of them out.
     function episodeLabel(ep) {
         if (!ep) return ""
         var n = words.episodeNumber(ep.number)
@@ -1033,8 +1059,10 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: { ecard.forceActiveFocus(); page.playEntry(ecard.entry) }
-            onContainsMouseChanged: frame.hoverCard(ecard, ecard.card, containsMouse)
+            onContainsMouseChanged: frame.hoverCard(ecard, ecard.card, containsMouse || ecard.activeFocus)
         }
+        // The context menu reads the card under the pointer, or the focused one from the keys
+        onActiveFocusChanged: if (!em.containsMouse) frame.hoverCard(ecard, ecard.card, activeFocus)
         Component.onDestruction: frame.hoverCard(ecard, null, false)
     }
     component ContinueRow: Column {
@@ -1043,25 +1071,17 @@ Item {
         readonly property real minWidth: theme.space(76)
         readonly property int cols: Math.max(1, Math.floor((width + page.gap) / (minWidth + page.gap)))
         readonly property real cardWidth: Math.floor((width - page.gap * (cols - 1)) / cols)
-        readonly property var shown: entries.slice(0, cols)
         visible: entries.length > 0
         spacing: theme.space(3)
         Heading {
             text: words.t("home-continue")
             fact: words.t("home-continue-fact", { count: row.entries.length })
-            action: Button {
-                visible: row.entries.length > row.shown.length
-                msg: "action-see-all"
-                small: true
-                flat: true
-                onClicked: frame.go("library", { arrange: "WatchState", box: "Watching" })
-            }
         }
         Flow {
             width: row.width
             spacing: page.gap
             Repeater {
-                model: row.shown
+                model: row.entries
                 EpisodeCard { required property var modelData; entry: modelData; width: row.cardWidth }
             }
         }
@@ -1092,9 +1112,13 @@ Item {
             // Under the rest of the column, so the art can run up behind the page's head
             z: -1
             width: parent.width
-            readonly property int count: page.heroList.length
+            readonly property int count: heroIds.count
+            // The series shown and the one fading out under it, by id, so a reload that moves
+            // them in the list moves nothing on screen; `index` is the shown one's place, for
+            // the dots and the steps
+            property int shownId: -1
+            property int prevId: -1
             property int index: 0
-            property int prev: -1
             property real fade: 1
             // A short window gives the hero less of its height, so Continue still shows under it
             readonly property real frameH: Math.round(Math.min(theme.space(56), page.height * 0.24))
@@ -1111,28 +1135,32 @@ Item {
                 return Math.ceil(h)
             }
             height: visible ? topPad + contentH + tail : 0
-            // The series shown stays shown when the list is read again
-            property int shownId: -1
-            Connections {
-                target: page
-                function onHeroListChanged() {
-                    var i = page.heroList.findIndex(function(e) { return e.card.id === hero.shownId })
+            function indexOf(id) {
+                for (var i = 0; i < heroIds.count; i++) if (heroIds.get(i).sid === id) return i
+                return -1
+            }
+            // After a reload: the series shown stays shown, and a fade under way runs on, unless
+            // its series left the list
+            function afterSync() {
+                if (indexOf(shownId) < 0) {
                     fadeIn.stop()
-                    hero.prev = -1
-                    hero.fade = 1
-                    hero.index = Math.max(0, i)
-                    hero.shownId = hero.count ? page.heroList[hero.index].card.id : -1
+                    fade = 1
+                    prevId = -1
+                    shownId = heroIds.count ? heroIds.get(0).sid : -1
                 }
+                if (prevId >= 0 && indexOf(prevId) < 0) prevId = -1
+                index = Math.max(0, indexOf(shownId))
             }
             function show(i) {
                 if (count < 2) return
                 i = (i % count + count) % count
-                if (i === index) return
-                prev = index
+                var id = heroIds.get(i).sid
+                if (id === shownId) return
+                prevId = shownId
+                shownId = id
                 index = i
-                shownId = page.heroList[i].card.id
                 lastInput = Date.now()
-                if (theme.reducedMotion) { fadeIn.stop(); fade = 1; prev = -1 }
+                if (theme.reducedMotion) { fadeIn.stop(); fade = 1; prevId = -1 }
                 else fadeIn.restart()
             }
             NumberAnimation {
@@ -1141,14 +1169,18 @@ Item {
                 from: 0; to: 1
                 duration: 900
                 easing.type: Easing.InOutQuad
-                onFinished: hero.prev = -1
+                onFinished: hero.prevId = -1
             }
             // On by itself after eight seconds with no input, and never while the pointer
-            // rests on the hero or the hero is scrolled away. Any step, a pointer leaving the
-            // hero and a scroll start the eight seconds again.
+            // rests on the hero, the keyboard focus is inside it, or it is scrolled away. Any
+            // step, a pointer leaving the hero and a scroll start the eight seconds again.
             readonly property int idleMs: 8000
             property real lastInput: Date.now()
-            readonly property bool held: heroHover.hovered
+            readonly property bool focusInside: {
+                for (var f = hero.Window.activeFocusItem; f; f = f.parent) if (f === hero) return true
+                return false
+            }
+            readonly property bool held: heroHover.hovered || focusInside
             onHeldChanged: lastInput = Date.now()
             Connections { target: scroll; function onContentYChanged() { hero.lastInput = Date.now() } }
             Timer {
@@ -1161,22 +1193,25 @@ Item {
 
             Repeater {
                 id: slides
-                model: page.heroList
+                model: heroIds
                 Item {
                     id: slide
-                    required property var modelData
+                    required property int sid
                     required property int index
-                    readonly property bool current: index === hero.index
-                    readonly property bool leaving: index === hero.prev
-                    readonly property var c: modelData.card
-                    readonly property var d: modelData.detail
-                    readonly property var ep: modelData.episode
-                    readonly property bool partial: modelData.partial
+                    readonly property var entry: page.heroEntries[sid] || null
+                    readonly property bool current: sid === hero.shownId
+                    readonly property bool leaving: sid === hero.prevId
+                    // Only what is on screen, or next up, holds its art in memory
+                    readonly property bool loaded: current || leaving || (hero.count > 1 && index === (hero.index + 1) % hero.count)
+                    readonly property var c: entry ? entry.card : ({})
+                    readonly property var d: entry ? entry.detail : null
+                    readonly property var ep: entry ? entry.episode : null
+                    readonly property bool partial: entry ? entry.partial : false
                     readonly property real wordsH: wordsCol.implicitHeight
                     readonly property string backdrop: d && d.banner ? d.banner : ep && ep.still ? ep.still : ""
                     readonly property string still: ep && ep.still ? ep.still : ""
                     readonly property bool hasMinutes: !!(d && d.episode_minutes)
-                    readonly property real frac: page.resumeFrac(modelData)
+                    readonly property real frac: page.resumeFrac(entry)
                     // The incoming slide fades in over the outgoing one, which stays whole
                     // under it, so the art never dips to the page between the two
                     z: current ? 2 : leaving ? 1 : 0
@@ -1205,7 +1240,9 @@ Item {
                             id: art
                             visible: slide.backdrop !== "" && status === Image.Ready
                             anchors.fill: parent
-                            source: slide.backdrop ? Fmt.fileUrl(slide.backdrop) : ""
+                            source: slide.loaded && slide.backdrop ? Fmt.fileUrl(slide.backdrop) : ""
+                            // Decoded at the width it is drawn, not the banner's own
+                            sourceSize.width: Math.ceil(back.width * Screen.devicePixelRatio)
                             fillMode: Image.PreserveAspectCrop
                             verticalAlignment: slide.d && slide.d.banner ? Image.AlignTop : Image.AlignVCenter
                             asynchronous: true
@@ -1258,7 +1295,7 @@ Item {
                                 id: frameImg
                                 visible: false
                                 width: frameBox.width; height: frameBox.height
-                                source: slide.still ? Fmt.fileUrl(slide.still) : slide.c.poster ? Fmt.fileUrl(slide.c.poster) : ""
+                                source: !slide.loaded ? "" : slide.still ? Fmt.fileUrl(slide.still) : slide.c.poster ? Fmt.fileUrl(slide.c.poster) : ""
                                 sourceSize: Qt.size(Math.ceil(frameBox.width * 2), Math.ceil(frameBox.height * 2))
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
@@ -1300,11 +1337,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: page.playEntry(slide.modelData)
+                                onClicked: page.playEntry(slide.entry)
                                 onContainsMouseChanged: frame.hoverCard(frameBox, slide.c, containsMouse)
                                 Accessible.role: Accessible.Button
                                 Accessible.name: (slide.c.title || "") + ", " + page.episodeLabel(slide.ep)
-                                Accessible.onPressAction: page.playEntry(slide.modelData)
+                                Accessible.onPressAction: page.playEntry(slide.entry)
                             }
                             Component.onDestruction: frame.hoverCard(frameBox, null, false)
                         }
@@ -1317,12 +1354,6 @@ Item {
                             width: hero.width - x - (stepper.visible ? stepper.width + theme.space(6) : 0)
                             spacing: theme.space(3)
 
-                            Label {
-                                text: slide.partial ? words.t("home-hero-pick-up") : words.t("home-hero-up-next")
-                                role: "title"
-                                font.pointSize: theme.typeNormal
-                                color: slide.inkAccent
-                            }
                             // The show's logo when the record has one, from its left edge; the
                             // title in the display cut otherwise. Either opens the series.
                             Item {
@@ -1436,7 +1467,7 @@ Item {
                                     anchors.verticalCenter: parent.verticalCenter
                                     role: "ledger"
                                     color: slide.inkDim
-                                    text: slide.partial ? words.t("home-hero-min-left", { count: page.minutesLeft(slide.modelData) })
+                                    text: slide.partial ? words.t("home-hero-min-left", { count: page.minutesLeft(slide.entry) })
                                         : slide.c.total_episodes > 0 ? words.t("home-hero-watched", { watched: page.watchedOf(slide.c), total: slide.c.total_episodes }) : ""
                                 }
                             }
@@ -1453,7 +1484,7 @@ Item {
                                     text: !slide.ep ? "" : words.episodeNumber(slide.ep.number) === null
                                           ? words.t(slide.partial ? "home-hero-resume-unnumbered" : "home-hero-play-unnumbered")
                                           : words.t(slide.partial ? "home-hero-resume" : "home-hero-play", { number: words.episodeNumber(slide.ep.number) })
-                                    onClicked: page.playEntry(slide.modelData)
+                                    onClicked: page.playEntry(slide.entry)
                                 }
                                 Button {
                                     ghost: true
@@ -1479,6 +1510,11 @@ Item {
                 Button {
                     objectName: "home-hero-previous"
                     anchors.verticalCenter: parent.verticalCenter
+                    // A click leaves the focus where it was, so a clicked arrow does not hold
+                    // the cycle; Tab still reaches it
+                    takesFocus: false
+                    activeFocusOnTab: true
+                    Accessible.focusable: true
                     width: height
                     ghost: true
                     icon: "chevron-left"
@@ -1512,7 +1548,7 @@ Item {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: hero.show(dot.index)
                                 Accessible.role: Accessible.Button
-                                Accessible.name: page.heroList[dot.index] ? page.heroList[dot.index].card.title || "" : ""
+                                Accessible.name: { var e = dot.index < heroIds.count ? page.heroEntries[heroIds.get(dot.index).sid] : null; return e ? e.card.title || "" : "" }
                                 Accessible.onPressAction: hero.show(dot.index)
                             }
                         }
@@ -1521,6 +1557,11 @@ Item {
                 Button {
                     objectName: "home-hero-next"
                     anchors.verticalCenter: parent.verticalCenter
+                    // A click leaves the focus where it was, so a clicked arrow does not hold
+                    // the cycle; Tab still reaches it
+                    takesFocus: false
+                    activeFocusOnTab: true
+                    Accessible.focusable: true
                     width: height
                     ghost: true
                     icon: "chevron-right"
