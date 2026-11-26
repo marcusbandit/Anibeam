@@ -1102,8 +1102,17 @@ Item {
     function torrentKey(t) { return t.series_id !== null && t.series_id !== undefined ? "s" + t.series_id : "p" + folderOf(t.save_path) }
     function ruleKey(r) { return r.show ? "s" + r.show.series_id : "p" + folderOf(r.save_path) }
     function titleOf(r) { return r.show ? r.show.title : r.name }
-    function ruleForSeries(id) { for (var i = 0; i < rules.length; i++) if (rules[i].show && rules[i].show.series_id === id) return rules[i]; return null }
-    readonly property var ruleByKey: { var m = {}; for (var i = 0; i < rules.length; i++) m[ruleKey(rules[i])] = rules[i]; return m }
+    function ruleForSeries(id) { for (var i = 0; i < followed.length; i++) if (followed[i].show && followed[i].show.series_id === id) return followed[i]; return null }
+    // A twin's folder leads to its show's card too
+    readonly property var ruleByKey: {
+        var m = {}
+        for (var i = 0; i < followed.length; i++) {
+            var f = followed[i]
+            m[ruleKey(f)] = f
+            ;(f.twins || []).forEach(function(t) { if (!m[page.ruleKey(t)]) m[page.ruleKey(t)] = f })
+        }
+        return m
+    }
 
     // Active is what is moving or waiting to: not done, not stopped, not broken
     function rank(t) {
@@ -1182,15 +1191,19 @@ Item {
     }
     // One card per show: rules that fill one show (an older app followed a show again beside
     // its first rule) are one subscription here, led by one that still fetches, and the rest
-    // ride along as `twins` so unsubscribing takes them all (#1486)
+    // ride along as `twins` so unsubscribing takes them all (#1486). A rule with no library
+    // show is told by its folder, or by its name without the " @endpoint" an engine adds
     function leads(r) { return r.rule_enabled !== false && r.followable !== false }
+    function plainName(r) { return String(r.name).replace(/ @\S+( \d+)?$/, "").toLowerCase() }
     readonly property var followed: {
         var m = {}, order = []
         for (var i = 0; i < rules.length; i++) {
-            var r = rules[i], k = page.ruleKey(r), g = m[k]
-            if (!g) { g = m[k] = { rule: r, twins: [] }; order.push(g) }
-            else if (page.leads(r) && !page.leads(g.rule)) { g.twins.push(g.rule.name); g.rule = r }
-            else g.twins.push(r.name)
+            var r = rules[i], k = page.ruleKey(r), n = r.show ? "" : "n" + page.plainName(r), g = m[k] || (n ? m[n] : undefined)
+            if (!g) { g = { rule: r, twins: [] }; order.push(g) }
+            else if (page.leads(r) && !page.leads(g.rule)) { g.twins.push(g.rule); g.rule = r }
+            else g.twins.push(r)
+            m[k] = g
+            if (n) m[n] = g
         }
         return order.map(function(g) { return g.twins.length ? Object.assign({}, g.rule, { twins: g.twins }) : g.rule })
     }
@@ -1421,12 +1434,19 @@ Item {
         return { title: page.titleOf(r), rule: r.name, hashes: ts.map(function(t) { return t.hash }), series: r.show ? r.show.series_id : -1,
                  rkey: "r:" + r.name, tkeys: ts.map(function(t) { return "t:" + t.hash }), size: page.sumSize(ts), folder: r.show ? r.show.path : "" }
     }
-    // A show's rule and the twins beside it: each twin goes on its own, as a rule alone
+    // A show's rule and the twins beside it: each twin goes on its own, with the torrents of
+    // its folder that the show's rule does not take already
     function targetsForRule(r) {
-        return [page.targetForRule(r)].concat((r.twins || []).map(function(name) {
-            return { title: page.titleOf(r), rule: name, hashes: [], series: -1, rkey: "r:" + name, tkeys: [], size: 0, folder: "" }
+        var lead = page.targetForRule(r), seen = {}
+        lead.hashes.forEach(function(h) { seen[h] = true })
+        return [lead].concat((r.twins || []).map(function(twin) {
+            var ts = page.torrentsFor(page.ruleKey(twin), page.folderOf(twin.save_path)).filter(function(t) { return !seen[t.hash] })
+            ts.forEach(function(t) { seen[t.hash] = true })
+            return { title: lead.title, rule: twin.name, hashes: ts.map(function(t) { return t.hash }), series: -1, rkey: "r:" + twin.name,
+                     tkeys: ts.map(function(t) { return "t:" + t.hash }), size: page.sumSize(ts), folder: "" }
         }))
     }
+    function hashCount(ts) { var n = 0; for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length; return n }
     function targetForGroup(g) {
         return { title: g.title, rule: "", hashes: g.torrents.map(function(t) { return t.hash }), series: g.show ? g.show.series_id : -1,
                  rkey: "", tkeys: ["g:" + g.key].concat(g.torrents.map(function(t) { return "t:" + t.hash })), size: g.size, folder: g.show ? g.show.path : "" }
@@ -1453,8 +1473,8 @@ Item {
         frame.askRemoval(anchor, {
             heading: words.t("downloads-unsubscribe-heading", { title: t.title }),
             base: words.t("downloads-unsubscribe-base", { client: page.clientName }),
-            rule: true, torrentCount: t.hashes.length,
-            canFiles: t.hashes.length > 0 || t.series >= 0,
+            rule: true, torrentCount: page.hashCount(ts),
+            canFiles: page.hashCount(ts) > 0 || t.series >= 0,
             filesWhere: page.filesWhere(t)
         }, function(choice) { page.enqueue(ts, choice) })
     }

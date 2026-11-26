@@ -433,6 +433,54 @@ fn following_a_show_again_from_a_search_keeps_its_folder() {
     no_anirss(&r.http);
 }
 
+/// Followed again from the feed its plain-named rule reads, the rule keeps its name and its
+/// folder, and only the `@endpoint` rule beside it goes: its folder is not the show's
+/// (#1486).
+#[test]
+fn following_again_from_the_same_feed_keeps_the_rules_folder() {
+    let r = rig();
+    let plain =
+        json!({"affectedFeeds": ["https://feed.example/rss?q=Show"], "savePath": "/srv/TV/Show"});
+    let other = json!({"affectedFeeds": ["https://other.example/rss?q=Show"], "savePath": "/srv/TV/Show @other"});
+    let both = json!({ "Show": plain, "Show @other": other }).to_string();
+    r.http.push_for("rss/rules", 200, both.clone());
+    r.http.push_for("rss/addFeed", 409, "Conflict");
+    r.http.push_for(
+        "rss/items",
+        200,
+        json!({"Show": {"uid": "u", "url": "https://feed.example/rss?q=Show"}}).to_string(),
+    );
+    r.http.push_for("rss/setRule", 200, "");
+    r.http.push_for("rss/rules", 200, both);
+    r.http.push_for(
+        "rss/items",
+        200,
+        json!({
+            "Show": {"uid": "u", "url": "https://feed.example/rss?q=Show"},
+            "Show @other": {"uid": "v", "url": "https://other.example/rss?q=Show"},
+        })
+        .to_string(),
+    );
+    r.http.push_for("rss/removeRule", 200, "");
+    r.http.push_for("rss/removeItem", 200, "");
+
+    let done = subscribe(&r, "Show", vec![episode(1)], None);
+    let result = subscribed(&done);
+    assert_eq!(result.name, "Show");
+    assert_eq!(result.save_path, "/srv/TV/Show");
+    let calls = qbt_calls(&r.http);
+    let sets = calls.iter().filter(|(p, _)| p == "rss/setRule").count();
+    assert_eq!(sets, 1, "{calls:?}");
+    assert_eq!(
+        field(called(&calls, "rss/removeRule"), "ruleName").as_deref(),
+        Some("Show @other")
+    );
+    assert_eq!(
+        field(called(&calls, "rss/removeItem"), "path").as_deref(),
+        Some("Show @other")
+    );
+}
+
 #[test]
 fn a_feed_of_that_name_on_another_address_is_refused() {
     let r = rig();

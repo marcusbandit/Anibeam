@@ -163,16 +163,18 @@ pub fn holds_all(entries: &[FeedEntry], picked: &[Release]) -> bool {
     picked.iter().all(|r| titles.contains(&norm(&r.title)))
 }
 
-/// The rules besides `keep` that follow the same show it does (#1486): the one named as
-/// the subscription asked, `asked`, or that name with the ` @endpoint` (and ` @endpoint 2`)
-/// an engine adds beside a rule on another feed, case aside; one saving into `folder`, the
-/// show's own; and one whose folder `of_series` says fills the same library series.
+/// The rules besides `keep` that follow the same show it does (#1486): one saving into
+/// `folder`, the show's own; one whose folder `fills` says fills the same library series;
+/// and the one named as the subscription asked, `asked`, or that name with the ` @endpoint`
+/// (and ` @endpoint 2`) an engine adds beside a rule on another feed, case aside, unless
+/// `fills` says its folder fills another series (a season of its own named like the
+/// first). `fills` is None when no series is known.
 pub fn twins(
     rules: &Value,
     keep: &str,
     asked: Option<&str>,
     folder: &str,
-    of_series: impl Fn(&str) -> bool,
+    fills: impl Fn(&str) -> Option<bool>,
 ) -> Vec<String> {
     let folder = crate::paths::norm(folder);
     let asked = asked.map(str::to_lowercase).filter(|a| !a.is_empty());
@@ -191,8 +193,10 @@ pub fn twins(
                 return false;
             }
             let saves = crate::native::rule_save_path(def).unwrap_or("");
-            named(name)
-                || (!saves.is_empty() && (crate::paths::norm(saves) == folder || of_series(saves)))
+            let filled = if saves.is_empty() { None } else { fills(saves) };
+            (!saves.is_empty() && crate::paths::norm(saves) == folder)
+                || filled == Some(true)
+                || (named(name) && filled != Some(false))
         })
         .map(|(name, _)| name.clone())
         .collect();
@@ -273,7 +277,7 @@ mod tests {
             "Show 2": {"affectedFeeds": ["f"], "savePath": "/srv/TV/Show 2"},
             "Showa": {"affectedFeeds": ["g"], "savePath": "/srv/TV/Showa"},
         });
-        let none = |_: &str| false;
+        let none = |_: &str| None;
         assert_eq!(
             twins(
                 &rules,
@@ -285,12 +289,25 @@ mod tests {
             vec!["Show".to_string(), "show @other 2".to_string()]
         );
         // A library show: its folder, and a folder the library links to it
-        let linked = |p: &str| p == "/mnt/tv/Show";
+        let linked = |p: &str| Some(p == "/mnt/tv/Show");
         assert_eq!(
             twins(&rules, "Show @feed", None, "/lib/Show", linked),
             vec!["By hand".to_string(), "Other mount".to_string()]
         );
         assert!(twins(&rules, "Show 2", Some("Show 2"), "/srv/TV/Show 2", none).is_empty());
+        // A second season of its own, its releases named like the first: the first
+        // season's rule fills another series and stays
+        let season_two = |p: &str| Some(p == "/lib/Show 2");
+        assert!(
+            twins(
+                &rules,
+                "Show @feed",
+                Some("Show"),
+                "/lib/Show 2",
+                season_two
+            )
+            .is_empty()
+        );
     }
 
     #[test]

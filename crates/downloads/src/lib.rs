@@ -80,6 +80,9 @@ pub struct Downloads {
     /// One rule written or removed at a time on the core's own engine:
     /// picking a free rule name is check-then-act.
     rules: tokio::sync::Mutex<()>,
+    /// One subscription made at a time, from naming its rule to retiring the rules it
+    /// replaces, so two follows of one show never remove each other's new rule (#1486).
+    follows: tokio::sync::Mutex<()>,
     /// Set by a shell that runs against a copy of the library but the
     /// owner's real anirss (a drive script, a screenshot, a sandbox root):
     /// finished feeds are never pruned there.
@@ -141,6 +144,7 @@ impl Downloads {
             connecting: tokio::sync::Mutex::new(()),
             torrent_setup: tokio::sync::Mutex::new(()),
             rules: tokio::sync::Mutex::new(()),
+            follows: tokio::sync::Mutex::new(()),
             unattended_off: AtomicBool::new(false),
             sandbox_finds_clients: AtomicBool::new(false),
         }
@@ -1833,6 +1837,7 @@ pub fn subscribe(
         .clone()
         .start(JobKind::Subscribe, move |ctx| async move {
             let backend = DownloadsBackend::open(&owner).await?;
+            let _one = owner.follows.lock().await;
             let mut result = backend
                 .subscribe(&query, &endpoint, &items, name.as_deref(), home.as_deref())
                 .await?;
@@ -1874,8 +1879,15 @@ pub fn subscribe(
             // rules filling one show drew it twice on Following (#1486). The subscription
             // is made by now, so a failure here leaves both rules and says so.
             let asked = paths::name_for(name.as_deref(), &items, &query).ok();
-            let retired =
-                retire_twins(&owner, &mut result, asked.as_deref(), series, home.is_none()).await;
+            let retired = retire_twins(
+                &owner,
+                &backend,
+                &mut result,
+                asked.as_deref(),
+                series,
+                home.is_none(),
+            )
+            .await;
             let message = match retired {
                 Ok(gone) if gone.is_empty() => message,
                 Ok(gone) => format!(
@@ -1886,7 +1898,8 @@ pub fn subscribe(
                 Err(e) => {
                     tracing::warn!("the rules {} replaces were kept: {e}", result.name);
                     format!(
-                        "{message} (the subscription it replaces could not be removed: {e})"
+                        "{message}; it saves to {} (the subscription it replaces could not be removed: {e})",
+                        result.save_path
                     )
                 }
             };
@@ -1946,47 +1959,100 @@ async fn rehome_rule(
 }
 
 /// Removes the rules that followed this show before `result` did, and with `move_in` saves
-/// `result` into the folder the first of them filled when it was made to save elsewhere (a
-/// show's own folder, when the library gave one, stays where it is): a show followed
-/// again from another endpoint or group keeps one rule and one folder (#1486). The old
-/// rules' torrents and files stay; a feed goes with its rule unless another still reads it.
+/// `result` into the folder the plain-named one filled when the engine named it beside that
+/// one and saved it elsewhere (a show's own folder, when the library gave one, stays where
+/// it is): a show followed again from another endpoint or group keeps one rule and one
+/// folder (#1486). The old rules' torrents and files stay. On the core's engine a feed goes
+/// with its rule unless another still reads it; anirss removes its own as it always does.
 /// `asked` is the name the subscription asked for, the one the engine suffixed. Returns the
-/// rules removed.
+/// rules removed. A read that fails replaces nothing and says nothing: the subscription is
+/// made, and the rules stay as they were.
 async fn retire_twins(
     downloads: &Downloads,
+    backend: &DownloadsBackend,
     result: &mut Subscribed,
     asked: Option<&str>,
     series: Option<u64>,
     move_in: bool,
 ) -> Result<Vec<String>, CoreError> {
-    let qbt = qbt_client(downloads).await?;
-    let _one = downloads.rules.lock().await;
-    let mut rules = qbt.rules().await?;
-    let linker = match series {
-        Some(_) => Some(downloads.services.store.read(link::Linker::load)?),
-        None => None,
+    let read = async {
+        let qbt = qbt_client(downloads).await?;
+        let rules = qbt.rules().await?;
+        let linker = match series {
+            Some(_) => Some(downloads.services.store.read(link::Linker::load)?),
+            None => None,
+        };
+        Ok::<_, CoreError>((qbt, rules, linker))
     };
-    let of_series = |path: &str| {
+    let one = downloads.rules.lock().await;
+    let (qbt, mut rules, linker) = match read.await {
+        Ok(read) => read,
+        Err(e) => {
+            tracing::debug!("no rules read to find what {} replaces: {e}", result.name);
+            return Ok(Vec::new());
+        }
+    };
+    // Which series a folder fills, when the subscription named one
+    let fills = |path: &str| {
         linker
             .as_ref()
-            .is_some_and(|l| series.is_some() && l.find(path) == series)
+            .and_then(|l| l.find(path))
+            .map(|id| Some(id) == series)
     };
-    let twins = rewire::twins(&rules, &result.name, asked, &result.save_path, of_series);
+    let twins = rewire::twins(&rules, &result.name, asked, &result.save_path, fills);
     if twins.is_empty() {
         return Ok(twins);
     }
-    // The show's episodes are where the plain-named rule saved them
-    let first = asked
-        .and_then(|a| twins.iter().find(|t| t.eq_ignore_ascii_case(a)))
-        .unwrap_or(&twins[0]);
+    // The engine suffixed the new rule beside the plain-named one: the show's episodes are
+    // in that one's folder. A rule that kept the asked name kept its own folder too.
+    let plain = asked
+        .filter(|a| !result.name.eq_ignore_ascii_case(a))
+        .and_then(|a| twins.iter().find(|t| t.eq_ignore_ascii_case(a)));
     if move_in
-        && let Some(folder) = native::rule_save_path(&rules[first.as_str()]).map(str::to_string)
+        && let Some(plain) = plain
+        && let Some(folder) = native::rule_save_path(&rules[plain.as_str()]).map(str::to_string)
         && paths::norm(&folder) != paths::norm(&result.save_path)
         && let Some(def) = rules.get(&result.name)
     {
         qbt.set_rule(&result.name, &rewire::rehomed(def, &folder))
             .await?;
         result.save_path = folder;
+    }
+    let reads = |def: &serde_json::Value| -> Vec<String> {
+        def["affectedFeeds"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .filter(|u| !u.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+    if let DownloadsBackend::Anirss(_) = backend {
+        // anirss removes its own subscriptions, feed and all, as its Unsubscribe does. A
+        // rule whose feed a kept rule reads loses only the rule, so the feed stays.
+        let kept: serde_json::Value = rules
+            .as_object()
+            .map(|m| {
+                m.iter()
+                    .filter(|(n, _)| !twins.contains(n))
+                    .map(|(n, d)| (n.clone(), d.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let (shared, own): (Vec<String>, Vec<String>) = twins.iter().cloned().partition(|t| {
+            reads(&rules[t.as_str()])
+                .iter()
+                .any(|u| rewire::feed_shared(&kept, "", u))
+        });
+        for name in &shared {
+            qbt.remove_rule(name).await?;
+        }
+        drop(one);
+        if !own.is_empty() {
+            backend.remove(&own, false, false, false).await?;
+        }
+        return Ok(twins);
     }
     let feeds = qbt.feeds().await?;
     for name in &twins {
@@ -1995,12 +2061,13 @@ async fn retire_twins(
             .and_then(|m| m.remove(name))
             .unwrap_or_default();
         qbt.remove_rule(name).await?;
-        let url = def["affectedFeeds"][0].as_str().unwrap_or("");
-        if url.is_empty() || rewire::feed_shared(&rules, "", url) {
-            continue;
-        }
-        for (path, _) in feeds.iter().filter(|(_, u)| u == url) {
-            qbt.remove_item(path).await?;
+        for url in reads(&def) {
+            if rewire::feed_shared(&rules, "", &url) {
+                continue;
+            }
+            for (path, _) in feeds.iter().filter(|(_, u)| *u == url) {
+                qbt.remove_item(path).await?;
+            }
         }
     }
     Ok(twins)
