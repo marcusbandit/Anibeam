@@ -1,10 +1,11 @@
 // One show as a pane of the glass mosaic, for the downloads page's grids: the poster
-// full-bleed, the title and one ledger line on the scrim at its foot, a thin line for what
-// is on disk (or how far a download has come), and a state tag top left: dark glass, a
-// coloured dot, light writing, so it reads on any poster. Hovering puts the pane's one
-// action (Unsubscribe, Remove) across its foot; it opens the removal sheet. A click
-// elsewhere opens the show. Without a poster the pane keeps its full size and centres its
-// glyph, so a grid stays even. `compact` is a short text tile with the glyph, for lists.
+// full-bleed, the title and a ledger of up to two lines on the scrim at its foot, a thin
+// line for what is on disk (or how far a download has come), and a state tag top left:
+// dark glass, a coloured dot, light writing, so it reads on any poster. Hovering puts the
+// pane's one action (Unsubscribe, Remove) across its foot; it opens the removal sheet. A
+// click elsewhere opens the show. Without a poster the pane keeps its full size and
+// centres its glyph, so a grid stays even. `compact` is a short text tile with the glyph,
+// for lists.
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -76,7 +77,7 @@ Item {
                 anchors.fill: parent
                 source: Fmt.fileUrl(root.poster)
                 // The shared decode (a cache hit) while the card is about a grid poster's
-                // size; a card well past it, like the four-across lens, decodes at twice it
+                // size; a card well past it, like a one-column grid in a narrow window, decodes at twice it
                 sourceSize: root.width > theme.posterDecodeSize.width / theme.devicePixelRatio
                             ? Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
                             : theme.posterDecodeSize
@@ -153,6 +154,10 @@ Item {
             text: root.ledger
             role: "ledger"
             color: root.ledgerColor
+            // Two lines, so a long ledger at poster width ("Episodes 12 to 13 predicted in
+            // 3d 4h") keeps its countdown instead of eliding it (#1485)
+            wrapMode: Text.Wrap
+            maximumLineCount: 2
             elide: Text.ElideRight
         }
         EpisodeCubes {
