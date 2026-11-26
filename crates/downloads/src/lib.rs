@@ -1879,6 +1879,7 @@ pub fn subscribe(
             // rules filling one show drew it twice on Following (#1486). The subscription
             // is made by now, so a failure here leaves both rules and says so.
             let asked = paths::name_for(name.as_deref(), &items, &query).ok();
+            let before = result.save_path.clone();
             let retired = retire_twins(
                 &owner,
                 &backend,
@@ -1888,19 +1889,14 @@ pub fn subscribe(
                 home.is_none(),
             )
             .await;
+            // Said once, where the rule saves now
+            let message = message.replace(&before, &result.save_path);
             let message = match retired {
                 Ok(gone) if gone.is_empty() => message,
-                Ok(gone) => format!(
-                    "{message}; it replaces {} and saves to {}",
-                    gone.join(", "),
-                    result.save_path
-                ),
+                Ok(gone) => format!("{message}; it replaces {}", gone.join(", ")),
                 Err(e) => {
                     tracing::warn!("the rules {} replaces were kept: {e}", result.name);
-                    format!(
-                        "{message}; it saves to {} (the subscription it replaces could not be removed: {e})",
-                        result.save_path
-                    )
+                    format!("{message} (a subscription it replaces could not be removed: {e})")
                 }
             };
             // An Info event goes into the stored log, and a feed's address can hold a login
