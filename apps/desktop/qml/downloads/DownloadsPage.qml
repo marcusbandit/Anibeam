@@ -163,12 +163,7 @@ Item {
     function loadLibrary() {
         var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
         if (!r.error) page.libCards = r.reply.series || []
-        var seen = {}, out = []
-        ;[r, Door.listLibrary("Watched", "", "LastViewed", "Desc", false), Door.listLibrary("Hidden", "", "LastViewed", "Desc", false)].forEach(function(t) {
-            if (t.error) return
-            ;(t.reply.series || []).forEach(function(c) { if (!seen[c.id] && (c.bytes_on_disk || 0) > 0) { seen[c.id] = true; out.push(c) } })
-        })
-        page.diskCards = out
+        page.diskCards = frame.diskCards(r)
     }
     // A delete, a scan or a rescan changes what is on disk: read again, once the burst is over
     Timer { id: libDebounce; interval: 400; onTriggered: page.loadLibrary() }
@@ -187,48 +182,13 @@ Item {
         return diskCards.filter(function(c) { return !taken[c.id] }).sort(function(a, b) { return (b.bytes_on_disk || 0) - (a.bytes_on_disk || 0) })
     }
     readonly property real diskBytes: diskCards.reduce(function(n, c) { return n + (c.bytes_on_disk || 0) }, 0)
-    readonly property real watchedBytes: diskCards.reduce(function(n, c) { return n + (c.watched_bytes || 0) }, 0)
-    readonly property int watchedEpisodes: diskCards.reduce(function(n, c) { return n + (c.watched_on_disk || 0) }, 0)
-    readonly property var finishedCards: diskCards.filter(function(c) { return c.finished_watched === true })
-    readonly property real finishedBytes: finishedCards.reduce(function(n, c) { return n + (c.bytes_on_disk || 0) }, 0)
+    readonly property real watchedBytes: frame.watchedOf(diskCards).bytes
     // A show's line in Downloaded: how many episodes, how big, how much of it is watched
     function diskLedger(c) {
         var parts = [c.kind === "Movie" ? words.t("downloads-disk-film") : words.t("count-episodes", { count: c.episodes_on_disk || 0 }), words.bytes(c.bytes_on_disk || 0)]
         if (c.watched_bytes > 0 && c.watched_bytes < c.bytes_on_disk) parts.push(words.t("downloads-disk-watched", { size: words.bytes(c.watched_bytes) }))
         else if (c.watched_bytes > 0) parts.push(words.t("downloads-disk-all-watched"))
         return parts.join(", ")
-    }
-
-    // ---- Delete watched (#266): every watched episode, or every show confirmed done with,
-    // picked from a menu at the button and confirmed in the removal sheet
-    function askDeleteWatched(anchor) {
-        var p = anchor.mapToItem(frame, 0, anchor.height + theme.space(1))
-        frame.openMenu(p.x, p.y, [
-            { text: words.t("downloads-delete-watched-menu", { count: page.watchedEpisodes, size: words.bytes(page.watchedBytes) }), icon: "trash-2",
-              action: function() { page.confirmDeleteWatched(anchor, false) } },
-            { text: words.t("downloads-delete-finished-menu", { count: page.finishedCards.length, size: words.bytes(page.finishedBytes) }), icon: "trash-2",
-              action: function() { page.confirmDeleteWatched(anchor, true) } }
-        ])
-    }
-    function someTitles(cards) {
-        var t = cards.slice().sort(function(a, b) { return (b.bytes_on_disk || 0) - (a.bytes_on_disk || 0) }).map(function(c) { return c.title })
-        if (t.length <= 3) return t.length === 1 ? t[0] : words.t("downloads-titles-and", { list: t.slice(0, -1).join(", "), last: t[t.length - 1] })
-        return words.t("downloads-titles-more", { list: t.slice(0, 3).join(", "), count: t.length - 3 })
-    }
-    function confirmDeleteWatched(anchor, finished) {
-        if (finished ? !page.finishedCards.length : !page.watchedEpisodes) {
-            frame.toast(finished ? words.t("downloads-delete-finished-none") : words.t("downloads-delete-watched-none"))
-            return
-        }
-        frame.askRemoval(anchor, finished ? {
-            heading: words.t("downloads-delete-finished-heading", { count: page.finishedCards.length, size: words.bytes(page.finishedBytes) }),
-            base: words.t("downloads-delete-finished-base", { titles: page.someTitles(page.finishedCards), client: page.clientName }),
-            rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("downloads-move-to-trash")
-        } : {
-            heading: words.t("downloads-delete-watched-heading", { count: page.watchedEpisodes, size: words.bytes(page.watchedBytes) }),
-            base: words.t("downloads-delete-watched-base", { client: page.clientName }),
-            rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("downloads-move-to-trash")
-        }, function() { frame.deleteWatched(finished) })
     }
 
     // ---- Right-click on a torrent group (#266): the frame adds the series' deletes when
@@ -3034,10 +2994,11 @@ Item {
                     objectName: "downloads-delete-watched"
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: frame.deleteWatchedToken >= 0 ? words.t("downloads-deleting") : words.t("downloads-delete-watched")
+                    text: frame.deleteWatchedToken >= 0 ? words.t("downloads-deleting") : page.watchedBytes > 0 ? words.t("downloads-delete-watched-frees", { size: words.bytes(page.watchedBytes) }) : words.t("downloads-delete-watched")
                     icon: "trash-2"
+                    danger: page.watchedBytes > 0
                     enabled: frame.deleteWatchedToken < 0 && page.watchedBytes > 0
-                    onClicked: page.askDeleteWatched(deleteWatched)
+                    onClicked: frame.askDeleteWatched(deleteWatched, page.diskCards, page.clientName)
                 }
             }
             Repeater {

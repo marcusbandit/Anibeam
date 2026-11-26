@@ -124,6 +124,17 @@ SettingsTab {
         var r = Door.connectDownloads()
         if (r.error) frame.fail(r.error, tab.connect)
     }
+    // What Delete watched would take, read from the series on disk as Downloaded reads it
+    // (#1484), and again once a delete or a scan has changed what is there
+    property var diskCards: []
+    function loadDisk() { tab.diskCards = frame.diskCards() }
+    readonly property real watchedBytes: frame.watchedOf(diskCards).bytes
+    Timer { id: diskDebounce; interval: 400; onTriggered: tab.loadDisk() }
+    Connections {
+        target: Door
+        function onSeriesChanged() { diskDebounce.restart() }
+        function onSeriesRemoved() { diskDebounce.restart() }
+    }
     Connections {
         target: Door
         function onDownloadsStatusChanged(status) { tab.status = status; if (!tab.dirty) tab.draft = JSON.parse(JSON.stringify(status.settings)); tab.testing = false }
@@ -135,6 +146,7 @@ SettingsTab {
     Component.onCompleted: {
         Shell.readMagnetHandler(false)
         reload()
+        loadDisk()
         var kept = frame.settingsDrafts.downloads
         if (!kept) return
         draft = kept.draft
@@ -281,6 +293,21 @@ SettingsTab {
         SettingRow { visible: tab.roll.delete_watched !== false; label: words.t("settings-downloads-keep-behind")
             SliderRow { objectName: "downloads-roll-keep"; unit: words.t("settings-downloads-unit-episodes"); from: 0; to: 12; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.keep_watched === undefined ? 1 : tab.roll.keep_watched
                         onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).keep_watched = Math.round(v) }) } } }
+    }
+    // Delete watched (#1484), the same choices and sheet as on Downloaded. The client's name
+    // is the saved one, since the delete runs on what is saved, not on the draft
+    Panel {
+        title: words.t("settings-downloads-disk-title")
+        SettingRow { objectName: "downloads-settings-delete-watched"; label: words.t("settings-downloads-watched-on-disk")
+            Button {
+                id: deleteWatchedButton
+                objectName: "settings-delete-watched"
+                text: frame.deleteWatchedToken >= 0 ? words.t("downloads-deleting") : tab.watchedBytes > 0 ? words.t("downloads-delete-watched-frees", { size: words.bytes(tab.watchedBytes) }) : words.t("downloads-delete-watched")
+                icon: "trash-2"
+                danger: tab.watchedBytes > 0
+                enabled: frame.deleteWatchedToken < 0 && tab.watchedBytes > 0
+                onClicked: frame.askDeleteWatched(deleteWatchedButton, tab.diskCards, tab.settings && tab.settings.torrent_client !== "Qbittorrent" ? String(tab.settings.torrent_client) : "qBittorrent")
+            } }
     }
     // Who opens magnet links on this desktop (#1391); empty where it has no such setting, and
     // until the answer, read off the GUI thread, comes back

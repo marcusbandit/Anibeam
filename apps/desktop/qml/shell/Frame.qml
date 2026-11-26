@@ -1276,6 +1276,57 @@ FocusScope {
     // Delete watched across the library (#266): the frame keeps the reply, so its toast still
     // comes when the page has gone, and one runs at a time
     property real deleteWatchedToken: -1
+    // Every series with a file on disk, the watched and hidden ones too, which the All tab
+    // leaves out: what Delete watched counts from Downloaded and from Settings (#1484)
+    function diskCards(all) {
+        var seen = {}, out = []
+        ;[all || Door.listLibrary("All", "", "LastViewed", "Desc", false), Door.listLibrary("Watched", "", "LastViewed", "Desc", false), Door.listLibrary("Hidden", "", "LastViewed", "Desc", false)].forEach(function(t) {
+            if (t.error) return
+            ;(t.reply.series || []).forEach(function(c) { if (!seen[c.id] && (c.bytes_on_disk || 0) > 0) { seen[c.id] = true; out.push(c) } })
+        })
+        return out
+    }
+    function watchedOf(cards) {
+        var finished = cards.filter(function(c) { return c.finished_watched === true })
+        return {
+            bytes: cards.reduce(function(n, c) { return n + (c.watched_bytes || 0) }, 0),
+            episodes: cards.reduce(function(n, c) { return n + (c.watched_on_disk || 0) }, 0),
+            finished: finished,
+            finishedBytes: finished.reduce(function(n, c) { return n + (c.bytes_on_disk || 0) }, 0)
+        }
+    }
+    function someTitles(cards) {
+        var t = cards.slice().sort(function(a, b) { return (b.bytes_on_disk || 0) - (a.bytes_on_disk || 0) }).map(function(c) { return c.title })
+        if (t.length <= 3) return t.length === 1 ? t[0] : words.t("downloads-titles-and", { list: t.slice(0, -1).join(", "), last: t[t.length - 1] })
+        return words.t("downloads-titles-more", { list: t.slice(0, 3).join(", "), count: t.length - 3 })
+    }
+    // The two choices, every watched episode or every show confirmed done with, picked from
+    // a menu at the button and confirmed in the removal sheet. Files only: subscriptions stay
+    function askDeleteWatched(anchor, cards, client) {
+        var w = frame.watchedOf(cards)
+        var p = anchor.mapToItem(frame, 0, anchor.height + theme.space(1))
+        frame.openMenu(p.x, p.y, [
+            { text: words.t("downloads-delete-watched-menu", { count: w.episodes, size: words.bytes(w.bytes) }), icon: "trash-2",
+              action: function() { frame.confirmDeleteWatched(anchor, w, client, false) } },
+            { text: words.t("downloads-delete-finished-menu", { count: w.finished.length, size: words.bytes(w.finishedBytes) }), icon: "trash-2",
+              action: function() { frame.confirmDeleteWatched(anchor, w, client, true) } }
+        ])
+    }
+    function confirmDeleteWatched(anchor, w, client, finished) {
+        if (finished ? !w.finished.length : !w.episodes) {
+            frame.toast(finished ? words.t("downloads-delete-finished-none") : words.t("downloads-delete-watched-none"))
+            return
+        }
+        frame.askRemoval(anchor, finished ? {
+            heading: words.t("downloads-delete-finished-heading", { count: w.finished.length, size: words.bytes(w.finishedBytes) }),
+            base: words.t("downloads-delete-finished-base", { titles: frame.someTitles(w.finished), client: client }),
+            rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("downloads-move-to-trash")
+        } : {
+            heading: words.t("downloads-delete-watched-heading", { count: w.episodes, size: words.bytes(w.bytes) }),
+            base: words.t("downloads-delete-watched-base", { client: client }),
+            rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("downloads-move-to-trash")
+        }, function() { frame.deleteWatched(finished) })
+    }
     function deleteWatched(finished) {
         if (frame.deleteWatchedToken >= 0) return
         frame.deleteWatchedToken = Door.callAsync("DeleteWatched", { finished_shows: finished })
