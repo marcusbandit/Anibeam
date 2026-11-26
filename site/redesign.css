@@ -92,6 +92,7 @@ body.rd { --wide: 1320px; }
   height: calc(var(--s) * 2);
   display: flex;
   align-items: center;
+  justify-content: center;
   transform: rotate(-30deg);
   translate: calc(var(--px) * var(--depth)) calc(var(--py) * var(--depth));
   transition: translate 0.8s var(--ease);
@@ -141,6 +142,7 @@ body.rd { --wide: 1320px; }
 }
 .lanes .marquee-track {
   position: relative;
+  flex: none;
   display: flex;
   align-items: center;
   gap: calc(var(--s) * 0.95);
@@ -148,7 +150,7 @@ body.rd { --wide: 1320px; }
   animation: lane var(--dur) linear infinite;
   animation-play-state: var(--motion, running);
 }
-@keyframes lane { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+@keyframes lane { from { transform: translateX(calc(-100% / 6)); } to { transform: translateX(calc(100% / 6)); } }
 .lanes.marquee:hover .marquee-track { animation-play-state: var(--motion, running); }
 .lanes .marquee-track:has(.poster:hover) { animation-play-state: paused; }
 .lanes .poster { width: var(--s); }
