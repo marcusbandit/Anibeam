@@ -27,6 +27,8 @@ Corner {
     property real maxLabelWidth: -1
     property bool iconClickable: false
     property string iconTip: ""
+    // The pointer on the clickable glyph, so a tip on the whole chip can stand aside
+    readonly property bool iconHovered: iconClickable && glyphTip.hovered
     signal clicked()
     signal iconClicked()
     property string accessibleName: ""
@@ -65,7 +67,7 @@ Corner {
                 Accessible.name: root.iconTip
                 Accessible.onPressAction: root.iconClicked()
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.iconClicked() }
-                Tooltip { text: root.iconTip }
+                Tooltip { id: glyphTip; text: root.iconTip }
             }
         }
         Label {

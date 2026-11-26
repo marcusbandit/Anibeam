@@ -1,6 +1,6 @@
 [
  {
-  "log": "the Downloads chrome (#69): no endpoint dropdown, sources switched from Settings and as chips under a search (#1487), the start-Jackett sheet (cancelled, never confirmed), one search over every source on, the release list and its way back to the grid. Searches only; it adds nothing and starts nothing"
+  "log": "the Downloads chrome (#69): no endpoint dropdown, sources switched by the page itself before a search and shown as chips under it (#1487), the start-Jackett sheet (cancelled, never confirmed), one search over every source on, the release list and its way back to the grid. Searches only; it adds nothing and starts nothing"
  },
  {
   "click": "rail-downloads"

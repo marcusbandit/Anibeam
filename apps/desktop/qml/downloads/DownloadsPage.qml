@@ -138,13 +138,21 @@ Item {
         stop.forEach(function(job) { Door.cancelJob(job) })
         var res = Object.assign({}, page.searchResults); delete res[name]; page.searchResults = res
         if (page.adoptedFrom === name) {
+            // A Narrow still running on it goes too, or its answer lands on no state
+            if (page.searchJob >= 0) { var refining = page.searchJob; page.searchJob = -1; Door.cancelJob(refining) }
             page.adoptedFrom = ""
             page.state = null
             page.history = []
             page.selected = {}
             page.preview = null
+            page.notice = ""
+            // Another source still out keeps the search up rather than dropping to the home
+            if (page.pendingNames().length) { page.searching = true; page.searchEndpoint = ""; page.retarget() }
         }
         page.settleSearch()
+        // The last source on switched off: the line says so, with the row under it to undo it
+        if (page.state === null && !page.searching && page.searchError === "" && page.enabledEndpoints.length === 0)
+            page.sayOnSearch(words.t("downloads-search-all-off"), "", "", null, true)
     }
     readonly property var enabledEndpoints: { var m = frame.downloadsSources; return endpoints.filter(function(e) { return page.sourceOn(e.name) }) }
     property real checkJob: -1
@@ -1045,7 +1053,8 @@ Item {
     }
     function feedHost(url) { var m = String(url || "").match(/^[a-z]+:\/\/([^\/?#]+)/i); return m ? m[1] : String(url || "") }
     function cancelSearch() {
-        if (!page.searching) return
+        // A source asked with results already up runs without the progress card
+        if (!page.searching && !page.pendingNames().length) return
         for (var j in page.searchJobs) Door.cancelJob(Number(j))
         if (page.searchJob >= 0) Door.cancelJob(page.searchJob)
     }
@@ -1063,7 +1072,10 @@ Item {
             page.searching = true
             page.searchStartMs = Date.now()
             page.searchElapsed = 0
+            page.searchEndpoint = ""
+            page.searchLabel = ""
             page.searchError = ""
+            page.searchFix = ({})
         }
         page.retarget()
     }
@@ -2384,7 +2396,8 @@ Item {
                             else page.searchMore(name)
                         }
                         Tooltip {
-                            text: found.why !== "" ? words.t("downloads-found-retry-tip", { why: found.why })
+                            // The check has its own tip; one at a time
+                            text: found.iconHovered ? "" : found.why !== "" ? words.t("downloads-found-retry-tip", { why: found.why })
                                 : found.on ? "" : found.down ? words.t("downloads-source-tip-down", { name: found.name }) : words.t("downloads-source-tip-off", { name: found.name })
                         }
                     }
