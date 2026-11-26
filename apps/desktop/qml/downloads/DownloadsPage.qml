@@ -1180,7 +1180,21 @@ Item {
         if (s.next_airing || s.status === "Releasing" || s.status === "NotYetReleased" || s.status === "Hiatus") return "airing"
         return "incomplete"
     }
-    readonly property var completeRules: rules.filter(function(r) { return page.subState(r) === "complete" })
+    // One card per show: rules that fill one show (an older app followed a show again beside
+    // its first rule) are one subscription here, led by one that still fetches, and the rest
+    // ride along as `twins` so unsubscribing takes them all (#1486)
+    function leads(r) { return r.rule_enabled !== false && r.followable !== false }
+    readonly property var followed: {
+        var m = {}, order = []
+        for (var i = 0; i < rules.length; i++) {
+            var r = rules[i], k = page.ruleKey(r), g = m[k]
+            if (!g) { g = m[k] = { rule: r, twins: [] }; order.push(g) }
+            else if (page.leads(r) && !page.leads(g.rule)) { g.twins.push(g.rule.name); g.rule = r }
+            else g.twins.push(r.name)
+        }
+        return order.map(function(g) { return g.twins.length ? Object.assign({}, g.rule, { twins: g.twins }) : g.rule })
+    }
+    readonly property var completeRules: followed.filter(function(r) { return page.subState(r) === "complete" })
     readonly property var subSections: {
         var defs = [
             { key: "nofeed", title: words.t("downloads-sub-nofeed"), dot: theme.red, line: words.t("downloads-sub-nofeed-line") },
@@ -1191,7 +1205,7 @@ Item {
         ]
         var by = {}
         for (var i = 0; i < defs.length; i++) { defs[i].items = []; by[defs[i].key] = defs[i] }
-        for (var j = 0; j < rules.length; j++) by[page.subState(rules[j])].items.push(rules[j])
+        for (var j = 0; j < followed.length; j++) by[page.subState(followed[j])].items.push(followed[j])
         by.airing.items.sort(function(a, b) {
             var an = a.show.next_airing ? a.show.next_airing.at : 1e12, bn = b.show.next_airing ? b.show.next_airing.at : 1e12
             return an - bn || page.titleOf(a).localeCompare(page.titleOf(b))
@@ -1308,7 +1322,8 @@ Item {
     }
     readonly property var detailRule: {
         if (!detail || !detail.rule) return null
-        for (var i = 0; i < rules.length; i++) if (rules[i].name === detail.rule) return rules[i]
+        for (var i = 0; i < followed.length; i++) if (followed[i].name === detail.rule) return followed[i]
+        for (var j = 0; j < rules.length; j++) if (rules[j].name === detail.rule) return rules[j]
         return null
     }
     readonly property var detailShow: detailRule && detailRule.show ? detailRule.show : (detail && detail.seriesId >= 0 ? (shows[detail.seriesId] || null) : null)
@@ -1406,6 +1421,12 @@ Item {
         return { title: page.titleOf(r), rule: r.name, hashes: ts.map(function(t) { return t.hash }), series: r.show ? r.show.series_id : -1,
                  rkey: "r:" + r.name, tkeys: ts.map(function(t) { return "t:" + t.hash }), size: page.sumSize(ts), folder: r.show ? r.show.path : "" }
     }
+    // A show's rule and the twins beside it: each twin goes on its own, as a rule alone
+    function targetsForRule(r) {
+        return [page.targetForRule(r)].concat((r.twins || []).map(function(name) {
+            return { title: page.titleOf(r), rule: name, hashes: [], series: -1, rkey: "r:" + name, tkeys: [], size: 0, folder: "" }
+        }))
+    }
     function targetForGroup(g) {
         return { title: g.title, rule: "", hashes: g.torrents.map(function(t) { return t.hash }), series: g.show ? g.show.series_id : -1,
                  rkey: "", tkeys: ["g:" + g.key].concat(g.torrents.map(function(t) { return "t:" + t.hash })), size: g.size, folder: g.show ? g.show.path : "" }
@@ -1428,20 +1449,20 @@ Item {
     // A removal's sentence, with "The subscription stays." after it when the show has one
     function subscriptionStays(base, has) { return has ? words.t("downloads-subscription-stays", { base: base }) : base }
     function askUnsubscribe(anchor, r) {
-        var t = page.targetForRule(r)
+        var ts = page.targetsForRule(r), t = ts[0]
         frame.askRemoval(anchor, {
             heading: words.t("downloads-unsubscribe-heading", { title: t.title }),
             base: words.t("downloads-unsubscribe-base", { client: page.clientName }),
             rule: true, torrentCount: t.hashes.length,
             canFiles: t.hashes.length > 0 || t.series >= 0,
             filesWhere: page.filesWhere(t)
-        }, function(choice) { page.enqueue([t], choice) })
+        }, function(choice) { page.enqueue(ts, choice) })
     }
     function askUnsubscribeComplete(anchor) {
-        var ts = page.completeRules.map(page.targetForRule), n = 0
+        var ts = [].concat.apply([], page.completeRules.map(page.targetsForRule)), n = 0
         for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length
         frame.askRemoval(anchor, {
-            heading: words.t("downloads-unsubscribe-complete-heading", { count: ts.length }),
+            heading: words.t("downloads-unsubscribe-complete-heading", { count: page.completeRules.length }),
             base: words.t("downloads-unsubscribe-complete-base", { client: page.clientName }),
             rule: true, torrentCount: n, canFiles: true,
             filesWhere: words.t("downloads-files-folders-and-torrents"),
@@ -2759,7 +2780,7 @@ Item {
                 options: [
                     { text: words.t("downloads-lens-gaps-count", { count: page.gapCards.length }) },
                     { text: words.t("downloads-lens-airing-count", { count: page.airingCards.length }) },
-                    { text: words.t("downloads-lens-following-count", { count: page.rules.length }) },
+                    { text: words.t("downloads-lens-following-count", { count: page.followed.length }) },
                     { text: words.t("downloads-lens-downloaded-count", { count: page.downloadedCount }) }
                 ]
                 index: ["gaps", "airing", "following", "downloaded"].indexOf(page.lens)
@@ -2883,8 +2904,8 @@ Item {
             spacing: theme.space(4)
             BandHead {
                 title: words.t("downloads-lens-following")
-                count: page.rules.length
-                line: page.rulesError !== "" ? words.t("downloads-rules-unread") : page.rulesLoaded ? (page.rules.length ? words.t("downloads-lens-following-line") : words.t("downloads-none-yet")) : (page.searchReady ? words.t("downloads-reading") : "")
+                count: page.followed.length
+                line: page.rulesError !== "" ? words.t("downloads-rules-unread") : page.rulesLoaded ? (page.followed.length ? words.t("downloads-lens-following-line") : words.t("downloads-none-yet")) : (page.searchReady ? words.t("downloads-reading") : "")
                 alarm: page.rulesError !== ""
                 view: frame.downloadsSubView
                 viewName: "downloads-sub-view"

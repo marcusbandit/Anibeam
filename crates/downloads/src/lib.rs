@@ -1869,6 +1869,27 @@ pub fn subscribe(
                     describe_terms(&terms)
                 )
             };
+            // Following a show again replaces what followed it before, on either engine:
+            // the engine names the new rule `Show @endpoint` beside the old one, and two
+            // rules filling one show drew it twice on Following (#1486). The subscription
+            // is made by now, so a failure here leaves both rules and says so.
+            let asked = paths::name_for(name.as_deref(), &items, &query).ok();
+            let retired =
+                retire_twins(&owner, &mut result, asked.as_deref(), series, home.is_none()).await;
+            let message = match retired {
+                Ok(gone) if gone.is_empty() => message,
+                Ok(gone) => format!(
+                    "{message}; it replaces {} and saves to {}",
+                    gone.join(", "),
+                    result.save_path
+                ),
+                Err(e) => {
+                    tracing::warn!("the rules {} replaces were kept: {e}", result.name);
+                    format!(
+                        "{message} (the subscription it replaces could not be removed: {e})"
+                    )
+                }
+            };
             // An Info event goes into the stored log, and a feed's address can hold a login
             // and a key: the event names the rule, and the shell reads the feed from it (#478).
             result.feed_url.clear();
@@ -1922,6 +1943,67 @@ async fn rehome_rule(
         .await?;
     result.save_path = home.to_string();
     Ok(())
+}
+
+/// Removes the rules that followed this show before `result` did, and with `move_in` saves
+/// `result` into the folder the first of them filled when it was made to save elsewhere (a
+/// show's own folder, when the library gave one, stays where it is): a show followed
+/// again from another endpoint or group keeps one rule and one folder (#1486). The old
+/// rules' torrents and files stay; a feed goes with its rule unless another still reads it.
+/// `asked` is the name the subscription asked for, the one the engine suffixed. Returns the
+/// rules removed.
+async fn retire_twins(
+    downloads: &Downloads,
+    result: &mut Subscribed,
+    asked: Option<&str>,
+    series: Option<u64>,
+    move_in: bool,
+) -> Result<Vec<String>, CoreError> {
+    let qbt = qbt_client(downloads).await?;
+    let _one = downloads.rules.lock().await;
+    let mut rules = qbt.rules().await?;
+    let linker = match series {
+        Some(_) => Some(downloads.services.store.read(link::Linker::load)?),
+        None => None,
+    };
+    let of_series = |path: &str| {
+        linker
+            .as_ref()
+            .is_some_and(|l| series.is_some() && l.find(path) == series)
+    };
+    let twins = rewire::twins(&rules, &result.name, asked, &result.save_path, of_series);
+    if twins.is_empty() {
+        return Ok(twins);
+    }
+    // The show's episodes are where the plain-named rule saved them
+    let first = asked
+        .and_then(|a| twins.iter().find(|t| t.eq_ignore_ascii_case(a)))
+        .unwrap_or(&twins[0]);
+    if move_in
+        && let Some(folder) = native::rule_save_path(&rules[first.as_str()]).map(str::to_string)
+        && paths::norm(&folder) != paths::norm(&result.save_path)
+        && let Some(def) = rules.get(&result.name)
+    {
+        qbt.set_rule(&result.name, &rewire::rehomed(def, &folder))
+            .await?;
+        result.save_path = folder;
+    }
+    let feeds = qbt.feeds().await?;
+    for name in &twins {
+        let def = rules
+            .as_object_mut()
+            .and_then(|m| m.remove(name))
+            .unwrap_or_default();
+        qbt.remove_rule(name).await?;
+        let url = def["affectedFeeds"][0].as_str().unwrap_or("");
+        if url.is_empty() || rewire::feed_shared(&rules, "", url) {
+            continue;
+        }
+        for (path, _) in feeds.iter().filter(|(_, u)| u == url) {
+            qbt.remove_item(path).await?;
+        }
+    }
+    Ok(twins)
 }
 
 /// Points anirss's new rule at the feed the search read, narrowed by the
