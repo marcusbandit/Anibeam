@@ -1417,7 +1417,6 @@ downloads-check-busy = 检查中
 downloads-back-to-grid = 返回网格
     .tip = 回到《{ $title }》及各来源找到的内容。按 Esc 也可以。
 downloads-releases-on = { $name } 上有 { $count } 个资源
-downloads-found-on = 找到于
 downloads-found-searching = 搜索中
 downloads-found-failed = 失败
 downloads-found-cancelled = 已取消
