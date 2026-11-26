@@ -1879,7 +1879,6 @@ downloads-releases-on =
         [one] { $count } release op { $name }
        *[other] { $count } releases op { $name }
     }
-downloads-found-on = Gevonden op
 downloads-found-searching = zoeken
 downloads-found-failed = mislukt
 downloads-found-cancelled = geannuleerd

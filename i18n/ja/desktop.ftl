@@ -1463,7 +1463,6 @@ downloads-check-busy = 確認中
 downloads-back-to-grid = グリッドに戻る
     .tip = { $title }と各プロバイダーの検索結果に戻ります。Escキーでも戻れます。
 downloads-releases-on = { $name }に{ $count }件のリリース
-downloads-found-on = 検索結果
 downloads-found-searching = 検索中
 downloads-found-failed = 失敗
 downloads-found-cancelled = キャンセル

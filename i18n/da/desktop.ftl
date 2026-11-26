@@ -1879,7 +1879,6 @@ downloads-releases-on =
         [one] { $count } udgivelse på { $name }
        *[other] { $count } udgivelser på { $name }
     }
-downloads-found-on = Fundet på
 downloads-found-searching = søger
 downloads-found-failed = mislykkedes
 downloads-found-cancelled = annulleret

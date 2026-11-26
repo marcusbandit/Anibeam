@@ -2157,7 +2157,6 @@ downloads-releases-on =
         [many] { $count } wydań w { $name }
        *[other] { $count } wydania w { $name }
     }
-downloads-found-on = Znaleziono w
 downloads-found-searching = szukanie
 downloads-found-failed = błąd
 downloads-found-cancelled = anulowano

@@ -5,6 +5,8 @@
 // chip past the room the caller has, a URL or path being the case that needs it.
 // `dimmed` greys the chip out (a switch that is off: faint text, no fill) and `hint` is a
 // small faint word after the label, the state a lit or greyed chip cannot say on its own.
+// `iconClickable` makes the glyph a second button of its own (`iconClicked`, `iconTip`), so
+// one chip can show something on a click and switch it off from its check.
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -23,7 +25,10 @@ Corner {
     property bool dimmed: false
     property string hint: ""
     property real maxLabelWidth: -1
+    property bool iconClickable: false
+    property string iconTip: ""
     signal clicked()
+    signal iconClicked()
     property string accessibleName: ""
     Accessible.role: clickable ? Accessible.Button : Accessible.StaticText
     Accessible.name: theme.spokenName(accessibleName, text, root, icon)
@@ -43,6 +48,8 @@ Corner {
     Row {
         id: content
         anchors.centerIn: parent
+        // Over the chip's own MouseArea, so a clickable glyph takes its click first
+        z: 1
         spacing: theme.space(1)
         Icon {
             visible: root.icon !== ""
@@ -50,6 +57,16 @@ Corner {
             glyph: root.icon
             color: root.ink
             size: theme.space(root.small ? 3.5 : 4)
+            Item {
+                visible: root.iconClickable
+                anchors.fill: parent
+                anchors.margins: -theme.space(1)
+                Accessible.role: Accessible.Button
+                Accessible.name: root.iconTip
+                Accessible.onPressAction: root.iconClicked()
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.iconClicked() }
+                Tooltip { text: root.iconTip }
+            }
         }
         Label {
             id: label

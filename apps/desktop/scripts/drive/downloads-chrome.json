@@ -1,6 +1,6 @@
 [
  {
-  "log": "the Downloads chrome (#69): no endpoint dropdown, sources as chips, the start-Jackett sheet (cancelled, never confirmed), one search over every source on, the release list and its way back to the grid. Searches only; it adds nothing and starts nothing"
+  "log": "the Downloads chrome (#69): no endpoint dropdown, sources switched from Settings and as chips under a search (#1487), the start-Jackett sheet (cancelled, never confirmed), one search over every source on, the release list and its way back to the grid. Searches only; it adds nothing and starts nothing"
  },
  {
   "click": "rail-downloads"
@@ -16,7 +16,8 @@
   "as": "sources"
  },
  {
-  "click": "downloads-source-proxied"
+  "eval": "var p = frame.item.pageItem; p.setSource('proxied', true); p.sourceOn('proxied')",
+  "as": "ask-start"
  },
  {
   "wait": 600
@@ -36,7 +37,8 @@
   "expect": "false:-1"
  },
  {
-  "click": "downloads-source-tracker"
+  "eval": "var p = frame.item.pageItem; p.setSource('tracker', !p.sourceOn('tracker')); p.sourceOn('tracker')",
+  "as": "tracker-0"
  },
  {
   "wait": 300
@@ -45,7 +47,8 @@
   "shot": "chrome-02-tracker-off"
  },
  {
-  "click": "downloads-source-tracker"
+  "eval": "var p = frame.item.pageItem; p.setSource('tracker', !p.sourceOn('tracker')); p.sourceOn('tracker')",
+  "as": "tracker-1"
  },
  {
   "wait": 300
