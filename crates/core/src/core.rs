@@ -654,9 +654,11 @@ impl Core {
             Call::ForgetSeries { series } => scan::forget_series(&self.services, series),
             Call::Scan { source } => scan::scan(&self.library, source),
             Call::RescanSeries { series } => scan::rescan_series(&self.library, series),
-            Call::DeleteEpisodes { series, files } => {
-                delete::delete_episodes(&self.library, series, files)
-            }
+            Call::DeleteEpisodes {
+                series,
+                files,
+                stop_following,
+            } => delete::delete_episodes(&self.library, series, files, stop_following),
             Call::DeleteWatched { finished_shows } => {
                 delete::delete_watched(&self.library, finished_shows)
             }

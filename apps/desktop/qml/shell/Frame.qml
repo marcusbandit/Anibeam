@@ -1244,8 +1244,15 @@ FocusScope {
         var out = []
         if ((c.watched || 0) > 0 && c.kind !== "Movie")
             out.push({ text: words.t("frame-delete-watched", { kind: noun }), icon: "trash-2", action: function() { frame.askDeleteFiles(anchor, c, true) } })
-        out.push({ text: words.t("frame-delete-all", { count: n, kind: noun }), icon: "trash-2",
+        out.push({ text: words.t(frame.rulesOf(c.id).length ? "frame-delete-all-unfollow" : "frame-delete-all", { count: n, kind: noun }), icon: "trash-2",
                    action: function() { frame.askDeleteFiles(anchor, c, false) } })
+        return out
+    }
+    // The subscriptions that fill a show's folder, by name, as the last read linked them
+    function rulesOf(series) {
+        var out = []
+        for (var i = 0; i < downloadsRules.length; i++)
+            if (downloadsRules[i].show && downloadsRules[i].show.series_id === series) out.push(downloadsRules[i].name)
         return out
     }
     property var deleteCalls: ({})   // token -> what the toast names, { what, title }
@@ -1264,12 +1271,18 @@ FocusScope {
         var extrasNamed = extras.length ? words.t("frame-delete-extras", { count: extras.length }) : ""
         var what = named && extrasNamed ? words.t("frame-delete-and", { first: named, second: extrasNamed }) : named || extrasNamed
         files = files.concat(extras)
+        // Delete all stops following the show too (#1483); Delete watched never does. The
+        // core finds the rules itself, so a list not read yet still unfollows.
+        var unfollow = !watchedOnly, rules = unfollow ? frame.rulesOf(c.id) : []
+        var base = words.t("frame-delete-base")
+        if (rules.length) base += " " + words.t("frame-delete-unfollow-base", { count: rules.length, names: rules.join(", ") })   // i18n: none
         removeSheet.openAt(anchor, {
             heading: words.t("frame-delete-heading", { what: what, title: c.title }),
-            base: words.t("frame-delete-base"),
-            rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("frame-delete-confirm")
+            base: base,
+            rule: false, torrentCount: 0, canFiles: false,
+            confirmText: words.t(rules.length ? "frame-delete-unfollow-confirm" : "frame-delete-confirm")
         }, function() {
-            var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files })
+            var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files, stop_following: unfollow })
             var m = Object.assign({}, frame.deleteCalls); m[t] = { what: what, title: c.title }; frame.deleteCalls = m
         })
     }

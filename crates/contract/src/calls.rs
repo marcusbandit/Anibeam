@@ -550,10 +550,14 @@ pub enum Call {
     /// Deletes episodes' files, with their subtitle sidecars, from a library series: to
     /// the trash on a desktop, outright on a phone. Each file must belong to `series`
     /// and sit inside a library folder, or nothing is removed. Starts a scan of the
-    /// series and replies with its job.
+    /// series and replies with its job. With `stop_following` (Delete all, #1483) every
+    /// subscription whose folder is the series goes too, so its next episode is not
+    /// downloaded again; each one removed ends in `SubscriptionRemoved`.
     DeleteEpisodes {
         series: u64,
         files: Vec<u64>,
+        #[serde(default)]
+        stop_following: bool,
     },
     /// Deletes across the whole library (#266), as `DeleteEpisodes` does: every
     /// watched episode's file, or with `finished_shows` every file of each show

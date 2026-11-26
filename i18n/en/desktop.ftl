@@ -219,6 +219,10 @@ frame-delete-all = { $count ->
        *[episode] Delete all { $count } episodes
     }
 }
+frame-delete-all-unfollow = { $count ->
+    [one] Delete and stop following
+   *[other] Delete all and stop following
+}
 frame-series-gone = That series is gone
 frame-delete-none-watched = No watched episodes of { $title } on disk
 frame-delete-none = Nothing of { $title } on disk
@@ -252,6 +256,11 @@ frame-delete-and = { $first } and { $second }
 frame-delete-heading = Delete { $what } of { $title }?
 frame-delete-base = The files and their subtitles will be moved to the trash, so you can recover them there. Their torrents will be removed from the torrent client so they can be downloaded again.
 frame-delete-confirm = Move to trash
+frame-delete-unfollow-base = { $count ->
+    [one] The subscription { $names } is removed too, so new episodes stop downloading.
+   *[other] The subscriptions { $names } are removed too, so new episodes stop downloading.
+}
+frame-delete-unfollow-confirm = Delete and stop following
 frame-delete-done = { $what } of { $title } moved to the trash
 frame-delete-watched-done = { $count ->
     [one] { $count } episode

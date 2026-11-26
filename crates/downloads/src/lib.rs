@@ -2888,6 +2888,107 @@ fn writing_of(torrents: &[Torrent]) -> std::collections::HashSet<std::path::Path
     out
 }
 
+/// Delete all on a show (#1483): every subscription whose folder is `series` goes, so the
+/// next episode is not downloaded and the show does not come back. Linked the way the
+/// Downloads page links a rule to its show. The series counts even once the scan after the
+/// delete finds its folder empty. Rules that cannot be read are said only for a show the
+/// last read found followed: otherwise downloads are most likely not set up.
+pub fn stop_following(downloads: &Arc<Downloads>, series: u64, title: String) {
+    let owner = downloads.clone();
+    downloads.services.handle.spawn(async move {
+        // Whether the last read of the rules found it followed: a failure then is worth
+        // saying, and with none it most likely means downloads are not set up
+        let read = owner.services.store.read(move |c| {
+            let followed: bool = c.query_row(
+                "SELECT EXISTS (SELECT 1 FROM follows WHERE series_id = ?1)",
+                [series as i64],
+                |r| r.get(0),
+            )?;
+            Ok((link::Linker::load_keeping(c, series)?, followed))
+        });
+        let (linker, followed) = match read {
+            Ok(read) => read,
+            Err(e) => {
+                tracing::warn!("subscriptions of {title} not read: {e}");
+                return;
+            }
+        };
+        let fills = move |save_path: &str| linker.find(save_path) == Some(series);
+        match unfollow(&owner, &fills).await {
+            Ok(names) if names.is_empty() => {}
+            Ok(names) => {
+                let _ = owner
+                    .services
+                    .store
+                    .write_async(move |c| {
+                        c.execute("DELETE FROM follows WHERE series_id = ?1", [series as i64])?;
+                        Ok(())
+                    })
+                    .await;
+                owner.services.bus.say(
+                    Level::Info,
+                    Stage::Downloads,
+                    anibeam_contract::words!("core-downloads-unfollowed", title = &title),
+                    format!("Stopped following {title}"),
+                    EventBody::Notice,
+                );
+                for name in names {
+                    owner.services.bus.debug(
+                        Stage::Downloads,
+                        format!("subscription {name} removed"),
+                        EventBody::SubscriptionRemoved { name },
+                    );
+                }
+            }
+            Err(e) if !followed => {
+                tracing::debug!("subscriptions of {title} not read: {}", plain(&e));
+            }
+            Err(e) => {
+                owner.services.bus.say(
+                    Level::Warn,
+                    Stage::Downloads,
+                    anibeam_contract::words!("core-downloads-unfollow-failed", title = &title),
+                    format!("Could not stop following {title}: {}", plain(&e)),
+                    EventBody::DownloadsUnavailable {
+                        what: "unsubscribe".to_string(),
+                        error: e,
+                    },
+                );
+            }
+        }
+    });
+}
+
+/// The client's rules that `fills` takes, removed with neither torrents nor files: the
+/// delete before took what was on disk. Their names.
+#[cfg(not(feature = "phone"))]
+async fn unfollow(
+    downloads: &Arc<Downloads>,
+    fills: &(dyn Fn(&str) -> bool + Send + Sync),
+) -> Result<Vec<String>, CoreError> {
+    let backend = DownloadsBackend::open(downloads).await?;
+    let names: Vec<String> = backend
+        .subscriptions()
+        .await?
+        .into_iter()
+        .filter(|r| fills(&r.save_path))
+        .map(|r| r.name)
+        .collect();
+    if !names.is_empty() {
+        backend.remove(&names, false, false, false).await?;
+    }
+    Ok(names)
+}
+
+/// The phone keeps its subscriptions itself.
+#[cfg(feature = "phone")]
+async fn unfollow(
+    downloads: &Arc<Downloads>,
+    fills: &(dyn Fn(&str) -> bool + Send + Sync),
+) -> Result<Vec<String>, CoreError> {
+    phone::unfollow(&downloads.services, fills)
+}
+
 /// After episode files went to the trash (#266): each torrent that held one of them leaves
 /// the client too, so the same release can be downloaded again (the client refuses a torrent
 /// it already has) and nothing is left behind under Files missing. A season pack goes when
@@ -3020,6 +3121,10 @@ impl anibeam_library::Incoming for Downloads {
 
     fn files_gone(self: Arc<Self>, gone: Vec<std::path::PathBuf>) {
         drop_torrents_of(&self, gone);
+    }
+
+    fn stop_following(self: Arc<Self>, series: u64, title: String) {
+        stop_following(&self, series, title);
     }
 
     fn files_arrived(self: Arc<Self>) {
