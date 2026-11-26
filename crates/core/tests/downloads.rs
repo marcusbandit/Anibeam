@@ -2348,6 +2348,8 @@ fn deleting_episodes_keeps_the_follow() {
         },
     );
     common::wait_job(&c, job);
+    // An unfollow runs off the call: time for one to have asked, were it started
+    std::thread::sleep(Duration::from_millis(500));
     assert!(
         !http
             .requests()

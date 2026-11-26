@@ -2917,7 +2917,7 @@ pub fn stop_following(downloads: &Arc<Downloads>, series: u64, title: String) {
         match unfollow(&owner, &fills).await {
             Ok(names) if names.is_empty() => {}
             Ok(names) => {
-                let _ = owner
+                let forgot = owner
                     .services
                     .store
                     .write_async(move |c| {
@@ -2925,6 +2925,9 @@ pub fn stop_following(downloads: &Arc<Downloads>, series: u64, title: String) {
                         Ok(())
                     })
                     .await;
+                if let Err(e) = forgot {
+                    tracing::warn!("{title} still held as followed until the next read: {e}");
+                }
                 owner.services.bus.say(
                     Level::Info,
                     Stage::Downloads,

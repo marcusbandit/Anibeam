@@ -1271,9 +1271,9 @@ FocusScope {
         var extrasNamed = extras.length ? words.t("frame-delete-extras", { count: extras.length }) : ""
         var what = named && extrasNamed ? words.t("frame-delete-and", { first: named, second: extrasNamed }) : named || extrasNamed
         files = files.concat(extras)
-        // Delete all stops following the show too (#1483); Delete watched never does. The
-        // core finds the rules itself, so a list not read yet still unfollows.
-        var unfollow = !watchedOnly, rules = unfollow ? frame.rulesOf(c.id) : []
+        // Delete all stops following the show too (#1483); Delete watched never does. Only
+        // when the sheet names the rules, so nothing goes that it did not say
+        var rules = watchedOnly ? [] : frame.rulesOf(c.id), unfollow = rules.length > 0
         var base = words.t("frame-delete-base")
         if (rules.length) base += " " + words.t("frame-delete-unfollow-base", { count: rules.length, names: rules.join(", ") })   // i18n: none
         removeSheet.openAt(anchor, {
