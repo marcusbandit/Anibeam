@@ -128,7 +128,8 @@ SettingsTab {
     // (#1484), and again once a delete or a scan has changed what is there
     property var diskCards: []
     function loadDisk() { tab.diskCards = frame.diskCards() }
-    readonly property real watchedBytes: frame.watchedOf(diskCards).bytes
+    readonly property var watched: frame.watchedOf(diskCards)
+    readonly property real watchedBytes: watched.bytes
     Timer { id: diskDebounce; interval: 400; onTriggered: tab.loadDisk() }
     Connections {
         target: Door
@@ -295,7 +296,8 @@ SettingsTab {
                         onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).keep_watched = Math.round(v) }) } } }
     }
     // Delete watched (#1484), the same choices and sheet as on Downloaded. The client's name
-    // is the saved one, since the delete runs on what is saved, not on the draft
+    // is the saved one, since the delete runs on what is saved, not on the draft. The button
+    // also opens for a finished show whose files left on disk are none of them watched
     Panel {
         title: words.t("settings-downloads-disk-title")
         SettingRow { objectName: "downloads-settings-delete-watched"; label: words.t("settings-downloads-watched-on-disk")
@@ -304,9 +306,9 @@ SettingsTab {
                 objectName: "settings-delete-watched"
                 text: frame.deleteWatchedToken >= 0 ? words.t("downloads-deleting") : tab.watchedBytes > 0 ? words.t("downloads-delete-watched-frees", { size: words.bytes(tab.watchedBytes) }) : words.t("downloads-delete-watched")
                 icon: "trash-2"
-                danger: tab.watchedBytes > 0
-                enabled: frame.deleteWatchedToken < 0 && tab.watchedBytes > 0
-                onClicked: frame.askDeleteWatched(deleteWatchedButton, tab.diskCards, tab.settings && tab.settings.torrent_client !== "Qbittorrent" ? String(tab.settings.torrent_client) : "qBittorrent")
+                danger: tab.watchedBytes > 0 || tab.watched.finished.length > 0
+                enabled: frame.deleteWatchedToken < 0 && (tab.watchedBytes > 0 || tab.watched.finished.length > 0)
+                onClicked: frame.askDeleteWatched(deleteWatchedButton, function() { return tab.diskCards }, frame.clientNameOf(tab.settings))
             } }
     }
     // Who opens magnet links on this desktop (#1391); empty where it has no such setting, and

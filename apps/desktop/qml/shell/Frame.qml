@@ -1300,19 +1300,33 @@ FocusScope {
         if (t.length <= 3) return t.length === 1 ? t[0] : words.t("downloads-titles-and", { list: t.slice(0, -1).join(", "), last: t[t.length - 1] })
         return words.t("downloads-titles-more", { list: t.slice(0, 3).join(", "), count: t.length - 3 })
     }
+    // The torrent client in use by the name it was saved under, once there is more than one
+    // to tell apart (the saved ones and Anibeam's own); with one, the client's own name
+    function clientNameOf(s) {
+        var plain = s && s.torrent_client && s.torrent_client !== "Qbittorrent" ? String(s.torrent_client) : "qBittorrent"
+        var saved = s && s.saved_clients ? s.saved_clients : []
+        if (!s || saved.length === 0) return plain
+        if (s.torrent_mode === "Managed") return words.t("downloads-builtin-client")
+        if (saved.length < 2) return plain
+        for (var i = 0; i < saved.length; i++) if (saved[i].id === s.active_client) return saved[i].name
+        return plain
+    }
     // The two choices, every watched episode or every show confirmed done with, picked from
-    // a menu at the button and confirmed in the removal sheet. Files only: subscriptions stay
+    // a menu at the button and confirmed in the removal sheet. Files only: subscriptions stay.
+    // `cards` is a function, read again at each step, so a scan landing while the menu is
+    // open never leaves the sheet counting what was there before
     function askDeleteWatched(anchor, cards, client) {
-        var w = frame.watchedOf(cards)
+        var w = frame.watchedOf(cards())
         var p = anchor.mapToItem(frame, 0, anchor.height + theme.space(1))
         frame.openMenu(p.x, p.y, [
             { text: words.t("downloads-delete-watched-menu", { count: w.episodes, size: words.bytes(w.bytes) }), icon: "trash-2",
-              action: function() { frame.confirmDeleteWatched(anchor, w, client, false) } },
+              action: function() { frame.confirmDeleteWatched(anchor, cards, client, false) } },
             { text: words.t("downloads-delete-finished-menu", { count: w.finished.length, size: words.bytes(w.finishedBytes) }), icon: "trash-2",
-              action: function() { frame.confirmDeleteWatched(anchor, w, client, true) } }
+              action: function() { frame.confirmDeleteWatched(anchor, cards, client, true) } }
         ])
     }
-    function confirmDeleteWatched(anchor, w, client, finished) {
+    function confirmDeleteWatched(anchor, cards, client, finished) {
+        var w = frame.watchedOf(cards())
         if (finished ? !w.finished.length : !w.episodes) {
             frame.toast(finished ? words.t("downloads-delete-finished-none") : words.t("downloads-delete-watched-none"))
             return

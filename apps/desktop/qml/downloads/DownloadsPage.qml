@@ -182,7 +182,8 @@ Item {
         return diskCards.filter(function(c) { return !taken[c.id] }).sort(function(a, b) { return (b.bytes_on_disk || 0) - (a.bytes_on_disk || 0) })
     }
     readonly property real diskBytes: diskCards.reduce(function(n, c) { return n + (c.bytes_on_disk || 0) }, 0)
-    readonly property real watchedBytes: frame.watchedOf(diskCards).bytes
+    readonly property var watched: frame.watchedOf(diskCards)
+    readonly property real watchedBytes: watched.bytes
     // A show's line in Downloaded: how many episodes, how big, how much of it is watched
     function diskLedger(c) {
         var parts = [c.kind === "Movie" ? words.t("downloads-disk-film") : words.t("count-episodes", { count: c.episodes_on_disk || 0 }), words.bytes(c.bytes_on_disk || 0)]
@@ -2996,9 +2997,9 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: frame.deleteWatchedToken >= 0 ? words.t("downloads-deleting") : page.watchedBytes > 0 ? words.t("downloads-delete-watched-frees", { size: words.bytes(page.watchedBytes) }) : words.t("downloads-delete-watched")
                     icon: "trash-2"
-                    danger: page.watchedBytes > 0
-                    enabled: frame.deleteWatchedToken < 0 && page.watchedBytes > 0
-                    onClicked: frame.askDeleteWatched(deleteWatched, page.diskCards, page.clientName)
+                    danger: page.watchedBytes > 0 || page.watched.finished.length > 0
+                    enabled: frame.deleteWatchedToken < 0 && (page.watchedBytes > 0 || page.watched.finished.length > 0)
+                    onClicked: frame.askDeleteWatched(deleteWatched, function() { return page.diskCards }, page.activeClientName)
                 }
             }
             Repeater {
