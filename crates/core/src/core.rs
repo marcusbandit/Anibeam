@@ -1169,6 +1169,7 @@ mod tests {
             crate::foundation::secrets::Secrets::file_only(paths.secrets_path()),
         )
         .unwrap();
+        core.use_own_qbittorrent(None);
         let c = Arc::new(Collector::default());
         core.services.bus.subscribe(c.clone());
         let refits = |c: &Collector| {
