@@ -82,6 +82,9 @@ Item {
             font.pointSize: theme.typeLarge
             font.variableAxes: ({ "wdth": 74, "wght": 500 })
             color: root.flash > 0 ? Qt.tint(theme.text, Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, root.flash)) : theme.text
+            // The dot beside it, said aloud with the heading
+            Accessible.name: text
+            Accessible.description: root.warns ? words.t("settings-needs-attention") : ""
             // The group is why its settings index entry wears a red dot: the same dot, here
             Rectangle {
                 objectName: "panel-warns-dot"
