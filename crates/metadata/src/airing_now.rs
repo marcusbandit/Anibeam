@@ -397,7 +397,9 @@ const FORMATS: [&str; 3] = ["TV", "TV_SHORT", "ONA"];
 async fn refresh(metadata: Arc<Metadata>, pick: SeasonPick) -> Result<Finished, CoreError> {
     let now = time::now_secs();
     let season = season_of(pick, now);
-    let shows = fetch_shows(&metadata, &season).await?;
+    let SeasonRead {
+        rows: shows, whole, ..
+    } = fetch_shows(&metadata, &season).await?;
     // The strip belongs to what is on air, so only that read asks for it.
     let aired = if pick == SeasonPick::Now {
         fetch_aired(&metadata, now).await?
@@ -423,7 +425,7 @@ async fn refresh(metadata: Arc<Metadata>, pick: SeasonPick) -> Result<Finished, 
     metadata
         .services
         .store
-        .tx_async(move |tx| write(tx, &key, &next_key, &shows, &aired, now))
+        .tx_async(move |tx| write(tx, &key, &next_key, &shows, whole, &aired, now))
         .await?;
     // Every cover before the event, so the cards draw local files.
     for (url, outcome) in metadata.net.images.ensure(&covers).await {
@@ -444,27 +446,47 @@ async fn refresh(metadata: Arc<Metadata>, pick: SeasonPick) -> Result<Finished, 
     })
 }
 
-/// Every page of the season, most popular first, each show once: AniList
+/// A read of a season's pages, most popular first, each show once: AniList
 /// can hand a show back on two pages when the order shifts mid-read.
-async fn fetch_shows(metadata: &Metadata, season: &Season) -> Result<Vec<SeasonRow>, CoreError> {
-    let mut seen: HashSet<u64> = HashSet::new();
-    let mut rows: Vec<SeasonRow> = Vec::new();
+/// `whole` is whether the read got to the page that says there is no more,
+/// rather than stopping at the cap.
+#[derive(Default)]
+struct SeasonRead {
+    rows: Vec<SeasonRow>,
+    seen: HashSet<u64>,
+    whole: bool,
+}
+
+impl SeasonRead {
+    /// Takes one page. True while AniList says there is another.
+    fn take(&mut self, data: &serde_json::Value) -> bool {
+        for row in parse_shows(data) {
+            if self.seen.insert(row.anilist_id) {
+                self.rows.push(row);
+            }
+        }
+        let more = has_next(data);
+        if !more {
+            self.whole = true;
+        }
+        more
+    }
+}
+
+/// Every page of the season, up to the cap.
+async fn fetch_shows(metadata: &Metadata, season: &Season) -> Result<SeasonRead, CoreError> {
+    let mut read = SeasonRead::default();
     for page in 1..=MAX_PAGES {
         let data = metadata
             .net
             .anilist
             .graphql(SEASON_PAGE_QUERY, season_variables(season, page), None)
             .await?;
-        for row in parse_shows(&data) {
-            if seen.insert(row.anilist_id) {
-                rows.push(row);
-            }
-        }
-        if !has_next(&data) {
+        if !read.take(&data) {
             break;
         }
     }
-    Ok(rows)
+    Ok(read)
 }
 
 /// The episodes out in the window, newest first.
@@ -599,12 +621,14 @@ fn text(value: &serde_json::Value) -> Option<String> {
 /// listing goes with the old rows. A season browsed to (neither on air,
 /// next, nor this one) goes once its read is a day old, so a read of
 /// another season landing beside it never empties the page it is on, and
-/// the strip keeps only its window.
+/// the strip keeps only its window. `whole` is `SeasonRead::whole`: only a
+/// read of what is on air that got to its last page takes marks.
 fn write(
     tx: &Transaction,
     key: &str,
     next_key: &str,
     shows: &[SeasonRow],
+    whole: bool,
     aired: &[AiredRow],
     now: i64,
 ) -> Result<(), CoreError> {
@@ -674,9 +698,9 @@ fn write(
          ON CONFLICT(season) DO UPDATE SET fetched_at = excluded.fetched_at",
         params![key, now],
     )?;
-    // A read stopped at the page cap may have left shows on air unread.
-    let whole = !shows.is_empty() && shows.len() < (MAX_PAGES * 50) as usize;
-    if key == "NOW" && whole {
+    // A read stopped at the page cap may have left shows on air unread,
+    // however few it holds once each show is kept once (#1327).
+    if key == "NOW" && whole && !shows.is_empty() {
         prune_not_interested(tx)?;
     }
     Ok(())
@@ -910,6 +934,65 @@ mod tests {
         assert_eq!(rows[0].mal_id, Some(11));
         assert_eq!(rows[0].title_romaji.as_deref(), Some("A"));
         assert!(!has_next(&data));
+    }
+
+    /// One page of shows `from..to`, saying whether there is another.
+    fn page(from: u64, to: u64, more: bool) -> serde_json::Value {
+        let media: Vec<serde_json::Value> = (from..to)
+            .map(|id| serde_json::json!({ "id": id, "title": { "romaji": format!("Show {id}") } }))
+            .collect();
+        serde_json::json!({ "Page": { "pageInfo": { "hasNextPage": more }, "media": media } })
+    }
+
+    fn marks(c: &rusqlite::Connection) -> Vec<u64> {
+        let mut stmt = c
+            .prepare("SELECT anilist_id FROM not_interested ORDER BY anilist_id")
+            .unwrap();
+        stmt.query_map([], |r| r.get::<_, i64>(0))
+            .unwrap()
+            .map(|id| id.unwrap() as u64)
+            .collect()
+    }
+
+    /// A read stopped at the page cap while AniList still says there is
+    /// more is not all of what is on air, however few shows it holds once
+    /// each is kept once, so a mark for a show on none of its pages stays
+    /// (#1327). A read that reaches the last page takes the mark.
+    #[test]
+    fn a_read_stopped_at_the_page_cap_keeps_every_mark() {
+        let mut c = anibeam_foundation::store::testing::conn();
+        c.execute(
+            "INSERT INTO not_interested (anilist_id, title, marked_at) VALUES (9999, 'Unread', 0)",
+            [],
+        )
+        .unwrap();
+
+        // Ten pages of fifty that all say there is more, each repeating ten
+        // shows of the page before: 410 shows, under the 500 the cap holds.
+        let mut read = SeasonRead::default();
+        for n in 0..u64::from(MAX_PAGES) {
+            let from = 1 + n * 40;
+            assert!(read.take(&page(from, from + 50, true)));
+        }
+        assert_eq!(read.rows.len(), 410);
+        assert!(!read.whole, "the cap stopped it, not the last page");
+        let tx = c.transaction().unwrap();
+        write(&tx, "NOW", "NEXT", &read.rows, read.whole, &[], OCTOBER).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(
+            marks(&c),
+            vec![9999],
+            "a show on no page read keeps its mark"
+        );
+
+        let mut read = SeasonRead::default();
+        assert!(read.take(&page(1, 51, true)));
+        assert!(!read.take(&page(51, 61, false)));
+        assert!(read.whole);
+        let tx = c.transaction().unwrap();
+        write(&tx, "NOW", "NEXT", &read.rows, read.whole, &[], OCTOBER).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(marks(&c), Vec::<u64>::new(), "a whole read takes it");
     }
 
     /// A show only a friend has listed is off the owner's list here, and
