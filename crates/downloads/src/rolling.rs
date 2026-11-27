@@ -66,7 +66,8 @@ pub const ROLLS: &str = "download_rolls";
 /// A torrent counts as this roll's if the client stamped it up to this long
 /// before the roll was made (clock skew on a remote host).
 const BIND_SLACK_SECS: i64 = 300;
-/// A roll whose torrent never showed up in the client goes after this long.
+/// A part whose torrent the client never listed goes after this long, and a
+/// roll that never saw any of its torrents ends.
 const UNBOUND_AGE_SECS: i64 = 3 * 24 * 3600;
 /// The most a window may reach ahead, so a typo cannot fetch a whole run.
 pub const MAX_AHEAD: u32 = 500;
@@ -163,30 +164,67 @@ impl RollClient for QbtClient {
             Ok(b) => b,
             Err(e) => return items.iter().map(|_| Err(e.clone())).collect(),
         };
-        // One at a time, so a failed add cannot hide the ones that went in. The
-        // folder is the one the whole lot would have been named for.
-        let name = roll.name.clone().or_else(|| {
-            items
-                .first()
-                .map(|i| anibeam_releases::titles::folder_name(&i.title))
-                .filter(|n| !n.is_empty())
-        });
-        let save_path = super::still_there(roll.home.as_deref());
+        // The folder the whole lot is named for, also when they go in one by one
+        let name = roll
+            .name
+            .clone()
+            .filter(|n| !n.trim().is_empty())
+            .or_else(|| {
+                items
+                    .first()
+                    .map(|i| anibeam_releases::titles::folder_name(&i.title))
+                    .filter(|n| !n.is_empty())
+            });
+        let (name, home) = (name.as_deref(), roll.home.as_deref());
+        let save_path = super::still_there(home);
+        let e = match backend.download(items, name, save_path).await {
+            Ok(added) => {
+                super::move_home(downloads, items, &added, home);
+                let hash = |i: usize| {
+                    if added.hashes.len() == items.len() {
+                        added.hashes[i].clone()
+                    } else {
+                        String::new()
+                    }
+                };
+                return (0..items.len()).map(|i| Ok(hash(i))).collect();
+            }
+            Err(e) => e,
+        };
+        // The lot failed: one by one, so the ones that go in are known, unless the
+        // client itself is down and none will
         let mut out = Vec::with_capacity(items.len());
+        let mut down = client_down(&e).then_some(e);
         for item in items {
+            if let Some(e) = &down {
+                out.push(Err(e.clone()));
+                continue;
+            }
             let one = std::slice::from_ref(item);
-            out.push(
-                backend
-                    .download(one, name.as_deref(), save_path)
-                    .await
-                    .map(|added| {
-                        super::move_home(downloads, one, &added, roll.home.as_deref());
-                        added.hashes.into_iter().next().unwrap_or_default()
-                    }),
-            );
+            let answer = backend.download(one, name, save_path).await.map(|added| {
+                super::move_home(downloads, one, &added, home);
+                added.hashes.into_iter().next().unwrap_or_default()
+            });
+            if let Err(e) = &answer
+                && client_down(e)
+            {
+                down = Some(e.clone());
+            }
+            out.push(answer);
         }
         out
     }
+}
+
+/// The torrent client, or anirss in front of it, could not be reached or
+/// would not take anything: no release added now would go in.
+fn client_down(e: &CoreError) -> bool {
+    matches!(e, CoreError::Service { service, code, .. }
+    if (service == super::qbt::SERVICE || service == super::anirss::SERVICE)
+        && matches!(
+            code.as_str(),
+            "unreachable" | "timeout" | "unauthorized" | "not_running" | "missing"
+        ))
 }
 
 /// One rolling download.
@@ -1161,8 +1199,11 @@ async fn step<C: RollClient>(
         // Only the ones that went in are added; the rest stay held for the next pass
         let now = now_secs();
         let mut went = 0;
-        for (&p, answer) in m.add.iter().zip(&answers) {
-            match answer {
+        for (i, &p) in m.add.iter().enumerate() {
+            match answers
+                .get(i)
+                .unwrap_or(&Err(CoreError::internal("no answer")))
+            {
                 Ok(hash) => {
                     let part = &mut roll.parts[p];
                     part.added = true;
@@ -2042,6 +2083,16 @@ mod tests {
         assert!(finished(&r, 4 * day));
         give_up_unlisted(&mut r, &[], 4 * day);
         assert!(r.parts.iter().all(|p| !p.gone), "left for finished");
+    }
+
+    #[test]
+    fn only_the_client_itself_being_down_stops_the_one_by_one_adds() {
+        let down = CoreError::service(crate::qbt::SERVICE, "unreachable", "no answer");
+        assert!(client_down(&down));
+        // A link's own host not answering is about that release alone
+        let link = CoreError::service("example.org", "unreachable", "no answer");
+        assert!(!client_down(&link));
+        assert!(!client_down(&CoreError::invalid("link", "bad")));
     }
 
     /// A client whose add takes every item but the ones named, listing nothing.
