@@ -2200,6 +2200,7 @@ settings-usage-keep = 保留本地使用日志
 settings-usage-summary = { $days } 天，{ $events } 条记录
 settings-usage-empty = 还没有记录
 settings-usage-download = 下载
+settings-usage-filter = 使用日志 (*.json)
 settings-usage-send = 下载并发送
 settings-usage-clear = 清除
 settings-usage-clear-confirm = 要清除使用日志吗？

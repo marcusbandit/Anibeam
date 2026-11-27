@@ -2709,6 +2709,7 @@ settings-usage-summary = { $days ->
 }
 settings-usage-empty = Nog niets vastgelegd
 settings-usage-download = Downloaden
+settings-usage-filter = Gebruikslog (*.json)
 settings-usage-send = Downloaden en versturen
 settings-usage-clear = Leegmaken
 settings-usage-clear-confirm = Gebruikslog leegmaken?

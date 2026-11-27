@@ -2710,6 +2710,7 @@ settings-usage-summary = { $days ->
 }
 settings-usage-empty = Nada registrado todavía
 settings-usage-download = Descargar
+settings-usage-filter = Registro de uso (*.json)
 settings-usage-send = Descargar y enviar
 settings-usage-clear = Borrar
 settings-usage-clear-confirm = ¿Borrar el registro de uso?

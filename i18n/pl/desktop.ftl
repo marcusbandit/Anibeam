@@ -3030,6 +3030,7 @@ settings-usage-summary = { $days ->
 }
 settings-usage-empty = Jeszcze nic nie zapisano
 settings-usage-download = Pobierz
+settings-usage-filter = Dziennik użycia (*.json)
 settings-usage-send = Pobierz i wyślij
 settings-usage-clear = Wyczyść
 settings-usage-clear-confirm = Wyczyścić dziennik użycia?

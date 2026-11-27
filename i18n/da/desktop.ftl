@@ -2710,6 +2710,7 @@ settings-usage-summary = { $days ->
 }
 settings-usage-empty = Intet logget endnu
 settings-usage-download = Download
+settings-usage-filter = Brugslog (*.json)
 settings-usage-send = Download og send
 settings-usage-clear = Ryd
 settings-usage-clear-confirm = Ryd brugsloggen?

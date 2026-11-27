@@ -2710,6 +2710,7 @@ settings-usage-summary = { $days ->
 }
 settings-usage-empty = Noch nichts protokolliert
 settings-usage-download = Herunterladen
+settings-usage-filter = Nutzungsprotokoll (*.json)
 settings-usage-send = Herunterladen und senden
 settings-usage-clear = Leeren
 settings-usage-clear-confirm = Nutzungsprotokoll leeren?

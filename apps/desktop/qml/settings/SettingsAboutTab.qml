@@ -268,7 +268,7 @@ SettingsTab {
         fileMode: FileDialog.SaveFile
         defaultSuffix: "json"
         currentFile: Fmt.fileUrl(tab.usageFile())
-        nameFilters: ["JSON (*.json)"]
+        nameFilters: [words.t("settings-usage-filter")]
         onAccepted: { var path = tab.path(selectedFile); if (tab.saveUsage(path)) frame.toast(words.t("settings-usage-saved", { path: path })) }
     }
     UsagePreview {

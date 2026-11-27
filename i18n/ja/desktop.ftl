@@ -2262,6 +2262,7 @@ settings-usage-keep = ローカルに利用ログを記録する
 settings-usage-summary = { $days }日分、{ $events }件
 settings-usage-empty = 記録はまだありません
 settings-usage-download = ダウンロード
+settings-usage-filter = 利用ログ (*.json)
 settings-usage-send = ダウンロードして送信
 settings-usage-clear = クリア
 settings-usage-clear-confirm = 利用ログをクリアしますか?

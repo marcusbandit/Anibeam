@@ -2509,6 +2509,7 @@ settings-usage-keep = 로컬 사용 기록 남기기
 settings-usage-summary = { $days }일, { $events }건
 settings-usage-empty = 아직 기록이 없어요
 settings-usage-download = 다운로드
+settings-usage-filter = 사용 기록 (*.json)
 settings-usage-send = 다운로드하고 보내기
 settings-usage-clear = 지우기
 settings-usage-clear-confirm = 사용 기록을 지울까요?

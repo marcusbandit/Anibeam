@@ -2982,6 +2982,7 @@ settings-usage-summary = { $days ->
 }
 settings-usage-empty = Записей пока нет
 settings-usage-download = Скачать
+settings-usage-filter = Журнал использования (*.json)
 settings-usage-send = Скачать и отправить
 settings-usage-clear = Очистить
 settings-usage-clear-confirm = Очистить журнал использования?

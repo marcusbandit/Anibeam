@@ -2862,6 +2862,7 @@ settings-usage-summary = { $days ->
 }
 settings-usage-empty = Nothing logged yet
 settings-usage-download = Download
+settings-usage-filter = Usage log (*.json)
 settings-usage-send = Download and send
 settings-usage-clear = Clear
 settings-usage-clear-confirm = Clear the usage log?
