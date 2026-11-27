@@ -45,9 +45,9 @@ SettingsTab {
         if (r && r.error) frame.fail(r.error, function() { tab.setUsageLog(on) })
         tab.loadUsage()
     }
-    function saveUsage(path) {
-        var r = Door.call("ExportUsage", { path: path })
-        if (r.error) { frame.fail(r.error, function() { tab.saveUsage(path) }); return false }
+    function saveUsage(path, text) {
+        var r = Door.call("ExportUsage", { path: path, text: text === undefined ? null : text })
+        if (r.error) { frame.fail(r.error, function() { tab.saveUsage(path, text) }); return false }
         tab.loadUsage()
         return true
     }
@@ -59,8 +59,10 @@ SettingsTab {
     // Send: the file is saved first, then the log goes out once, off the Qt thread
     function sendUsage() {
         var path = tab.usageFile()
-        if (!tab.saveUsage(path)) return
-        var t = Door.callAsync("SendUsage", {})
+        // What goes out is the text the preview showed, not the log a moment later
+        var shown = usagePreview.text
+        if (!tab.saveUsage(path, shown)) return
+        var t = Door.callAsync("SendUsage", { text: shown })
         if (t < 0) { frame.toast(words.t("settings-usage-send-failed", { error: "" })); return }
         tab.usageToken = t
         tab.sendingUsage = true

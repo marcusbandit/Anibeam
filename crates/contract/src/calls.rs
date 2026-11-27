@@ -912,15 +912,21 @@ pub enum Call {
     },
     /// The usage log as `SendUsage` would send it, with how many days and events it holds.
     GetUsage,
-    /// Writes the usage log's text to `path`.
+    /// Writes the usage log's text to `path`: `text` when given, the text a preview
+    /// showed, else the log as it is now.
     ExportUsage {
         path: String,
+        text: Option<String>,
     },
     /// Empties the usage log and removes its file.
     ClearUsage,
     /// Sends the usage log once to the collection route on the rooms relay, with a fresh
-    /// random id that is never kept. Nothing else ever sends it.
-    SendUsage,
+    /// random id that is never kept. Nothing else ever sends it. `text` is the log a
+    /// preview showed, so what goes out is what the person saw; without it, the log as it
+    /// is now. Text that is not a usage log is refused.
+    SendUsage {
+        text: Option<String>,
+    },
 }
 
 impl Call {
@@ -1100,7 +1106,7 @@ impl Call {
             Call::GetUsage => "GetUsage",
             Call::ExportUsage { .. } => "ExportUsage",
             Call::ClearUsage => "ClearUsage",
-            Call::SendUsage => "SendUsage",
+            Call::SendUsage { .. } => "SendUsage",
         }
     }
 }

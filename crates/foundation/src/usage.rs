@@ -37,6 +37,7 @@ pub const FILE_NAME: &str = "usage.json";
 
 /// One day's counts. Maps keep their keys sorted, so the same counts always read the same.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Day {
     #[serde(default)]
     pub calls: BTreeMap<String, u64>,
@@ -60,6 +61,7 @@ impl Day {
 
 /// The file, and the text `SendUsage` sends.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct File {
     pub format: u32,
     pub app_version: String,
@@ -232,6 +234,16 @@ impl UsageLog {
             days: days.clone(),
         };
         serde_json::to_string_pretty(&file).unwrap_or_default()
+    }
+
+    /// `text` read back as a usage log and written out again, so only the log's own
+    /// fields can leave: anything else, or another format, is refused.
+    pub fn checked(text: &str) -> Result<String, String> {
+        let file: File = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        if file.format != FORMAT {
+            return Err(format!("format {}", file.format));
+        }
+        serde_json::to_string_pretty(&file).map_err(|e| e.to_string())
     }
 
     /// The log's text, after a save, so what is shown is what is on disk.

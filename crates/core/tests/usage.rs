@@ -44,6 +44,7 @@ fn calls_pages_and_errors_are_counted_and_nothing_is_sent() {
     let out = dir.path().join("usage-copy.json");
     core.call(Call::ExportUsage {
         path: out.to_string_lossy().into_owned(),
+        text: None,
     })
     .unwrap();
     let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
@@ -63,8 +64,8 @@ fn a_send_posts_the_log_once_under_a_fresh_id() {
     core.call(Call::ListSources).unwrap();
     http.push_for("/usage", 200, "{}");
     http.push_for("/usage", 200, "{}");
-    core.call(Call::SendUsage).unwrap();
-    core.call(Call::SendUsage).unwrap();
+    core.call(Call::SendUsage { text: None }).unwrap();
+    core.call(Call::SendUsage { text: None }).unwrap();
     let sent: Vec<_> = http.requests();
     assert_eq!(sent.len(), 2);
     let mut ids = Vec::new();
@@ -84,7 +85,7 @@ fn a_send_posts_the_log_once_under_a_fresh_id() {
     assert!(!usage(&core).text.contains(&ids[0]));
 
     http.push_for("/usage", 429, "");
-    match core.call(Call::SendUsage) {
+    match core.call(Call::SendUsage { text: None }) {
         Err(CoreError::Service { code, .. }) => assert_eq!(code, "http_429"),
         other => panic!("{other:?}"),
     }
@@ -142,5 +143,39 @@ fn the_log_survives_a_restart() {
     let file: serde_json::Value = serde_json::from_str(&log.text).unwrap();
     let day = file["days"].as_object().unwrap().values().next().unwrap();
     assert_eq!(day["calls"]["ListSources"], 3);
+    core.shutdown();
+}
+
+#[test]
+fn a_send_carries_the_text_the_preview_showed_and_refuses_anything_else() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    core.call(Call::ListSources).unwrap();
+    let shown = usage(&core).text;
+    // More happens between the preview and the press
+    for _ in 0..5 {
+        core.call(Call::ListSources).unwrap();
+    }
+    http.push_for("/usage", 200, "{}");
+    core.call(Call::SendUsage {
+        text: Some(shown.clone()),
+    })
+    .unwrap();
+    let sent = http.requests();
+    let Some(Body::Json(body)) = &sent[0].body else {
+        panic!("{:?}", sent[0].body)
+    };
+    let shown: serde_json::Value = serde_json::from_str(&shown).unwrap();
+    assert_eq!(body["usage"], shown);
+
+    // Text that is not a usage log, or carries more than one, never leaves
+    for text in [
+        "not json".to_string(),
+        r#"{"format":1,"app_version":"x","platform":"desktop","os":"linux","days":{},"path":"/srv/media"}"#.to_string(),
+        r#"{"format":9,"app_version":"x","platform":"desktop","os":"linux","days":{}}"#.to_string(),
+    ] {
+        assert!(core.call(Call::SendUsage { text: Some(text) }).is_err());
+    }
+    assert_eq!(http.requests().len(), 1);
     core.shutdown();
 }

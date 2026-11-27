@@ -363,12 +363,19 @@ fn run_usage(core: &Core, action: UsageCommand) -> i32 {
             }
             0
         }
-        UsageCommand::Export { file } => send(core, Call::ExportUsage { path: file }, false),
+        UsageCommand::Export { file } => send(
+            core,
+            Call::ExportUsage {
+                path: file,
+                text: None,
+            },
+            false,
+        ),
         UsageCommand::Send { yes: false } => {
             eprintln!("{SEND_NEEDS_YES}");
             2
         }
-        UsageCommand::Send { yes: true } => send(core, Call::SendUsage, false),
+        UsageCommand::Send { yes: true } => send(core, Call::SendUsage { text: None }, false),
         UsageCommand::Clear => send(core, Call::ClearUsage, false),
     }
 }

@@ -684,9 +684,9 @@ impl Core {
             }
             Call::NoteUsage { page } => usage::note(self, &page),
             Call::GetUsage => usage::get(self),
-            Call::ExportUsage { path } => usage::export(self, &path),
+            Call::ExportUsage { path, text } => usage::export(self, &path, text),
             Call::ClearUsage => usage::clear(self),
-            Call::SendUsage => usage::send(self),
+            Call::SendUsage { text } => usage::send(self, text),
 
             // Library: sources, scans, the library's reads and its files
             Call::ListSources => scan::list_sources_call(&self.library),

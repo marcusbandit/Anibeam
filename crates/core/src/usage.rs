@@ -38,8 +38,21 @@ pub(crate) fn get(core: &Core) -> Result<Reply, CoreError> {
     })
 }
 
-pub(crate) fn export(core: &Core, path: &str) -> Result<Reply, CoreError> {
-    let text = core.usage.text();
+/// The text a preview showed, checked to be a usage log, or the log as it is now.
+fn text_or_now(core: &Core, text: Option<String>) -> Result<String, CoreError> {
+    match text {
+        Some(text) => Log::checked(&text).map_err(|e| {
+            CoreError::invalid(
+                "text",
+                crate::i18n::tr("core-usage-not-a-log", &[("error", e.into())]),
+            )
+        }),
+        None => Ok(core.usage.text()),
+    }
+}
+
+pub(crate) fn export(core: &Core, path: &str, text: Option<String>) -> Result<Reply, CoreError> {
+    let text = text_or_now(core, text)?;
     crate::atomic_file::write(std::path::Path::new(path), text)?;
     Ok(Reply::Ok)
 }
@@ -57,10 +70,10 @@ fn send_id() -> String {
         .collect()
 }
 
-/// Sends the log as `GetUsage` shows it, under a fresh send id. Waits on the network, so a
+/// Sends the log the preview showed, or as `GetUsage` shows it now, under a fresh send id. Waits on the network, so a
 /// shell sends it off its UI thread.
-pub(crate) fn send(core: &Core) -> Result<Reply, CoreError> {
-    let usage: serde_json::Value = serde_json::from_str(&core.usage.text())
+pub(crate) fn send(core: &Core, text: Option<String>) -> Result<Reply, CoreError> {
+    let usage: serde_json::Value = serde_json::from_str(&text_or_now(core, text)?)
         .map_err(|e| CoreError::internal(format!("usage log: {e}")))?;
     let body = json!({ "send_id": send_id(), "usage": usage });
     let req = HttpRequest::post(send_url()).body(Body::Json(body));

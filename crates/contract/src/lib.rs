@@ -69,7 +69,7 @@ mod tests {
                 page: "library".into(),
             },
             Call::GetUsage,
-            Call::SendUsage,
+            Call::SendUsage { text: None },
             Call::RoomStart { wait: true },
         ];
         for call in calls {
