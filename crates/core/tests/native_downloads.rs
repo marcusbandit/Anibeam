@@ -1066,6 +1066,7 @@ fn native_download_jobs_do_not_panic_with_runtime_blocking_keyring() {
     {
         let secrets = Secrets::runtime_blocking_for_test(paths.secrets_path());
         let core = Core::open_with_http_and_secrets(paths.clone(), http.clone(), secrets).unwrap();
+        core.use_own_qbittorrent(None);
         core.call(Call::SetDownloadSettings {
             settings: settings(QBT),
             anirss_token: Some("tok".to_string()),
@@ -1125,6 +1126,7 @@ fn native_download_jobs_do_not_panic_with_runtime_blocking_keyring() {
     let http = FakeHttp::new();
     let secrets = Secrets::runtime_blocking_for_test(paths.secrets_path());
     let core = Core::open_with_http_and_secrets(paths, http.clone(), secrets).unwrap();
+    core.use_own_qbittorrent(None);
     let c = Arc::new(Collector::default());
     let _sub = core.subscribe(c.clone());
 

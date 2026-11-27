@@ -1891,9 +1891,9 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
     )
     .unwrap();
     std::fs::set_permissions(&nox, std::fs::Permissions::from_mode(0o755)).unwrap();
-    unsafe { std::env::set_var("ANIBEAM_QBITTORRENT_NOX", &nox) };
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
+    core.use_own_qbittorrent(Some(nox));
     core.let_sandbox_find_torrent_clients();
     // Nothing at the stock address, nothing on the new port until it starts
     http.fail_next("connection refused");
@@ -1942,7 +1942,6 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
     let settled = downloads_status(&core).settings;
     assert_eq!(settled.torrent_mode, TorrentMode::Managed);
     assert_eq!(settled.torrent_url, status.settings.torrent_url);
-    unsafe { std::env::remove_var("ANIBEAM_QBITTORRENT_NOX") };
     core.shutdown();
 }
 

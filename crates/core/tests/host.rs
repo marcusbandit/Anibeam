@@ -384,6 +384,7 @@ fn a_host_that_was_left_on_serves_again_after_a_restart() {
     let paths = CorePaths::under(dir.path());
     let secrets = anibeam_core::trackers::Secrets::file_only(paths.secrets_path());
     let core = Core::open_with_secrets(paths, secrets).unwrap();
+    core.use_own_qbittorrent(None);
     core.set_host_bind(Some("127.0.0.1:0".to_string()));
     assert!(!host_status(&core).enabled, "nothing runs before start");
     core.start().unwrap();

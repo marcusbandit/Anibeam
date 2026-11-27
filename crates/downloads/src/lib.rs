@@ -87,6 +87,11 @@ pub struct Downloads {
     /// Set only by a test: a sandboxed core settles on a qBittorrent it finds
     /// answering, as an installed one does.
     sandbox_finds_clients: AtomicBool,
+    /// Set only by a test: `Some` pins the qbittorrent-nox Anibeam's own
+    /// client runs, `Some(None)` says there is none, in place of the one
+    /// `managed::binary` finds. Anibeam's own outlives the app by design, so a
+    /// test that found the real one on the PATH left it running for good (#1489).
+    own_binary: Mutex<Option<Option<std::path::PathBuf>>>,
 }
 
 #[derive(Default)]
@@ -143,6 +148,7 @@ impl Downloads {
             rules: tokio::sync::Mutex::new(()),
             unattended_off: AtomicBool::new(false),
             sandbox_finds_clients: AtomicBool::new(false),
+            own_binary: Mutex::new(None),
         }
     }
 }
@@ -158,6 +164,21 @@ impl Downloads {
 
     pub fn let_sandbox_find_clients(&self) {
         self.sandbox_finds_clients.store(true, Ordering::Relaxed);
+    }
+
+    /// Pins the qbittorrent-nox Anibeam's own client runs to `binary`, or to
+    /// none, in place of the one on the PATH. Tests only.
+    pub fn use_own_qbittorrent(&self, binary: Option<std::path::PathBuf>) {
+        *recover(&self.own_binary) = Some(binary);
+    }
+
+    /// The qbittorrent-nox to run as Anibeam's own: the one a test pinned,
+    /// else the one `managed::binary` finds.
+    fn own_qbittorrent(&self) -> Option<std::path::PathBuf> {
+        match recover(&self.own_binary).clone() {
+            Some(pinned) => pinned,
+            None => managed::binary(),
+        }
     }
 
     pub(crate) fn unattended_allowed(&self) -> bool {
@@ -608,7 +629,7 @@ async fn ensure_torrent(downloads: &Downloads) -> Result<DownloadSettings, CoreE
         s = decide_torrent(downloads, s).await?;
     }
     if s.torrent_mode == TorrentMode::Managed {
-        start_managed(&downloads.services, &s).await?;
+        start_managed(downloads, &s).await?;
     }
     Ok(s)
 }
@@ -656,7 +677,7 @@ async fn decide_torrent(
             _ => false,
         }
     };
-    let message = if is_own && (answered || managed::binary().is_some()) {
+    let message = if is_own && (answered || downloads.own_qbittorrent().is_some()) {
         s.torrent_mode = TorrentMode::Managed;
         s.torrent_username = managed::USERNAME.to_string();
         "Downloads use Anibeam's own qBittorrent".to_string()
@@ -665,7 +686,7 @@ async fn decide_torrent(
         // The client it found becomes a saved one, the first on the list
         settings::settle_clients(&mut s, &[])?;
         format!("Downloads use the qBittorrent at {}", s.torrent_url)
-    } else if managed::binary().is_some() {
+    } else if downloads.own_qbittorrent().is_some() {
         // The port an earlier setup chose, so the profile and the address agree
         let port = match own_port {
             Some(port) => port,
@@ -713,7 +734,8 @@ fn own_address(services: &Services) -> Result<String, CoreError> {
 }
 
 /// Anibeam's own qBittorrent, started when its Web UI does not answer.
-async fn start_managed(services: &Services, s: &DownloadSettings) -> Result<(), CoreError> {
+async fn start_managed(downloads: &Downloads, s: &DownloadSettings) -> Result<(), CoreError> {
+    let services = &downloads.services;
     let client = QbtClient::new(&s.torrent_url, managed::USERNAME, "", services.http.clone());
     let answers = || async {
         matches!(
@@ -725,7 +747,7 @@ async fn start_managed(services: &Services, s: &DownloadSettings) -> Result<(), 
         return Ok(());
     }
     let failed = |message: String| CoreError::service(qbt::SERVICE, "failed", message);
-    let binary = managed::binary().ok_or_else(|| {
+    let binary = downloads.own_qbittorrent().ok_or_else(|| {
         CoreError::service(
             qbt::SERVICE,
             "missing",
