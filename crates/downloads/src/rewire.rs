@@ -177,6 +177,47 @@ pub fn holds_all(entries: &[FeedEntry], picked: &[Release]) -> bool {
     picked.iter().all(|r| titles.contains(&norm(&r.title)))
 }
 
+/// The rules besides `keep` that follow the same show it does (#1486): one saving into
+/// `folder`, the show's own; one whose folder `fills` says fills the same library series;
+/// and the one named as the subscription asked, `asked`, or that name with the ` @endpoint`
+/// (and ` @endpoint 2`) an engine adds beside a rule on another feed, case aside, unless
+/// `fills` says its folder fills another series (a season of its own named like the
+/// first). `fills` is None when no series is known.
+pub fn twins(
+    rules: &Value,
+    keep: &str,
+    asked: Option<&str>,
+    folder: &str,
+    fills: impl Fn(&str) -> Option<bool>,
+) -> Vec<String> {
+    let folder = crate::paths::norm(folder);
+    let asked = asked.map(str::to_lowercase).filter(|a| !a.is_empty());
+    let named = |name: &str| {
+        asked.as_deref().is_some_and(|a| {
+            let name = name.to_lowercase();
+            name == a || name.starts_with(&format!("{a} @"))
+        })
+    };
+    let mut out: Vec<String> = rules
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(name, def)| {
+            if name.as_str() == keep || !def.is_object() {
+                return false;
+            }
+            let saves = crate::native::rule_save_path(def).unwrap_or("");
+            let filled = if saves.is_empty() { None } else { fills(saves) };
+            (!saves.is_empty() && crate::paths::norm(saves) == folder)
+                || filled == Some(true)
+                || (named(name) && filled != Some(false))
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    out.sort_by_key(|n| n.to_lowercase());
+    out
+}
+
 /// Whether any rule but `except` reads `feed_url`.
 pub fn feed_shared(rules: &Value, except: &str, feed_url: &str) -> bool {
     rules.as_object().is_some_and(|map| {
@@ -235,6 +276,53 @@ pub fn positive_fields(query: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// What a new rule for a show replaces: the rule of the name it asked for and that
+    /// name's ` @endpoint` siblings, any rule filling the show's folder or its library
+    /// series, and nothing else (#1486).
+    #[test]
+    fn a_rules_twins_are_the_rules_of_its_show() {
+        let rules = json!({
+            "Show": {"affectedFeeds": ["a"], "savePath": "/srv/TV/Show"},
+            "show @other 2": {"affectedFeeds": ["b"], "savePath": "/srv/TV/show @other 2"},
+            "Show @feed": {"affectedFeeds": ["c"], "savePath": "/srv/TV/Show @feed"},
+            "By hand": {"affectedFeeds": ["d"], "torrentParams": {"save_path": "/lib/Show/"}},
+            "Other mount": {"affectedFeeds": ["e"], "savePath": "/mnt/tv/Show"},
+            "Show 2": {"affectedFeeds": ["f"], "savePath": "/srv/TV/Show 2"},
+            "Showa": {"affectedFeeds": ["g"], "savePath": "/srv/TV/Showa"},
+        });
+        let none = |_: &str| None;
+        assert_eq!(
+            twins(
+                &rules,
+                "Show @feed",
+                Some("Show"),
+                "/srv/TV/Show @feed",
+                none
+            ),
+            vec!["Show".to_string(), "show @other 2".to_string()]
+        );
+        // A library show: its folder, and a folder the library links to it
+        let linked = |p: &str| Some(p == "/mnt/tv/Show");
+        assert_eq!(
+            twins(&rules, "Show @feed", None, "/lib/Show", linked),
+            vec!["By hand".to_string(), "Other mount".to_string()]
+        );
+        assert!(twins(&rules, "Show 2", Some("Show 2"), "/srv/TV/Show 2", none).is_empty());
+        // A second season of its own, its releases named like the first: the first
+        // season's rule fills another series and stays
+        let season_two = |p: &str| Some(p == "/lib/Show 2");
+        assert!(
+            twins(
+                &rules,
+                "Show @feed",
+                Some("Show"),
+                "/lib/Show 2",
+                season_two
+            )
+            .is_empty()
+        );
+    }
 
     #[test]
     fn the_words_narrowed_past_the_wire_query_are_local() {

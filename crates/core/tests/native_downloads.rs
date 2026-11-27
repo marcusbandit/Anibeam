@@ -317,6 +317,170 @@ fn subscribing_the_same_feed_again_keeps_the_name() {
     );
 }
 
+/// A library show followed again from another feed (another endpoint, group or quality)
+/// had two rules filling its folder, and Following drew it twice (#1486). Now the new rule
+/// replaces the old one: the old rule and its feed go, its episodes stay.
+#[test]
+fn following_a_library_show_again_replaces_its_rule() {
+    let r = rig();
+    let home = common::library_show(r.dir.path(), &r.core, &r.c);
+    let old = json!({"affectedFeeds": ["https://other.example/rss?q=Show"], "savePath": home});
+    let new = json!({"affectedFeeds": ["https://feed.example/rss?q=Show"], "savePath": home});
+    // The engine names the new rule beside the old one
+    r.http
+        .push_for("rss/rules", 200, json!({ "Show": old }).to_string());
+    r.http.push_for("rss/addFeed", 200, "");
+    r.http.push_for("rss/setRule", 200, "");
+    // Then reads both to find what the new one replaces
+    r.http.push_for(
+        "rss/rules",
+        200,
+        json!({ "Show": old, "Show @feed": new }).to_string(),
+    );
+    r.http.push_for(
+        "rss/items",
+        200,
+        json!({
+            "Show": {"uid": "a", "url": "https://other.example/rss?q=Show"},
+            "Show @feed": {"uid": "b", "url": "https://feed.example/rss?q=Show"},
+        })
+        .to_string(),
+    );
+    r.http.push_for("rss/removeRule", 200, "");
+    r.http.push_for("rss/removeItem", 200, "");
+
+    let job = started(
+        &r.core,
+        Call::Subscribe {
+            query: "Show".to_string(),
+            endpoint: "feed".to_string(),
+            items: vec![episode(1)],
+            name: None,
+            wire_query: None,
+            series: Some(1),
+        },
+    );
+    let done = common::wait_job(&r.c, job);
+    let result = subscribed(&done);
+    assert_eq!(result.name, "Show @feed");
+    assert_eq!(result.save_path, home);
+    let calls = qbt_calls(&r.http);
+    assert_eq!(
+        field(called(&calls, "rss/removeRule"), "ruleName").as_deref(),
+        Some("Show")
+    );
+    assert_eq!(
+        field(called(&calls, "rss/removeItem"), "path").as_deref(),
+        Some("Show")
+    );
+    // Nothing else is taken: no torrent and no file goes with the old rule
+    assert!(
+        !paths_of(&r.http)
+            .iter()
+            .any(|p| p.starts_with("torrents/delete"))
+    );
+    assert!(std::path::Path::new(&home).is_dir());
+    let removed: Vec<String> = calls
+        .iter()
+        .filter(|(p, _)| p == "rss/removeRule")
+        .filter_map(|(_, req)| field(req, "ruleName"))
+        .collect();
+    assert_eq!(removed, vec!["Show".to_string()]);
+    no_anirss(&r.http);
+}
+
+/// Followed again from a search, with no library show to save into, the new rule moves
+/// into the folder the old one filled before the old one goes, so the show keeps one
+/// folder as well as one rule (#1486).
+#[test]
+fn following_a_show_again_from_a_search_keeps_its_folder() {
+    let r = rig();
+    let old =
+        json!({"affectedFeeds": ["https://other.example/rss?q=Show"], "savePath": "/srv/TV/Show"});
+    let new = json!({"affectedFeeds": ["https://feed.example/rss?q=Show"], "savePath": "/srv/TV/Show @feed"});
+    r.http
+        .push_for("rss/rules", 200, json!({ "Show": old }).to_string());
+    r.http.push_for("rss/addFeed", 200, "");
+    r.http.push_for("rss/setRule", 200, "");
+    r.http.push_for(
+        "rss/rules",
+        200,
+        json!({ "Show": old, "Show @feed": new }).to_string(),
+    );
+    r.http.push_for("rss/setRule", 200, "");
+    // qBittorrent lists no feed at the old address, so no feed goes
+    r.http.push_for("rss/items", 200, "{}");
+    r.http.push_for("rss/removeRule", 200, "");
+
+    let done = subscribe(&r, "Show", vec![episode(1)], None);
+    let result = subscribed(&done);
+    assert_eq!(result.name, "Show @feed");
+    assert_eq!(result.save_path, "/srv/TV/Show");
+    let calls = qbt_calls(&r.http);
+    let sets: Vec<&HttpRequest> = calls
+        .iter()
+        .filter(|(p, _)| p == "rss/setRule")
+        .map(|(_, req)| req)
+        .collect();
+    assert_eq!(sets.len(), 2, "{calls:?}");
+    assert_eq!(field(sets[1], "ruleName").as_deref(), Some("Show @feed"));
+    let def: Value = serde_json::from_str(&field(sets[1], "ruleDef").unwrap()).unwrap();
+    assert_eq!(def["savePath"], json!("/srv/TV/Show"));
+    assert_eq!(
+        field(called(&calls, "rss/removeRule"), "ruleName").as_deref(),
+        Some("Show")
+    );
+    no_anirss(&r.http);
+}
+
+/// Followed again from the feed its plain-named rule reads, the rule keeps its name and its
+/// folder, and only the `@endpoint` rule beside it goes: its folder is not the show's
+/// (#1486).
+#[test]
+fn following_again_from_the_same_feed_keeps_the_rules_folder() {
+    let r = rig();
+    let plain =
+        json!({"affectedFeeds": ["https://feed.example/rss?q=Show"], "savePath": "/srv/TV/Show"});
+    let other = json!({"affectedFeeds": ["https://other.example/rss?q=Show"], "savePath": "/srv/TV/Show @other"});
+    let both = json!({ "Show": plain, "Show @other": other }).to_string();
+    r.http.push_for("rss/rules", 200, both.clone());
+    r.http.push_for("rss/addFeed", 409, "Conflict");
+    r.http.push_for(
+        "rss/items",
+        200,
+        json!({"Show": {"uid": "u", "url": "https://feed.example/rss?q=Show"}}).to_string(),
+    );
+    r.http.push_for("rss/setRule", 200, "");
+    r.http.push_for("rss/rules", 200, both);
+    r.http.push_for(
+        "rss/items",
+        200,
+        json!({
+            "Show": {"uid": "u", "url": "https://feed.example/rss?q=Show"},
+            "Show @other": {"uid": "v", "url": "https://other.example/rss?q=Show"},
+        })
+        .to_string(),
+    );
+    r.http.push_for("rss/removeRule", 200, "");
+    r.http.push_for("rss/removeItem", 200, "");
+
+    let done = subscribe(&r, "Show", vec![episode(1)], None);
+    let result = subscribed(&done);
+    assert_eq!(result.name, "Show");
+    assert_eq!(result.save_path, "/srv/TV/Show");
+    let calls = qbt_calls(&r.http);
+    let sets = calls.iter().filter(|(p, _)| p == "rss/setRule").count();
+    assert_eq!(sets, 1, "{calls:?}");
+    assert_eq!(
+        field(called(&calls, "rss/removeRule"), "ruleName").as_deref(),
+        Some("Show @other")
+    );
+    assert_eq!(
+        field(called(&calls, "rss/removeItem"), "path").as_deref(),
+        Some("Show @other")
+    );
+}
+
 #[test]
 fn a_feed_of_that_name_on_another_address_is_refused() {
     let r = rig();
@@ -431,7 +595,9 @@ fn a_locally_narrowed_subscription_still_narrows_on_native() {
             "rss/setRule",
             "rss/items",
             "rss/removeItem",
-            "rss/addFeed"
+            "rss/addFeed",
+            // What the new rule replaces: nothing here (#1486)
+            "rss/rules"
         ]
     );
     let def: Value = serde_json::from_str(&field(&rss[4].1, "ruleDef").unwrap()).unwrap();

@@ -1672,7 +1672,15 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
         .collect();
     assert_eq!(
         order,
-        vec!["rules", "setRule", "items", "removeItem", "addFeed"],
+        // The last read looks for a rule the new one replaces: none here (#1486)
+        vec![
+            "rules",
+            "setRule",
+            "items",
+            "removeItem",
+            "addFeed",
+            "rules"
+        ],
         "the rule moves before any feed does"
     );
     let set = form_of(&rss[1]);
