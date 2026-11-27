@@ -449,7 +449,7 @@ async fn refresh(metadata: Arc<Metadata>, pick: SeasonPick) -> Result<Finished, 
 /// A read of a season's pages, most popular first, each show once: AniList
 /// can hand a show back on two pages when the order shifts mid-read.
 /// `whole` is whether the read got to the page that says there is no more,
-/// rather than stopping at the cap.
+/// rather than stopping at the cap or at a page that says nothing.
 #[derive(Default)]
 struct SeasonRead {
     rows: Vec<SeasonRow>,
@@ -458,18 +458,18 @@ struct SeasonRead {
 }
 
 impl SeasonRead {
-    /// Takes one page. True while AniList says there is another.
+    /// Takes one page. True while AniList says there is another. A page
+    /// with no `hasNextPage` at all ends the read without making it whole.
     fn take(&mut self, data: &serde_json::Value) -> bool {
         for row in parse_shows(data) {
             if self.seen.insert(row.anilist_id) {
                 self.rows.push(row);
             }
         }
-        let more = has_next(data);
-        if !more {
+        if data["Page"]["pageInfo"]["hasNextPage"].as_bool() == Some(false) {
             self.whole = true;
         }
-        more
+        has_next(data)
     }
 }
 
@@ -993,6 +993,19 @@ mod tests {
         write(&tx, "NOW", "NEXT", &read.rows, read.whole, &[], OCTOBER).unwrap();
         tx.commit().unwrap();
         assert_eq!(marks(&c), Vec::<u64>::new(), "a whole read takes it");
+    }
+
+    /// A page that comes back without saying whether there is more stops
+    /// the read, and the read is not whole: the pages after it went unread.
+    #[test]
+    fn a_page_that_says_nothing_of_more_is_not_the_last() {
+        let mut read = SeasonRead::default();
+        assert!(read.take(&page(1, 51, true)));
+        let blank = serde_json::json!({ "Page": { "media": [] } });
+        assert!(!read.take(&blank));
+        assert!(!read.whole);
+        assert!(!read.take(&serde_json::json!({ "Page": null })));
+        assert!(!read.whole);
     }
 
     /// A show only a friend has listed is off the owner's list here, and
