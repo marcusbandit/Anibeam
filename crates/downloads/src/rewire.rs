@@ -72,27 +72,28 @@ fn contains(list: &[String], word: &str) -> bool {
     list.iter().any(|w| w.eq_ignore_ascii_case(word))
 }
 
-/// The single words of positive fields: a quoted phrase is its words, since
-/// the endpoint and qBittorrent's `mustContain` both read space as AND.
+/// The single words of positive fields, brackets dropped as `split` drops
+/// them: a quoted phrase is its words, since `mustContain` reads space as AND.
 fn words(fields: &[String]) -> Vec<String> {
     fields
         .iter()
         .flat_map(|f| f.split_whitespace())
+        .map(|w| w.trim_start_matches('[').trim_end_matches(']'))
+        .filter(|w| !w.is_empty())
         .map(str::to_string)
         .collect()
 }
 
 /// The words in `query` that `wire` (the query the endpoint was asked)
-/// does not carry. A quoted phrase counts as carried when every one of its
-/// words is.
+/// does not carry. A quoted phrase counts as carried only when the wire
+/// holds the same phrase: anirss's own feed searches it quoted, which the
+/// endpoint may answer otherwise than the loose words it was asked.
 pub fn local_terms(query: &str, wire: &str) -> LocalTerms {
     let (q_pos, q_not) = split(query);
     let (w_pos, w_not) = split(wire);
-    let w_words = words(&w_pos);
     let mut out = LocalTerms::default();
     for w in q_pos {
-        let carried = w.split_whitespace().all(|x| contains(&w_words, x));
-        if !carried && !contains(&out.must, &w) {
+        if !contains(&w_pos, &w) && !contains(&out.must, &w) {
             out.must.push(w);
         }
     }
@@ -275,13 +276,19 @@ mod tests {
     }
 
     #[test]
-    fn a_quoted_phrase_the_wire_query_holds_is_not_narrowed() {
+    fn a_quoted_phrase_moves_the_feed_unless_the_wire_quoted_it() {
         let query = "Show S03 \"AMZN WEB\" 1080p";
-        assert!(local_terms(query, "Show S03 AMZN WEB 1080p").is_empty());
-        assert!(local_terms(query, "Show S03 \"AMZN WEB\" 1080p").is_empty());
+        assert!(local_terms(query, "Show S03 \"amzn web\" 1080p").is_empty());
+        let t = local_terms(query, "Show S03 AMZN WEB 1080p");
+        assert_eq!(t.must, vec!["AMZN WEB"]);
+    }
 
-        let t = local_terms(query, "Show S03 AMZN");
-        assert_eq!(t.must, vec!["AMZN WEB", "1080p"]);
+    #[test]
+    fn a_phrase_the_feed_already_searched_adds_no_word_twice() {
+        let def = json!({"mustContain": "", "mustNotContain": "", "affectedFeeds": []});
+        let terms = local_terms("Show S03 \"AMZN WEB\" \"S03 [TBK]\"", "Show S03 AMZN WEB");
+        let out = narrowed(&def, &terms, "http://j/x?q=Show+S03+AMZN+WEB");
+        assert_eq!(out["mustContain"], "AMZN WEB S03 TBK");
     }
 
     #[test]
