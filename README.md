@@ -95,7 +95,7 @@ Install on Linux or macOS with one command:
 curl -fsSL https://anibeam.app/install.sh | sh
 ```
 
-The script uses your package manager on Ubuntu, Debian, Fedora, Arch with yay or paru, and Macs with Homebrew. Everywhere else, it uses the AppImage or the `.dmg`. Linux builds are x86_64 only. You can [read the script first](https://anibeam.app/install.sh).
+On Linux the script installs the AppImage with a menu entry and icon, and it updates itself from Settings. Put `ANIBEAM_PACKAGE=1` before `sh` to use your package manager instead on Ubuntu, Debian, Fedora, or Arch with yay or paru. On a Mac it uses Homebrew when you have it, and the `.dmg` otherwise. Linux builds are x86_64 only. You can [read the script first](https://anibeam.app/install.sh).
 
 On Windows and Android, download the right build for your device from **[anibeam.app/download](https://anibeam.app/download/)**. All builds are also available on [GitHub Releases](https://github.com/marcusbandit/Anibeam/releases/latest).
 
