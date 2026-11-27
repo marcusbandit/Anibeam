@@ -297,7 +297,7 @@ FocusScope {
                         Accessible.onPressAction: page.open(entry.modelData.id)
                         Accessible.name: theme.nameNear(parent)
                         // The red dot, said aloud: the section wants attention
-                        Accessible.description: dot.visible ? words.t("settings-needs-attention") : ""
+                        Accessible.description: page.warns(entry.modelData.id) ? words.t("settings-needs-attention") : ""
                         id: hover
                         anchors.fill: parent
                         hoverEnabled: true
