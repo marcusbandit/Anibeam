@@ -1265,9 +1265,15 @@ FocusScope {
             .filter(function(e) { return (e.downloading === undefined || e.downloading === null) && (!watchedOnly || e.watched) })
             .map(function(e) { return e.file })
         var extras = whole ? (r.reply.detail.extras || []).map(function(x) { return x.file }) : []
-        if (!files.length && !extras.length) { frame.toast(watchedOnly ? words.t("frame-delete-none-watched", { title: c.title }) : words.t("frame-delete-none", { title: c.title })); return }
+        // Delete all stops those downloads too, so none finishes and brings the show back
+        // (#1495); Delete watched never touches one. Only the episodes the sheet names
+        var downloading = watchedOnly ? [] : ((r.reply.detail.card || {}).downloading || []).map(function(d) { return d.number })
+        if (!files.length && !extras.length && !downloading.length) { frame.toast(watchedOnly ? words.t("frame-delete-none-watched", { title: c.title }) : words.t("frame-delete-none", { title: c.title })); return }
         var noun = seriesNoun(c)
-        var named = files.length ? words.t("frame-delete-files", { count: files.length, kind: noun, watched: watchedOnly ? "yes" : "no" }) : ""
+        // A downloading episode with an older whole copy here is one episode, not two
+        var onDisk = (r.reply.detail.episodes || []).filter(function(e) { return files.indexOf(e.file) >= 0 }).map(function(e) { return e.number })
+        var counted = files.length + downloading.filter(function(n) { return onDisk.indexOf(n) < 0 }).length
+        var named = counted ? words.t("frame-delete-files", { count: counted, kind: noun, watched: watchedOnly ? "yes" : "no" }) : ""
         var extrasNamed = extras.length ? words.t("frame-delete-extras", { count: extras.length }) : ""
         var what = named && extrasNamed ? words.t("frame-delete-and", { first: named, second: extrasNamed }) : named || extrasNamed
         files = files.concat(extras)
@@ -1276,13 +1282,14 @@ FocusScope {
         var rules = watchedOnly ? [] : frame.rulesOf(c.id), unfollow = rules.length > 0
         var base = words.t("frame-delete-base")
         if (rules.length) base += " " + words.t("frame-delete-unfollow-base", { count: rules.length, names: rules.join(", ") })   // i18n: none
+        if (downloading.length) base += " " + words.t("frame-delete-downloading", { count: downloading.length, kind: noun, episodes: downloading.join(", ") })   // i18n: none
         removeSheet.openAt(anchor, {
             heading: words.t("frame-delete-heading", { what: what, title: c.title }),
             base: base,
             rule: false, torrentCount: 0, canFiles: false,
             confirmText: words.t(rules.length ? "frame-delete-unfollow-confirm" : "frame-delete-confirm")
         }, function() {
-            var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files, stop_following: unfollow })
+            var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files, stop_following: unfollow, stop_downloading: downloading })
             var m = Object.assign({}, frame.deleteCalls); m[t] = { what: what, title: c.title }; frame.deleteCalls = m
         })
     }
