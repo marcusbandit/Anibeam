@@ -71,7 +71,7 @@ fn a_send_posts_the_log_once_under_a_fresh_id() {
     let mut ids = Vec::new();
     for req in &sent {
         assert_eq!(req.method, Method::Post);
-        assert_eq!(req.url, format!("{ROOM_RELAY}/usage"));
+        assert_eq!(req.url, format!("{DEV_ENDPOINT}/usage"));
         let Some(Body::Json(body)) = &req.body else {
             panic!("{:?}", req.body)
         };

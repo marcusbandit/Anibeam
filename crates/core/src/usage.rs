@@ -2,8 +2,8 @@
 //! `anibeam_foundation::usage`; the core counts every call it routes and every page the
 //! shell says it opened, and answers the calls that show, save, clear and send the log.
 //! `SendUsage` is the only code that sends it anywhere: once, to the collection route on
-//! the rooms relay, with a fresh random id that is never kept, so two sends from one
-//! machine cannot be tied together.
+//! the project's developer endpoints (`DEV_ENDPOINT`), with a fresh random id that is
+//! never kept, so two sends from one machine cannot be tied together.
 //!
 //! A count never touches the disk on the thread that made it: the save it asks for runs on
 //! the core's runtime, at most once a minute (`save_later`). Showing, saving, sending and
@@ -21,10 +21,10 @@ use crate::net::{Body, HttpRequest};
 
 pub use anibeam_foundation::usage::UsageLog as Log;
 
-/// Where a send goes: the collection route on the rooms relay, never a relay the person
-/// picked for rooms, which may be their own and have no such route.
+/// Where a send goes: the collection route on the project's developer endpoints, never a
+/// host the person picked for anything else.
 pub fn send_url() -> String {
-    format!("{ROOM_RELAY}/usage")
+    format!("{DEV_ENDPOINT}/usage")
 }
 
 pub(crate) fn note(core: &Core, page: &str) -> Result<Reply, CoreError> {

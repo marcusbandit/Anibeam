@@ -158,6 +158,10 @@ _Avoid_: secrets, credentials, settings
 Counts of what this Anibeam was used for, per UTC day: each call by name, each page by its id, each error by its kind. Kept on the machine in `usage.json` for 90 days, nothing personal in it, and sent only when the owner presses send, once, with a fresh random id.
 _Avoid_: telemetry, analytics, tracking
 
+**Dev endpoint**:
+The project's own Worker at `dev.anibeam.app` (`relay/dev/`), endpoints only. Apps post usage log sends to it; every other route is for the owner and needs the read token.
+_Avoid_: telemetry server, analytics backend, collector
+
 **Import**:
 The job that merges an export into the library. The file wins for matches, flags, accounts and preferences; the newer timestamp wins for history; nothing is deleted.
 _Avoid_: restore, load, sync

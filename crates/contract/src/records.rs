@@ -1316,6 +1316,10 @@ fn default_on_hold_days() -> u32 {
 /// The relay the app makes rooms on unless the person picks another.
 pub const ROOM_RELAY: &str = "https://rooms.anibeam.app";
 
+/// The project's developer endpoints (`relay/dev`). A usage log the owner sends goes to
+/// `{DEV_ENDPOINT}/usage`; nothing else in the app talks to it.
+pub const DEV_ENDPOINT: &str = "https://dev.anibeam.app";
+
 fn default_room_relay() -> String {
     ROOM_RELAY.to_string()
 }
