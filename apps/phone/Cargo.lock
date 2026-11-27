@@ -210,6 +210,7 @@ dependencies = [
  "anibeam-trackers",
  "axum",
  "librqbit",
+ "rand 0.10.3",
  "reqwest",
  "rusqlite",
  "serde",
