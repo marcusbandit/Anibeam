@@ -41,7 +41,7 @@ nothing needs installing. --root <dir> picks the window started with that root.
   type <text> [--focus]           into whatever has the keyboard. --focus first asks
                                   for the keyboard, for a window on the desktop that
                                   lacks it; it can take focus from what you are doing
-  shot [file.png]                 the window as it is; prints the file
+  shot [file.png | folder/]       the window as it is; prints the file
   eval <js>                       in Main.qml's scope: window, frame, Door, Player,
                                   Theme, control. Prints the value as JSON
   wait <js> [--timeout ms]        until the JS is truthy
@@ -217,6 +217,38 @@ fn settled(timeout: u64) -> [Value; 2] {
     ]
 }
 
+/// Where `shot` writes: the asked file with `.png` added to its whole name unless it already
+/// ends in `.png`, or a fresh `anibeam-shot-<ms>.png` inside the asked folder, or in temp when
+/// nothing was asked. A folder is one that exists, or a path ending in a separator, `.` or `..`.
+fn shot_file(asked: Option<&str>, now_ms: u128) -> Result<PathBuf, String> {
+    let fresh = format!("anibeam-shot-{now_ms}.png");
+    let Some(asked) = asked else {
+        return Ok(std::env::temp_dir().join(fresh));
+    };
+    if asked.is_empty() {
+        return Err("shot takes a file name".into());
+    }
+    let raw = PathBuf::from(asked);
+    let last = asked
+        .rsplit(std::path::is_separator)
+        .next()
+        .unwrap_or(asked);
+    let folder = last.is_empty() || last == "." || last == ".." || raw.is_dir();
+    let file = std::path::absolute(&raw).unwrap_or(raw);
+    if folder {
+        return Ok(file.join(fresh));
+    }
+    match file.extension() {
+        Some(e) if e == "png" => Ok(file),
+        Some(e) if e.eq_ignore_ascii_case("png") => Ok(file.with_extension("png")),
+        _ => {
+            let mut name = file.into_os_string();
+            name.push(".png");
+            Ok(PathBuf::from(name))
+        }
+    }
+}
+
 fn plan(cmd: &str, args: &[String], o: &Opts, now_ms: u128) -> Result<Plan, String> {
     let timeout = o.timeout.unwrap_or(DEFAULT_TIMEOUT.as_millis() as u64);
     let one = |steps: Value| Plan {
@@ -322,16 +354,7 @@ fn plan(cmd: &str, args: &[String], o: &Opts, now_ms: u128) -> Result<Plan, Stri
             one(json!([step]))
         }
         "shot" => {
-            let file = match args.first() {
-                Some(f) => PathBuf::from(f),
-                None => std::env::temp_dir().join(format!("anibeam-shot-{now_ms}.png")),
-            };
-            let file = std::path::absolute(&file).unwrap_or(file);
-            let file = if file.extension().is_some_and(|e| e == "png") {
-                file
-            } else {
-                file.with_extension("png")
-            };
+            let file = shot_file(args.first().map(String::as_str), now_ms)?;
             let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
             let name = file
                 .file_stem()
@@ -457,6 +480,12 @@ pub fn cli(argv: &[String]) -> i32 {
     }
     let mut req = json!({"steps": plan.steps, "timeout": wait.as_millis() as u64});
     if let Some(dir) = &plan.out {
+        if matches!(plan.print, Print::Shot(_))
+            && let Err(e) = std::fs::create_dir_all(dir)
+        {
+            eprintln!("anibeam ctl: {}: {e}", dir.display());
+            return 1;
+        }
         req["out"] = json!(dir.to_string_lossy());
     }
     let reply = match request(&socket, &req, wait) {
@@ -906,6 +935,42 @@ mod tests {
             p.print,
             Print::Shot(std::env::temp_dir().join("anibeam-shot-42.png"))
         );
+
+        let shot = |asked: &str| plan("shot", &[asked.to_string()], &Opts::default(), 42).unwrap();
+        let asked = |p: &Path| p.to_string_lossy().into_owned();
+
+        // A dotted name keeps every part of it.
+        let p = shot(&asked(&dir.join("episode.1")));
+        assert_eq!(p.steps, json!([{"shot": "episode.1"}]));
+        assert_eq!(p.out.as_deref(), Some(dir.as_path()));
+        assert_eq!(p.print, Print::Shot(dir.join("episode.1.png")));
+        let p = shot(&asked(&dir.join("episode.2.png")));
+        assert_eq!(p.print, Print::Shot(dir.join("episode.2.png")));
+
+        // A folder gets a fresh shot inside it, whether it exists or ends in a separator.
+        let real = tempfile::tempdir().unwrap();
+        let inside = real.path().join("anibeam-shot-42.png");
+        let p = shot(&asked(real.path()));
+        assert_eq!(p.steps, json!([{"shot": "anibeam-shot-42"}]));
+        assert_eq!(p.out.as_deref(), Some(real.path()));
+        assert_eq!(p.print, Print::Shot(inside.clone()));
+        let missing = dir.join("not-made-yet");
+        let p = shot(&format!("{}{}", asked(&missing), std::path::MAIN_SEPARATOR));
+        assert_eq!(p.out.as_deref(), Some(missing.as_path()));
+        assert_eq!(p.print, Print::Shot(missing.join("anibeam-shot-42.png")));
+        let p = shot(&format!(
+            "{}{}.",
+            asked(&missing),
+            std::path::MAIN_SEPARATOR
+        ));
+        assert_eq!(p.out.as_deref(), Some(missing.as_path()));
+        let p = shot(&asked(&dir.join("Library.PNG")));
+        assert_eq!(p.print, Print::Shot(dir.join("Library.png")));
+        assert!(plan("shot", &s(&[""]), &Opts::default(), 42).is_err());
+        let cwd = std::path::absolute(".").unwrap();
+        let p = shot(".");
+        assert_eq!(p.out.as_deref(), Some(cwd.as_path()));
+        assert_eq!(p.print, Print::Shot(cwd.join("anibeam-shot-42.png")));
     }
 
     #[test]
