@@ -261,9 +261,12 @@ frame-delete-unfollow-base = { $count ->
    *[other] The subscriptions { $names } are removed too, so new episodes stop downloading.
 }
 frame-delete-unfollow-confirm = Delete and stop following
-frame-delete-downloading = { $count ->
-    [one] Episode { $episodes } is still downloading. That download stops and its unfinished file is deleted.
-   *[other] Episodes { $episodes } are still downloading. Those downloads stop and their unfinished files are deleted.
+frame-delete-downloading = { $kind ->
+    [film] The movie is still downloading. That download stops and its unfinished file is deleted.
+   *[episode] { $count ->
+        [one] Episode { $episodes } is still downloading. That download stops and its unfinished file is deleted.
+       *[other] Episodes { $episodes } are still downloading. Those downloads stop and their unfinished files are deleted.
+    }
 }
 frame-delete-done = { $what } of { $title } moved to the trash
 frame-delete-watched-done = { $count ->
@@ -1317,6 +1320,7 @@ series-downloading-episodes =
         [one] Downloading { $count } episode
        *[other] Downloading { $count } episodes
     }
+series-downloading-film = Downloading
 series-count-season-ends = Season { $season } ends at episode { $number }
 series-count-ends = Ends at episode { $number }
 series-count-gave-way = You set { $count } episodes, which no longer applies
