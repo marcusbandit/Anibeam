@@ -43,6 +43,8 @@ rusqlite = { workspace = true, features = ["bundled", "serde_json"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "http2"] }
 sha2 = "0.11"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+# The usage log's one-off send id.
+rand = "0.10"
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 # The phone's torrent engine, the one downloads runs: core/tests/phone_unsubscribe.rs makes
 # its test torrents with it. A dev-dependency cannot wait for the phone feature.

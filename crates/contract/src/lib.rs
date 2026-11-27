@@ -57,6 +57,33 @@ mod tests {
         assert_eq!(Preferences::default().room_relay, ROOM_RELAY);
     }
 
+    /// `Call::name` is the JSON tag, so the usage log names a call the way the wire does.
+    #[test]
+    fn a_call_name_is_its_json_tag() {
+        let calls = [
+            Call::ListSources,
+            Call::AddSource {
+                path: "/somewhere/else".into(),
+            },
+            Call::NoteUsage {
+                page: "library".into(),
+            },
+            Call::GetUsage,
+            Call::SendUsage,
+            Call::RoomStart { wait: true },
+        ];
+        for call in calls {
+            let tag = match serde_json::to_value(&call).unwrap() {
+                serde_json::Value::String(s) => s,
+                serde_json::Value::Object(m) => m.keys().next().unwrap().clone(),
+                other => panic!("{other}"),
+            };
+            assert_eq!(call.name(), tag);
+        }
+        assert_eq!(CoreError::internal("x").kind(), "Internal");
+        assert!(Preferences::default().usage_log);
+    }
+
     #[test]
     fn calls_round_trip_through_json_externally_tagged() {
         let call = Call::MarkEpisode {

@@ -1,0 +1,146 @@
+//! The usage log through the front door (#1532): calls and pages are counted, the text
+//! the log shows is what a send carries, and nothing is sent unless `SendUsage` asks.
+
+mod common;
+
+use anibeam_core::net::{Body, FakeHttp, Method};
+use anibeam_core::*;
+
+fn usage(core: &Core) -> UsageLog {
+    match core.call(Call::GetUsage).unwrap() {
+        Reply::Usage { usage } => usage,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn calls_pages_and_errors_are_counted_and_nothing_is_sent() {
+    let http = FakeHttp::new();
+    let (dir, core, _c) = common::open_core_with_http(http.clone());
+    core.call(Call::ListSources).unwrap();
+    core.call(Call::NoteUsage {
+        page: "library".into(),
+    })
+    .unwrap();
+    assert!(
+        core.call(Call::NoteUsage {
+            page: "/srv/media/Anime".into()
+        })
+        .is_err()
+    );
+    assert!(core.call(Call::RemoveSource { source: 404 }).is_err());
+    let log = usage(&core);
+    assert!(log.enabled);
+    let file: serde_json::Value = serde_json::from_str(&log.text).unwrap();
+    let day = file["days"].as_object().unwrap().values().next().unwrap();
+    assert_eq!(day["calls"]["ListSources"], 1);
+    assert_eq!(day["pages"]["library"], 1);
+    assert_eq!(day["errors"]["RemoveSource"]["NotFound"], 1);
+    // A page open is not a call
+    assert!(day["calls"].get("NoteUsage").is_none());
+    assert!(!log.text.contains(dir.path().to_str().unwrap()));
+    assert!(http.requests().is_empty());
+
+    let out = dir.path().join("usage-copy.json");
+    core.call(Call::ExportUsage {
+        path: out.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
+    // What was shown, and the GetUsage that showed it
+    let saved_day = saved["days"].as_object().unwrap().values().next().unwrap();
+    assert_eq!(saved_day["calls"]["ListSources"], 1);
+    assert_eq!(saved_day["calls"]["GetUsage"], 1);
+    assert_eq!(saved_day["pages"], day["pages"]);
+    assert!(http.requests().is_empty());
+    core.shutdown();
+}
+
+#[test]
+fn a_send_posts_the_log_once_under_a_fresh_id() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    core.call(Call::ListSources).unwrap();
+    http.push_for("/usage", 200, "{}");
+    http.push_for("/usage", 200, "{}");
+    core.call(Call::SendUsage).unwrap();
+    core.call(Call::SendUsage).unwrap();
+    let sent: Vec<_> = http.requests();
+    assert_eq!(sent.len(), 2);
+    let mut ids = Vec::new();
+    for req in &sent {
+        assert_eq!(req.method, Method::Post);
+        assert_eq!(req.url, format!("{ROOM_RELAY}/usage"));
+        let Some(Body::Json(body)) = &req.body else {
+            panic!("{:?}", req.body)
+        };
+        let id = body["send_id"].as_str().unwrap().to_string();
+        assert_eq!(id.len(), 32);
+        ids.push(id);
+        assert_eq!(body["usage"]["format"], 1);
+    }
+    assert_ne!(ids[0], ids[1]);
+    // The id is never kept: the log's own text has none
+    assert!(!usage(&core).text.contains(&ids[0]));
+
+    http.push_for("/usage", 429, "");
+    match core.call(Call::SendUsage) {
+        Err(CoreError::Service { code, .. }) => assert_eq!(code, "http_429"),
+        other => panic!("{other:?}"),
+    }
+    core.shutdown();
+}
+
+#[test]
+fn switched_off_it_stops_counting_and_clear_empties_it() {
+    let (dir, core, _c) = common::open_core();
+    core.call(Call::ListSources).unwrap();
+    let Reply::Preferences { preferences } = core.call(Call::GetPreferences).unwrap() else {
+        panic!()
+    };
+    core.call(Call::SetPreferences {
+        preferences: Preferences {
+            usage_log: false,
+            ..preferences
+        },
+    })
+    .unwrap();
+    let before = usage(&core);
+    assert!(!before.enabled);
+    core.call(Call::ListSources).unwrap();
+    core.call(Call::ListSources).unwrap();
+    let after = usage(&core);
+    assert_eq!(after.events, before.events);
+    let file = dir.path().join("data").join("usage.json");
+    assert!(file.exists());
+    core.call(Call::ClearUsage).unwrap();
+    assert!(!file.exists());
+    assert_eq!(usage(&core).events, 0);
+    core.shutdown();
+}
+
+#[test]
+fn the_log_survives_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = CorePaths::under(dir.path());
+    let open = || {
+        let core = Core::open_with_secrets(
+            paths.clone(),
+            anibeam_core::trackers::Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        core.use_own_qbittorrent(None);
+        core
+    };
+    let core = open();
+    for _ in 0..3 {
+        core.call(Call::ListSources).unwrap();
+    }
+    core.shutdown();
+    let core = open();
+    let log = usage(&core);
+    let file: serde_json::Value = serde_json::from_str(&log.text).unwrap();
+    let day = file["days"].as_object().unwrap().values().next().unwrap();
+    assert_eq!(day["calls"]["ListSources"], 3);
+    core.shutdown();
+}

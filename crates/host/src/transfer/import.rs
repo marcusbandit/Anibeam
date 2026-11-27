@@ -1070,6 +1070,8 @@ async fn import_preferences(
                 // And whether its series pages draw logos.
                 series_logos: current.series_logos,
                 logo_language: current.logo_language,
+                // And whether it keeps a usage log.
+                usage_log: current.usage_log,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

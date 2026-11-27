@@ -97,6 +97,26 @@ pub enum CoreError {
 }
 
 impl CoreError {
+    /// The variant name, for the usage log, which counts errors by kind and never keeps
+    /// their messages.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            CoreError::NotFound { .. } => "NotFound",
+            CoreError::Invalid { .. } => "Invalid",
+            CoreError::Unavailable { .. } => "Unavailable",
+            CoreError::NotConnected { .. } => "NotConnected",
+            CoreError::Refused { .. } => "Refused",
+            CoreError::Provider { .. } => "Provider",
+            CoreError::Io { .. } => "Io",
+            CoreError::Storage { .. } => "Storage",
+            CoreError::Keyring { .. } => "Keyring",
+            CoreError::Unsupported { .. } => "Unsupported",
+            CoreError::Version { .. } => "Version",
+            CoreError::Internal { .. } => "Internal",
+            CoreError::Service { .. } => "Service",
+        }
+    }
+
     /// The error's words: a catalog ID and its arguments, for a shell to show in the
     /// language it speaks.
     pub fn words(&self) -> Words {

@@ -39,5 +39,6 @@ pub mod testing;
 pub mod time;
 pub mod titles;
 pub mod trust;
+pub mod usage;
 pub mod watch;
 pub mod words;

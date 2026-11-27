@@ -8,8 +8,8 @@
 //! had in the core.
 //!
 //! What is left in this crate is the app team: `Core` and its call router,
-//! launch, update, the changelog, the agent, stats, the uniffi export and
-//! `Subscription`.
+//! launch, update, the changelog, the agent, stats, the usage log's calls, the uniffi
+//! export and `Subscription`.
 
 pub(crate) mod act;
 pub mod agent;
@@ -24,6 +24,7 @@ pub mod launch;
 pub mod paths;
 pub mod stats;
 pub mod update;
+pub mod usage;
 
 pub(crate) use anibeam_foundation::sync;
 pub use anibeam_foundation::{

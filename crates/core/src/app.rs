@@ -65,6 +65,7 @@ pub(crate) fn set_preferences(core: &Core, preferences: Preferences) -> Result<R
     })?;
     crate::host::apply_preferences(&core.host, &preferences);
     crate::presence::set_enabled(&core.playback, preferences.discord_presence);
+    core.usage.set_enabled(preferences.usage_log);
     if before.calendar_feed != preferences.calendar_feed {
         crate::calendar::set_enabled(&core.metadata, preferences.calendar_feed);
     }
