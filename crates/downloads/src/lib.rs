@@ -114,6 +114,9 @@ struct State {
     /// how far each is (0 to 1), as of the last torrent read: on disk is not
     /// in the library until the torrent is done with them (`overlay`).
     downloading: HashMap<u64, Downloading>,
+    /// The films among the series of `downloading`: a film's download is its one entry,
+    /// whatever number its file reads as (#1500).
+    films: std::collections::HashSet<u64>,
     /// The files an unfinished torrent is still writing, by `path_key`: what
     /// Play refuses. An episode can be downloading while an older, whole
     /// file of it (one being replaced) stays playable.
@@ -2727,6 +2730,7 @@ pub fn list_torrents(downloads: &Arc<Downloads>) -> Result<Reply, CoreError> {
                         std::time::Instant::now(),
                     );
                     st.downloading = downloading;
+                    st.films = films;
                     st.writing = writing_of(&torrents);
                     due
                 };
@@ -2841,7 +2845,7 @@ fn downloading_of(
         let Some(id) = t.series_id else { continue };
         let whole = |n: f64| (n.is_finite() && n >= 1.0 && n.fract() == 0.0).then_some(n as u32);
         let eps: Vec<(u32, f64)> = if films.contains(&id) {
-            vec![(1, t.progress)]
+            film_progress(t).map(|p| (1, p)).into_iter().collect()
         } else if t.files.is_empty() {
             t.episode
                 .and_then(whole)
@@ -2866,6 +2870,22 @@ fn downloading_of(
         }
     }
     out
+}
+
+/// How far a film's torrent has written the film, while it still is: the torrent's progress,
+/// or for one with several files the furthest unfinished video among them, so a film whose
+/// video is whole while its extras still come is not downloading (#1500).
+fn film_progress(t: &Torrent) -> Option<f64> {
+    if t.files.is_empty() {
+        return Some(t.progress);
+    }
+    t.files
+        .iter()
+        .filter(|f| {
+            f.progress < 1.0 && f.priority != 0 && anibeam_foundation::names::is_video(&f.name)
+        })
+        .map(|f| f.progress)
+        .reduce(f64::max)
 }
 
 /// A path as one key whatever string reaches it: resolved on disk when it
@@ -2997,15 +3017,17 @@ pub fn stop_downloading(
             let client = qbt_client(&owner).await?;
             let (linker, film) = owner.services.store.read(move |c| {
                 use rusqlite::OptionalExtension as _;
-                let kind: Option<String> = c
+                let row: Option<(String, String)> = c
                     .query_row(
-                        "SELECT kind FROM series WHERE id = ?1",
+                        "SELECT kind, path FROM series WHERE id = ?1",
                         [series as i64],
-                        |r| r.get(0),
+                        |r| Ok((r.get(0)?, r.get(1)?)),
                     )
                     .optional()?;
-                let film =
-                    kind.as_deref().and_then(SeriesKind::from_column) == Some(SeriesKind::Movie);
+                // A film's series path is its video file
+                let film = row.and_then(|(kind, path)| {
+                    (SeriesKind::from_column(&kind) == Some(SeriesKind::Movie)).then_some(path)
+                });
                 Ok((link::Linker::load_keeping(c, series)?, film))
             })?;
             // Linked by path first, so only this series' torrents have their files read
@@ -3028,10 +3050,36 @@ pub fn stop_downloading(
             };
             let (mut whole, mut batches, mut files) = (Vec::new(), Vec::new(), Vec::new());
             for t in &torrents {
-                if film {
-                    if !episodes.is_empty() {
-                        whole.push(t.hash.to_ascii_lowercase());
+                if let Some(path) = &film {
+                    if episodes.is_empty() {
+                        continue;
                     }
+                    if t.files.is_empty() {
+                        whole.push(t.hash.to_ascii_lowercase());
+                        continue;
+                    }
+                    // A folder or a pack: the film's own video goes, its extras and any
+                    // other film in it stay
+                    let save = std::path::Path::new(&t.save_path);
+                    let name = std::path::Path::new(path).file_name();
+                    let mine: Vec<std::path::PathBuf> = t
+                        .files
+                        .iter()
+                        .map(|f| save.join(&f.name))
+                        .filter(|f| path_key(&f.to_string_lossy()) == path_key(path))
+                        .collect();
+                    let mine = if mine.is_empty() {
+                        // The client's paths are another machine's: match by file name
+                        t.files
+                            .iter()
+                            .map(|f| save.join(&f.name))
+                            .filter(|f| name.is_some() && f.file_name() == name)
+                            .collect()
+                    } else {
+                        mine
+                    };
+                    batches.push(t.hash.to_ascii_lowercase());
+                    files.extend(mine);
                     continue;
                 }
                 if t.files.is_empty() {
@@ -3387,15 +3435,15 @@ pub fn overlay(downloads: &Arc<Downloads>, cards: &mut [SeriesCard]) {
 /// How far a torrent has written an episode of a series, while one is still
 /// on it; None for an episode that is whole (or that no torrent carries).
 pub fn episode_progress(downloads: &Downloads, series: u64, number: f64) -> Option<f64> {
+    let st = downloads.state();
+    let eps = st.downloading.get(&series)?;
+    if st.films.contains(&series) {
+        return eps.values().next().copied();
+    }
     if !(number >= 1.0 && number.fract() == 0.0) {
         return None;
     }
-    downloads
-        .state()
-        .downloading
-        .get(&series)?
-        .get(&(number as u32))
-        .copied()
+    eps.get(&(number as u32)).copied()
 }
 
 /// A series' detail with what is still downloading laid over it: the card as
@@ -4447,6 +4495,38 @@ mod tests {
             map[&4],
             Downloading::from([(6, 0.5)]),
             "the further torrent counts, a finished one does not"
+        );
+    }
+
+    #[test]
+    fn a_films_torrent_downloads_as_its_one_film() {
+        let mut t = super::qbt::tests_torrent();
+        t.series_id = Some(9);
+        t.episode = Some(2019.0);
+        t.progress = 0.25;
+        let films = std::collections::HashSet::from([9]);
+        assert_eq!(
+            downloading_of(std::slice::from_ref(&t), &films)[&9],
+            Downloading::from([(1, 0.25)]),
+            "whatever number its name reads as"
+        );
+        let file = |name: &str, progress: f64| TorrentFile {
+            name: name.to_string(),
+            size: 1,
+            progress,
+            priority: 1,
+            episode: None,
+        };
+        t.files = vec![file("Film/Film.mkv", 0.6), file("Film/Booklet.pdf", 0.1)];
+        assert_eq!(
+            downloading_of(std::slice::from_ref(&t), &films)[&9],
+            Downloading::from([(1, 0.6)]),
+            "a boxed film at its video's progress"
+        );
+        t.files[0].progress = 1.0;
+        assert!(
+            downloading_of(&[t], &films).is_empty(),
+            "a whole video is not downloading while the booklet still comes"
         );
     }
 

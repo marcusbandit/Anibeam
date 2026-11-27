@@ -1278,7 +1278,7 @@ FocusScope {
         var counted = trashed.slice()
         downloading.forEach(function(n) { if (counted.indexOf(n) < 0) counted.push(n) })
         // A film is one film, whatever number its file reads as (#1500)
-        if (noun === "film") counted = counted.slice(0, 1)
+        if (noun === "film") { counted = counted.slice(0, 1); trashed = trashed.slice(0, 1) }
         var extrasNamed = extras.length ? words.t("frame-delete-extras", { count: extras.length }) : ""
         function phrase(n) {
             var named = n ? words.t("frame-delete-files", { count: n, kind: noun, watched: watchedOnly ? "yes" : "no" }) : ""
