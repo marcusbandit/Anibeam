@@ -132,7 +132,9 @@ FocusScope {
     // collapse the two calls into one, so loadPageNow runs once per tick and still reads
     // nav.current fresh at execution time.
     function loadPage() { if (frame.devOn) devRecorder.begin(nav.current.page, nav.current.label); Qt.callLater(frame.loadPageNow) }
+    // Each page built is one page open in the usage log (#1532), by its short id
     function loadPageNow() {
+        Door.call("NoteUsage", { page: nav.current.page })
         page.source = ""
         page.setSource(Qt.resolvedUrl(frame.pages[nav.current.page] || "../ui/PagePlaceholder.qml"), { props: nav.current.props })
         if (frame.devOn) devRecorder.built()

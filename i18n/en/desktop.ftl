@@ -2851,6 +2851,26 @@ settings-about-nightly = Nightly
 settings-about-check-now = Check now
 settings-about-developer = Developer options
 settings-about-credits = Credits
+settings-about-usage = Usage log
+settings-usage-keep = Keep a usage log
+settings-usage-summary = { $days ->
+    [one] { $days } day
+   *[other] { $days } days
+}, { $events ->
+    [one] { $events } event
+   *[other] { $events } events
+}
+settings-usage-empty = Nothing logged yet
+settings-usage-download = Download
+settings-usage-send = Download and send
+settings-usage-clear = Clear
+settings-usage-clear-confirm = Clear the usage log?
+settings-usage-preview-title = What will be sent
+settings-usage-preview-send = Send
+settings-usage-saved = Saved to { $path }
+settings-usage-sent = Usage log sent
+settings-usage-send-failed = Could not send the usage log. { $error }
+settings-usage-cleared = Usage log cleared
 settings-about-ratings = Ratings
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
 settings-about-series = Series and episodes

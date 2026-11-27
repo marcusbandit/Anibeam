@@ -1,14 +1,16 @@
 // About: the version with What's new first (an update on offer, its progress or its failure
 // under it), setup again and the update channel with a check. Then storage and backup: Back
 // up the library (one file, with private data or without), Restore from a backup with what
-// the last restore did, the image cache with its size and a clear, and where Anibeam keeps
-// its files; export, import and the clear are jobs whose results come back as
+// the last restore did, the usage log (#1532: keep it or not, how much it holds, save it,
+// look at it and send it once, clear it), the image cache with its size and a clear, and
+// where Anibeam keeps its files; export, import and the clear are jobs whose results come back as
 // exportFinished, importFinished and imagesCleared. Then developer options (the switch,
 // hidden only when ANIBEAM_DEV=1 forces them on), then Help: how the folders should look and
 // where to report a problem. Last the credits, IMDb's among them, which its terms ask for
 // wherever its data is used.
 import QtQuick
 import QtQuick.Dialogs
+import QtCore
 import com.marcusrosado.Anibeam
 
 SettingsTab {
@@ -26,7 +28,63 @@ SettingsTab {
         : upd.how === "source" ? words.t("settings-about-update-source", { version: upd.version })
         : words.t("settings-about-update-elsewhere", { version: upd.version })
     readonly property var about: Door.about || ({})
-    Component.onCompleted: loadStorage()
+    Component.onCompleted: { loadStorage(); loadUsage() }
+
+    // ---- Usage log (#1532): counted in the core, sent only from the preview's Send
+    property var usage: ({ text: "", days: 0, events: 0, enabled: true })
+    property bool confirmingUsageClear: false
+    property bool sendingUsage: false
+    property real usageToken: -1
+    readonly property string downloadsDir: Fmt.localPath(String(StandardPaths.writableLocation(StandardPaths.DownloadLocation)))
+    function usageFile() { return tab.downloadsDir + "/anibeam-usage-" + new Date().toISOString().slice(0, 10) + ".json" } // i18n: none
+    function loadUsage() { var r = Door.call("GetUsage", {}); if (!r.error) usage = r.reply.usage; return r }
+    function setUsageLog(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.usage_log = on
+        var r = Door.setPreferences(p)
+        if (r && r.error) frame.fail(r.error, function() { tab.setUsageLog(on) })
+        tab.loadUsage()
+    }
+    function saveUsage(path) {
+        var r = Door.call("ExportUsage", { path: path })
+        if (r.error) { frame.fail(r.error, function() { tab.saveUsage(path) }); return false }
+        tab.loadUsage()
+        return true
+    }
+    function previewUsage() {
+        var r = tab.loadUsage()
+        if (r.error) { frame.fail(r.error, tab.previewUsage); return }
+        usagePreview.openWith(tab.usage.text)
+    }
+    // Send: the file is saved first, then the log goes out once, off the Qt thread
+    function sendUsage() {
+        var path = tab.usageFile()
+        if (!tab.saveUsage(path)) return
+        var t = Door.callAsync("SendUsage", {})
+        if (t < 0) { frame.toast(words.t("settings-usage-send-failed", { error: "" })); return }
+        tab.usageToken = t
+        tab.sendingUsage = true
+        tab.lastUsageFile = path
+    }
+    property string lastUsageFile: ""
+    function clearUsage() {
+        var r = Door.call("ClearUsage", {})
+        if (r.error) { frame.fail(r.error, tab.clearUsage); return }
+        tab.loadUsage()
+        frame.toast(words.t("settings-usage-cleared"))
+    }
+    Connections {
+        target: Door
+        function onCallDone(token, reply) {
+            if (token !== tab.usageToken) return
+            tab.usageToken = -1
+            tab.sendingUsage = false
+            usagePreview.close()
+            tab.loadUsage()
+            if (reply.error) frame.toast(words.t("settings-usage-send-failed", { error: reply.error.plain || reply.error.message || "" }))
+            else frame.toast(words.t("settings-usage-sent"), 0, "", null, words.t("settings-usage-saved", { path: tab.lastUsageFile }))
+        }
+    }
 
     // ---- Storage and backup
     property bool includePrivate: false
@@ -104,6 +162,35 @@ SettingsTab {
             Button { objectName: "data-import"; msg: "settings-data-restore"; icon: "file-down"; flat: true; onClicked: importDialog.open() } }
     }
     Panel {
+        objectName: "usage-log"
+        title: words.t("settings-about-usage")
+        SettingRow { label: words.t("settings-usage-keep")
+            Switch { objectName: "usage-keep"; checked: Door.preferences.usage_log !== false; onToggled: function(on) { tab.setUsageLog(on) } } }
+        SettingRow {
+            label: tab.usage.events > 0 ? words.t("settings-usage-summary", { days: tab.usage.days, events: tab.usage.events }) : words.t("settings-usage-empty")
+            Item {
+                width: tab.confirmingUsageClear ? usageConfirm.implicitWidth : usageButtons.width
+                height: tab.confirmingUsageClear ? usageConfirm.implicitHeight : usageButtons.height
+                Row {
+                    id: usageButtons
+                    visible: !tab.confirmingUsageClear
+                    spacing: theme.space(2)
+                    Button { objectName: "usage-clear"; msg: "settings-usage-clear"; icon: "trash-2"; flat: true; enabled: tab.usage.events > 0; onClicked: tab.confirmingUsageClear = true }
+                    Button { objectName: "usage-download"; msg: "settings-usage-download"; icon: "file-down"; flat: true; onClicked: usageDialog.open() }
+                    Button { objectName: "usage-send"; msg: "settings-usage-send"; icon: "send"; primary: true; enabled: !tab.sendingUsage; onClicked: tab.previewUsage() }
+                }
+                InlineConfirm {
+                    id: usageConfirm
+                    visible: tab.confirmingUsageClear
+                    question: words.t("settings-usage-clear-confirm")
+                    confirmText: words.t("settings-usage-clear")
+                    onAccepted: { tab.confirmingUsageClear = false; tab.clearUsage() }
+                    onKept: tab.confirmingUsageClear = false
+                }
+            }
+        }
+    }
+    Panel {
         objectName: "data-images"
         title: words.t("settings-data-image-cache")
         SettingRow {
@@ -172,6 +259,30 @@ SettingsTab {
         currentFile: Fmt.fileUrl((tab.about.data_dir ? tab.dir(tab.about.data_dir) : "") + "/anibeam-export.json")
         nameFilters: [words.t("settings-data-backup-filter")]
         onAccepted: { var r = Door.exportLibrary(tab.path(selectedFile), tab.includePrivate); r.error ? frame.fail(r.error, exportDialog.open) : frame.toast(words.t("settings-data-backing-up")) }
+    }
+    FileDialog {
+        id: usageDialog
+        title: words.t("settings-usage-download")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "json"
+        currentFile: Fmt.fileUrl(tab.usageFile())
+        nameFilters: ["JSON (*.json)"]
+        onAccepted: { var path = tab.path(selectedFile); if (tab.saveUsage(path)) frame.toast(words.t("settings-usage-saved", { path: path })) }
+    }
+    UsagePreview {
+        id: usagePreview
+        parent: frame.overlay
+        anchors.centerIn: parent
+        sending: tab.sendingUsage
+        onSend: tab.sendUsage()
+    }
+    Blocker {
+        parent: frame.overlay
+        anchors.fill: parent
+        z: -1
+        visible: usagePreview.visible
+        dismissOnPress: true
+        onDismissed: usagePreview.close()
     }
     FileDialog {
         id: importDialog
