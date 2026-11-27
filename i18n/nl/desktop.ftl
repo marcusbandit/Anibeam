@@ -2698,6 +2698,26 @@ settings-about-nightly = Nightly
 settings-about-check-now = Nu controleren
 settings-about-developer = Ontwikkelaarsopties
 settings-about-credits = Credits
+settings-about-usage = Gebruikslog
+settings-usage-keep = Lokaal gebruikslog bijhouden
+settings-usage-summary = { $days ->
+    [one] { $days } dag
+   *[other] { $days } dagen
+}, { $events ->
+    [one] { $events } vermelding
+   *[other] { $events } vermeldingen
+}
+settings-usage-empty = Nog niets vastgelegd
+settings-usage-download = Downloaden
+settings-usage-send = Downloaden en versturen
+settings-usage-clear = Leegmaken
+settings-usage-clear-confirm = Gebruikslog leegmaken?
+settings-usage-preview-title = Wat er wordt verstuurd
+settings-usage-preview-send = Eenmalig versturen
+settings-usage-saved = Opgeslagen in { $path }
+settings-usage-sent = Gebruikslog verstuurd. Bedankt.
+settings-usage-send-failed = Kon het gebruikslog niet versturen: { $error }
+settings-usage-cleared = Gebruikslog leeggemaakt
 settings-about-ratings = Beoordelingen
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
 settings-about-series = Series en afleveringen

@@ -3015,6 +3015,30 @@ settings-about-nightly = Nightly
 settings-about-check-now = Sprawdź teraz
 settings-about-developer = Opcje deweloperskie
 settings-about-credits = Podziękowania
+settings-about-usage = Dziennik użycia
+settings-usage-keep = Prowadź lokalny dziennik użycia
+settings-usage-summary = { $days ->
+    [one] { $days } dzień
+    [few] { $days } dni
+    [many] { $days } dni
+   *[other] { $days } dnia
+}, { $events ->
+    [one] { $events } wpis
+    [few] { $events } wpisy
+    [many] { $events } wpisów
+   *[other] { $events } wpisu
+}
+settings-usage-empty = Jeszcze nic nie zapisano
+settings-usage-download = Pobierz
+settings-usage-send = Pobierz i wyślij
+settings-usage-clear = Wyczyść
+settings-usage-clear-confirm = Wyczyścić dziennik użycia?
+settings-usage-preview-title = Co zostanie wysłane
+settings-usage-preview-send = Wyślij raz
+settings-usage-saved = Zapisano w { $path }
+settings-usage-sent = Dziennik użycia wysłany. Dziękujemy.
+settings-usage-send-failed = Nie udało się wysłać dziennika użycia: { $error }
+settings-usage-cleared = Dziennik użycia wyczyszczony
 settings-about-ratings = Oceny
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
 settings-about-series = Seriale i odcinki

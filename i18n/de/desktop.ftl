@@ -2699,6 +2699,26 @@ settings-about-nightly = Nightly
 settings-about-check-now = Jetzt prüfen
 settings-about-developer = Entwickleroptionen
 settings-about-credits = Credits
+settings-about-usage = Nutzungsprotokoll
+settings-usage-keep = Lokales Nutzungsprotokoll führen
+settings-usage-summary = { $days ->
+    [one] { $days } Tag
+   *[other] { $days } Tage
+}, { $events ->
+    [one] { $events } Eintrag
+   *[other] { $events } Einträge
+}
+settings-usage-empty = Noch nichts protokolliert
+settings-usage-download = Herunterladen
+settings-usage-send = Herunterladen und senden
+settings-usage-clear = Leeren
+settings-usage-clear-confirm = Nutzungsprotokoll leeren?
+settings-usage-preview-title = Was gesendet wird
+settings-usage-preview-send = Einmalig senden
+settings-usage-saved = Gespeichert in { $path }
+settings-usage-sent = Nutzungsprotokoll gesendet. Danke.
+settings-usage-send-failed = Das Nutzungsprotokoll konnte nicht gesendet werden: { $error }
+settings-usage-cleared = Nutzungsprotokoll geleert
 settings-about-ratings = Bewertungen
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
 settings-about-series = Serien und Folgen

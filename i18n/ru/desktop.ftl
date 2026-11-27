@@ -2967,6 +2967,30 @@ settings-about-nightly = Nightly
 settings-about-check-now = Проверить
 settings-about-developer = Параметры разработчика
 settings-about-credits = Благодарности
+settings-about-usage = Журнал использования
+settings-usage-keep = Вести локальный журнал использования
+settings-usage-summary = { $days ->
+    [one] { $days } день
+    [few] { $days } дня
+    [many] { $days } дней
+   *[other] { $days } дня
+}, { $events ->
+    [one] { $events } запись
+    [few] { $events } записи
+    [many] { $events } записей
+   *[other] { $events } записи
+}
+settings-usage-empty = Записей пока нет
+settings-usage-download = Скачать
+settings-usage-send = Скачать и отправить
+settings-usage-clear = Очистить
+settings-usage-clear-confirm = Очистить журнал использования?
+settings-usage-preview-title = Что будет отправлено
+settings-usage-preview-send = Отправить один раз
+settings-usage-saved = Сохранено в { $path }
+settings-usage-sent = Журнал использования отправлен. Спасибо.
+settings-usage-send-failed = Не удалось отправить журнал использования: { $error }
+settings-usage-cleared = Журнал использования очищен
 settings-about-ratings = Рейтинги
 settings-about-ratings-helper = Данные предоставлены IMDb (https://www.imdb.com) с разрешения.
 settings-about-series = Сериалы и серии
