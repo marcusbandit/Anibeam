@@ -315,6 +315,39 @@ fn is_member_after_hello_only() {
     assert!(!r.is_member(ConnId(1)));
 }
 
+#[test]
+fn connected_and_is_member_agree_with_the_targets() {
+    let mut r = room();
+    let agree = |r: &Room| {
+        let all = r.targets(&To::All);
+        assert_eq!(r.connected(), all.len());
+        for conn in 1..=4 {
+            assert_eq!(r.is_member(ConnId(conn)), all.contains(&ConnId(conn)));
+        }
+    };
+    agree(&r);
+    assert_eq!(r.connected(), 0);
+    join(&mut r, 1, "Ann", None, 0);
+    let (_, bea_key) = join(&mut r, 2, "Bea", None, 0);
+    join(&mut r, 3, "Cid", None, 0);
+    agree(&r);
+    assert_eq!(r.connected(), 3);
+    // A drop keeps the place in grace but no longer counts.
+    r.disconnect(ConnId(1), 5);
+    agree(&r);
+    assert_eq!(r.connected(), 2);
+    // A bye frees the place.
+    r.handle(ConnId(3), ClientMsg::Bye, 10);
+    agree(&r);
+    assert_eq!(r.connected(), 1);
+    // A rejoin on a new socket replaces the old one in the same place.
+    r.handle(ConnId(4), hello("Bea", None, Some(&bea_key)), 20);
+    agree(&r);
+    assert_eq!(r.connected(), 1);
+    assert!(!r.is_member(ConnId(2)));
+    assert!(r.is_member(ConnId(4)));
+}
+
 // Commands
 
 #[test]
