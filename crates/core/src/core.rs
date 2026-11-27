@@ -701,9 +701,18 @@ impl Core {
             Call::ForgetSeries { series } => scan::forget_series(&self.services, series),
             Call::Scan { source } => scan::scan(&self.library, source),
             Call::RescanSeries { series } => scan::rescan_series(&self.library, series),
-            Call::DeleteEpisodes { series, files } => {
-                delete::delete_episodes(&self.library, series, files)
-            }
+            Call::DeleteEpisodes {
+                series,
+                files,
+                stop_following,
+                stop_downloading,
+            } => delete::delete_episodes(
+                &self.library,
+                series,
+                files,
+                stop_following,
+                stop_downloading,
+            ),
             Call::DeleteWatched { finished_shows } => {
                 delete::delete_watched(&self.library, finished_shows)
             }
@@ -926,6 +935,11 @@ impl Core {
                 series,
             )
             .map(started),
+            Call::KeepSubscription {
+                title,
+                keep,
+                others,
+            } => downloads::keep_subscription(&self.downloads, title, keep, others).map(started),
             Call::ControlTorrents { hashes, action } => {
                 downloads::control(&self.downloads, hashes, action).map(started)
             }

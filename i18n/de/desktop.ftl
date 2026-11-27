@@ -2320,6 +2320,7 @@ connect-step-connect-body = Dein Browser öffnet sich, damit du dich bei { $name
 
 settings-title = Einstellungen
 settings-search-placeholder = Einstellungen suchen
+settings-needs-attention = Braucht Aufmerksamkeit
 settings-section-library = Bibliothek
 settings-section-accounts = Konten
 settings-section-appearance = Darstellung

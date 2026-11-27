@@ -547,7 +547,7 @@ Item {
     readonly property string episodesFact: {
         if (!detail) return ""
         if (nextEpisode) return words.t("series-next", { episode: words.episodeName("", nextEpisode.number) })
-        if (downloadingNow.length > 0) return words.t("series-episodes-downloading", { count: downloadingNow.length })
+        if (downloadingNow.length > 0) return isMovie ? words.t("series-downloading-film") : words.t("series-episodes-downloading", { count: downloadingNow.length })
         if (caughtUp) return words.t("series-all-watched")
         return ""
     }
@@ -1031,7 +1031,7 @@ Item {
                         visible: page.downloadingNow.length > 0
                         icon: "download"
                         ink: page.downloadInk
-                        text: words.t("series-downloading-episodes", { count: page.downloadingNow.length })
+                        text: page.isMovie ? words.t("series-downloading-film") : words.t("series-downloading-episodes", { count: page.downloadingNow.length })
                     }
                     Pill { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? words.t("series-page-rewatched", { count: page.detail.rewatch_count }) : "" }
                 }

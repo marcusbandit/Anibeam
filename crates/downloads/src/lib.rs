@@ -80,6 +80,9 @@ pub struct Downloads {
     /// One rule written or removed at a time on the core's own engine:
     /// picking a free rule name is check-then-act.
     rules: tokio::sync::Mutex<()>,
+    /// One subscription made at a time, from naming its rule to retiring the rules it
+    /// replaces, so two follows of one show never remove each other's new rule (#1486).
+    follows: tokio::sync::Mutex<()>,
     /// Set by a shell that runs against a copy of the library but the
     /// owner's real anirss (a drive script, a screenshot, a sandbox root):
     /// finished feeds are never pruned there.
@@ -119,6 +122,9 @@ struct State {
     /// how far each is (0 to 1), as of the last torrent read: on disk is not
     /// in the library until the torrent is done with them (`overlay`).
     downloading: HashMap<u64, Downloading>,
+    /// The films among the series of `downloading`: a film's download is its one entry,
+    /// whatever number its file reads as (#1500).
+    films: std::collections::HashSet<u64>,
     /// The files an unfinished torrent is still writing, by `path_key`: what
     /// Play refuses. An episode can be downloading while an older, whole
     /// file of it (one being replaced) stays playable.
@@ -146,6 +152,7 @@ impl Downloads {
             connecting: tokio::sync::Mutex::new(()),
             torrent_setup: tokio::sync::Mutex::new(()),
             rules: tokio::sync::Mutex::new(()),
+            follows: tokio::sync::Mutex::new(()),
             unattended_off: AtomicBool::new(false),
             sandbox_finds_clients: AtomicBool::new(false),
             own_binary: Mutex::new(None),
@@ -1855,6 +1862,7 @@ pub fn subscribe(
         .clone()
         .start(JobKind::Subscribe, move |ctx| async move {
             let backend = DownloadsBackend::open(&owner).await?;
+            let _one = owner.follows.lock().await;
             let mut result = backend
                 .subscribe(&query, &endpoint, &items, name.as_deref(), home.as_deref())
                 .await?;
@@ -1890,6 +1898,31 @@ pub fn subscribe(
                     result.name,
                     describe_terms(&terms)
                 )
+            };
+            // Following a show again replaces what followed it before, on either engine:
+            // the engine names the new rule `Show @endpoint` beside the old one, and two
+            // rules filling one show drew it twice on Following (#1486). The subscription
+            // is made by now, so a failure here leaves both rules and says so.
+            let asked = paths::name_for(name.as_deref(), &items, &query).ok();
+            let before = result.save_path.clone();
+            let retired = retire_twins(
+                &owner,
+                &backend,
+                &mut result,
+                asked.as_deref(),
+                series,
+                home.is_none(),
+            )
+            .await;
+            // Said once, where the rule saves now
+            let message = message.replace(&before, &result.save_path);
+            let message = match retired {
+                Ok(gone) if gone.is_empty() => message,
+                Ok(gone) => format!("{message}; it replaces {}", gone.join(", ")),
+                Err(e) => {
+                    tracing::warn!("the rules {} replaces were kept: {e}", result.name);
+                    format!("{message} (a subscription it replaces could not be removed: {e})")
+                }
             };
             // An Info event goes into the stored log, and a feed's address can hold a login
             // and a key: the event names the rule, and the shell reads the feed from it (#478).
@@ -1944,6 +1977,220 @@ async fn rehome_rule(
         .await?;
     result.save_path = home.to_string();
     Ok(())
+}
+
+/// Removes the rules that followed this show before `result` did, and with `move_in` saves
+/// `result` into the folder the plain-named one filled when the engine named it beside that
+/// one and saved it elsewhere (a show's own folder, when the library gave one, stays where
+/// it is): a show followed again from another endpoint or group keeps one rule and one
+/// folder (#1486). The old rules' torrents and files stay. On the core's engine a feed goes
+/// with its rule unless another still reads it; anirss removes its own as it always does.
+/// `asked` is the name the subscription asked for, the one the engine suffixed. Returns the
+/// rules removed. A read that fails replaces nothing and says nothing: the subscription is
+/// made, and the rules stay as they were.
+async fn retire_twins(
+    downloads: &Downloads,
+    backend: &DownloadsBackend,
+    result: &mut Subscribed,
+    asked: Option<&str>,
+    series: Option<u64>,
+    move_in: bool,
+) -> Result<Vec<String>, CoreError> {
+    let read = async {
+        let qbt = qbt_client(downloads).await?;
+        let rules = qbt.rules().await?;
+        let linker = match series {
+            Some(_) => Some(downloads.services.store.read(link::Linker::load)?),
+            None => None,
+        };
+        Ok::<_, CoreError>((qbt, rules, linker))
+    };
+    let one = downloads.rules.lock().await;
+    let (qbt, rules, linker) = match read.await {
+        Ok(read) => read,
+        Err(e) => {
+            tracing::debug!("no rules read to find what {} replaces: {e}", result.name);
+            return Ok(Vec::new());
+        }
+    };
+    // Which series a folder fills, when the subscription named one
+    let fills = |path: &str| {
+        linker
+            .as_ref()
+            .and_then(|l| l.find(path))
+            .map(|id| Some(id) == series)
+    };
+    let twins = rewire::twins(&rules, &result.name, asked, &result.save_path, fills);
+    if twins.is_empty() {
+        return Ok(twins);
+    }
+    // The engine suffixed the new rule beside the plain-named one: the show's episodes are
+    // in that one's folder. A rule that kept the asked name kept its own folder too.
+    let plain = asked
+        .filter(|a| !result.name.eq_ignore_ascii_case(a))
+        .and_then(|a| twins.iter().find(|t| t.eq_ignore_ascii_case(a)));
+    if move_in
+        && let Some(plain) = plain
+        && let Some(folder) = native::rule_save_path(&rules[plain.as_str()]).map(str::to_string)
+        && paths::norm(&folder) != paths::norm(&result.save_path)
+        && let Some(def) = rules.get(&result.name)
+    {
+        qbt.set_rule(&result.name, &rewire::rehomed(def, &folder))
+            .await?;
+        result.save_path = folder;
+    }
+    remove_rules(&qbt, backend, rules, &twins, one).await?;
+    Ok(twins)
+}
+
+/// Removes the rules `names` from `rules` (all of qBittorrent's, as just read under
+/// `one`, the rules lock) and only them: their torrents and files stay, and a feed goes
+/// with its rule unless a rule not in `names` still reads it. anirss removes its own
+/// subscriptions, feed and all, as its Unsubscribe does, so a rule whose feed a kept rule
+/// reads loses only the rule there.
+async fn remove_rules(
+    qbt: &QbtClient,
+    backend: &DownloadsBackend,
+    mut rules: serde_json::Value,
+    names: &[String],
+    one: tokio::sync::MutexGuard<'_, ()>,
+) -> Result<(), CoreError> {
+    if names.is_empty() {
+        return Ok(());
+    }
+    let reads = |def: &serde_json::Value| -> Vec<String> {
+        def["affectedFeeds"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .filter(|u| !u.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+    if let DownloadsBackend::Anirss(_) = backend {
+        let kept: serde_json::Value = rules
+            .as_object()
+            .map(|m| {
+                m.iter()
+                    .filter(|(n, _)| !names.contains(n))
+                    .map(|(n, d)| (n.clone(), d.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let (shared, own): (Vec<String>, Vec<String>) = names.iter().cloned().partition(|t| {
+            reads(&rules[t.as_str()])
+                .iter()
+                .any(|u| rewire::feed_shared(&kept, "", u))
+        });
+        for name in &shared {
+            qbt.remove_rule(name).await?;
+        }
+        drop(one);
+        if !own.is_empty() {
+            backend.remove(&own, false, false, false).await?;
+        }
+        return Ok(());
+    }
+    let feeds = qbt.feeds().await?;
+    for name in names {
+        let def = rules
+            .as_object_mut()
+            .and_then(|m| m.remove(name))
+            .unwrap_or_default();
+        qbt.remove_rule(name).await?;
+        for url in reads(&def) {
+            if rewire::feed_shared(&rules, "", &url) {
+                continue;
+            }
+            for (path, _) in feeds.iter().filter(|(_, u)| *u == url) {
+                qbt.remove_item(path).await?;
+            }
+        }
+    }
+    drop(one);
+    Ok(())
+}
+
+/// `Call::KeepSubscription`: of the rules that follow one show, `keep` stays and the
+/// rules in `others` go, rules only (#1496). Their torrents and files stay, and a feed
+/// `keep` still reads stays with it. A rule of `others` already gone is passed over;
+/// `keep` itself must be there, or nothing is removed.
+pub fn keep_subscription(
+    downloads: &Arc<Downloads>,
+    title: String,
+    keep: String,
+    others: Vec<String>,
+) -> Result<u64, CoreError> {
+    let keep = keep.trim().to_string();
+    if keep.is_empty() {
+        return Err(CoreError::invalid(
+            "keep",
+            anibeam_contract::i18n::tr("core-downloads-rule-needs-name", &[]),
+        ));
+    }
+    let mut drop_these: Vec<String> = Vec::new();
+    for name in others {
+        let name = name.trim().to_string();
+        if !name.is_empty() && name != keep && !drop_these.contains(&name) {
+            drop_these.push(name);
+        }
+    }
+    if drop_these.is_empty() {
+        return Err(CoreError::invalid(
+            "others",
+            anibeam_contract::i18n::tr("core-downloads-nothing-to-remove", &[]),
+        ));
+    }
+    let title = match title.trim() {
+        "" => keep.clone(),
+        t => t.to_string(),
+    };
+    let owner = downloads.clone();
+    Ok(owner
+        .services
+        .jobs
+        .clone()
+        .start(JobKind::KeepSubscription, move |_| async move {
+            let backend = DownloadsBackend::open(&owner).await?;
+            // Not beside a follow of the same show, which retires rules too
+            let _follow = owner.follows.lock().await;
+            let qbt = qbt_client(&owner).await?;
+            let one = owner.rules.lock().await;
+            let rules = qbt.rules().await?;
+            if !rules.get(&keep).is_some_and(serde_json::Value::is_object) {
+                return Err(CoreError::service(
+                    qbt::SERVICE,
+                    "rule_missing",
+                    anibeam_contract::i18n::tr(
+                        "core-downloads-no-rule",
+                        &[("name", keep.as_str().into())],
+                    ),
+                ));
+            }
+            let removed: Vec<String> = drop_these
+                .into_iter()
+                .filter(|n| rules.get(n).is_some_and(serde_json::Value::is_object))
+                .collect();
+            remove_rules(&qbt, &backend, rules, &removed, one).await?;
+            Ok(Finished {
+                plain: Some(anibeam_contract::words!(
+                    "core-downloads-kept-subscription",
+                    title = &title
+                )),
+                level: Level::Info,
+                message: if removed.is_empty() {
+                    format!("{title} keeps {keep}; the others were gone already")
+                } else {
+                    format!("{title} keeps {keep}; removed {}", removed.join(", "))
+                },
+                body: EventBody::SubscriptionKept {
+                    title,
+                    kept: keep,
+                    removed,
+                },
+            })
+        }))
 }
 
 /// Points anirss's new rule at the feed the search read, narrowed by the
@@ -2732,7 +2979,12 @@ pub fn list_torrents(downloads: &Arc<Downloads>) -> Result<Reply, CoreError> {
                 let mut shows = link_torrents(&owner.services, &mut torrents);
                 replace::annotate(&owner.services, &mut torrents);
                 rolling::annotate(&owner.services, &mut torrents);
-                let downloading = downloading_of(&torrents);
+                let films: std::collections::HashSet<u64> = shows
+                    .iter()
+                    .filter(|s| s.kind == SeriesKind::Movie)
+                    .map(|s| s.series_id)
+                    .collect();
+                let downloading = downloading_of(&torrents, &films);
                 let moved: Vec<u64> = {
                     let mut st = owner.state();
                     st.torrent.connected = true;
@@ -2744,6 +2996,7 @@ pub fn list_torrents(downloads: &Arc<Downloads>) -> Result<Reply, CoreError> {
                         std::time::Instant::now(),
                     );
                     st.downloading = downloading;
+                    st.films = films;
                     st.writing = writing_of(&torrents);
                     due
                 };
@@ -2846,13 +3099,20 @@ fn schedule_reread(downloads: &Arc<Downloads>) {
 /// The episodes each linked series has in an unfinished torrent, and how far
 /// each is: a file of a batch that is not done (and not skipped) with the
 /// file's progress, or a single-episode torrent that is not done with the
-/// torrent's. An episode two torrents carry counts at the further one.
-fn downloading_of(torrents: &[Torrent]) -> HashMap<u64, Downloading> {
+/// torrent's. An episode two torrents carry counts at the further one. A
+/// torrent of one of `films` carries the film, its episode 1, at the
+/// torrent's progress, whatever its name reads as (#1500).
+fn downloading_of(
+    torrents: &[Torrent],
+    films: &std::collections::HashSet<u64>,
+) -> HashMap<u64, Downloading> {
     let mut out: HashMap<u64, Downloading> = HashMap::new();
     for t in torrents.iter().filter(|t| t.progress < 1.0) {
         let Some(id) = t.series_id else { continue };
         let whole = |n: f64| (n.is_finite() && n >= 1.0 && n.fract() == 0.0).then_some(n as u32);
-        let eps: Vec<(u32, f64)> = if t.files.is_empty() {
+        let eps: Vec<(u32, f64)> = if films.contains(&id) {
+            film_progress(t).map(|p| (1, p)).into_iter().collect()
+        } else if t.files.is_empty() {
             t.episode
                 .and_then(whole)
                 .map(|n| (n, t.progress))
@@ -2876,6 +3136,22 @@ fn downloading_of(torrents: &[Torrent]) -> HashMap<u64, Downloading> {
         }
     }
     out
+}
+
+/// How far a film's torrent has written the film, while it still is: the torrent's progress,
+/// or for one with several files the furthest unfinished video among them, so a film whose
+/// video is whole while its extras still come is not downloading (#1500).
+fn film_progress(t: &Torrent) -> Option<f64> {
+    if t.files.is_empty() {
+        return Some(t.progress);
+    }
+    t.files
+        .iter()
+        .filter(|f| {
+            f.progress < 1.0 && f.priority != 0 && anibeam_foundation::names::is_video(&f.name)
+        })
+        .map(|f| f.progress)
+        .reduce(f64::max)
 }
 
 /// A path as one key whatever string reaches it: resolved on disk when it
@@ -2908,6 +3184,263 @@ fn writing_of(torrents: &[Torrent]) -> std::collections::HashSet<std::path::Path
         }
     }
     out
+}
+
+/// Delete all on a show (#1483): every subscription whose folder is `series` goes, so the
+/// next episode is not downloaded and the show does not come back. Linked the way the
+/// Downloads page links a rule to its show. The series counts even once the scan after the
+/// delete finds its folder empty. Rules that cannot be read are said only for a show the
+/// last read found followed: otherwise downloads are most likely not set up.
+pub fn stop_following(downloads: &Arc<Downloads>, series: u64, title: String) {
+    let owner = downloads.clone();
+    downloads.services.handle.spawn(async move {
+        // Whether the last read of the rules found it followed: a failure then is worth
+        // saying, and with none it most likely means downloads are not set up
+        let read = owner.services.store.read(move |c| {
+            let followed: bool = c.query_row(
+                "SELECT EXISTS (SELECT 1 FROM follows WHERE series_id = ?1)",
+                [series as i64],
+                |r| r.get(0),
+            )?;
+            Ok((link::Linker::load_keeping(c, series)?, followed))
+        });
+        let (linker, followed) = match read {
+            Ok(read) => read,
+            Err(e) => {
+                tracing::warn!("subscriptions of {title} not read: {e}");
+                return;
+            }
+        };
+        let fills = move |save_path: &str| linker.find(save_path) == Some(series);
+        match unfollow(&owner, &fills).await {
+            Ok(names) if names.is_empty() => {}
+            Ok(names) => {
+                let forgot = owner
+                    .services
+                    .store
+                    .write_async(move |c| {
+                        c.execute("DELETE FROM follows WHERE series_id = ?1", [series as i64])?;
+                        Ok(())
+                    })
+                    .await;
+                if let Err(e) = forgot {
+                    tracing::warn!("{title} still held as followed until the next read: {e}");
+                }
+                owner.services.bus.say(
+                    Level::Info,
+                    Stage::Downloads,
+                    anibeam_contract::words!("core-downloads-unfollowed", title = &title),
+                    format!("Stopped following {title}"),
+                    EventBody::Notice,
+                );
+                for name in names {
+                    owner.services.bus.debug(
+                        Stage::Downloads,
+                        format!("subscription {name} removed"),
+                        EventBody::SubscriptionRemoved { name },
+                    );
+                }
+            }
+            Err(e) if !followed => {
+                tracing::debug!("subscriptions of {title} not read: {}", plain(&e));
+            }
+            Err(e) => {
+                owner.services.bus.say(
+                    Level::Warn,
+                    Stage::Downloads,
+                    anibeam_contract::words!("core-downloads-unfollow-failed", title = &title),
+                    format!("Could not stop following {title}: {}", plain(&e)),
+                    EventBody::DownloadsUnavailable {
+                        what: "unsubscribe".to_string(),
+                        error: e,
+                    },
+                );
+            }
+        }
+    });
+}
+
+/// Delete all on a show (#1495): each torrent of the series that carries one of `episodes`,
+/// the ones its sheet named as downloading, leaves the client, so it cannot finish and bring
+/// the show back. One that finished since the sheet opened goes too: its file was left out of
+/// the trash while it was downloading. A torrent of one episode goes with its file. A batch
+/// goes without its data, and only the named episodes' files are deleted, so its extras and
+/// anything else the sheet did not name stay; those are deleted only when the client's files
+/// are this machine's. A torrent on an episode the sheet did not name stays. A film's
+/// torrent carries the film, so it goes with its data when the sheet named the film as
+/// downloading (#1500). Linked as the Downloads page links a torrent, with the series kept
+/// even once its folder reads empty.
+pub fn stop_downloading(
+    downloads: &Arc<Downloads>,
+    series: u64,
+    episodes: Vec<u32>,
+    title: String,
+) {
+    let owner = downloads.clone();
+    downloads.services.handle.spawn(async move {
+        let outcome = async {
+            let here = settings::files_here(&load_settings(&owner.services).await?);
+            let client = qbt_client(&owner).await?;
+            let (linker, film) = owner.services.store.read(move |c| {
+                use rusqlite::OptionalExtension as _;
+                let row: Option<(String, String)> = c
+                    .query_row(
+                        "SELECT kind, path FROM series WHERE id = ?1",
+                        [series as i64],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .optional()?;
+                // A film's series path is its video file
+                let film = row.and_then(|(kind, path)| {
+                    (SeriesKind::from_column(&kind) == Some(SeriesKind::Movie)).then_some(path)
+                });
+                Ok((link::Linker::load_keeping(c, series)?, film))
+            })?;
+            // Linked by path first, so only this series' torrents have their files read
+            let mut torrents: Vec<Torrent> = client
+                .torrents()
+                .await?
+                .into_iter()
+                .filter(|t| linker.find_torrent(t) == Some(series))
+                .collect();
+            for t in torrents.iter_mut() {
+                match client.files(&t.hash).await {
+                    Ok(files) if files.len() > 1 => t.files = files,
+                    Ok(_) => {}
+                    Err(e) => tracing::debug!("files of {} not read: {e}", t.name),
+                }
+                read_episodes(t);
+            }
+            let named = |n: Option<f64>| {
+                n.is_some_and(|n| n.fract() == 0.0 && n >= 1.0 && episodes.contains(&(n as u32)))
+            };
+            let (mut whole, mut batches, mut files) = (Vec::new(), Vec::new(), Vec::new());
+            for t in &torrents {
+                if let Some(path) = &film {
+                    if episodes.is_empty() {
+                        continue;
+                    }
+                    if t.files.is_empty() {
+                        whole.push(t.hash.to_ascii_lowercase());
+                        continue;
+                    }
+                    // A folder or a pack: the film's own video goes, its extras and any
+                    // other film in it stay
+                    let save = std::path::Path::new(&t.save_path);
+                    let name = std::path::Path::new(path).file_name();
+                    let mine: Vec<std::path::PathBuf> = t
+                        .files
+                        .iter()
+                        .map(|f| save.join(&f.name))
+                        .filter(|f| path_key(&f.to_string_lossy()) == path_key(path))
+                        .collect();
+                    let mine = if mine.is_empty() {
+                        // The client's paths are another machine's: match by file name
+                        t.files
+                            .iter()
+                            .map(|f| save.join(&f.name))
+                            .filter(|f| name.is_some() && f.file_name() == name)
+                            .collect()
+                    } else {
+                        mine
+                    };
+                    batches.push(t.hash.to_ascii_lowercase());
+                    files.extend(mine);
+                    continue;
+                }
+                if t.files.is_empty() {
+                    if named(t.episode) {
+                        whole.push(t.hash.to_ascii_lowercase());
+                    }
+                    continue;
+                }
+                let mine: Vec<&TorrentFile> = t
+                    .files
+                    .iter()
+                    .filter(|f| f.priority != 0 && named(f.episode))
+                    .collect();
+                if mine.is_empty() {
+                    continue;
+                }
+                batches.push(t.hash.to_ascii_lowercase());
+                let save = std::path::Path::new(&t.save_path);
+                files.extend(mine.iter().map(|f| save.join(&f.name)));
+            }
+            if !whole.is_empty() {
+                client.delete(&whole, true).await?;
+            }
+            if !batches.is_empty() {
+                client.delete(&batches, false).await?;
+            }
+            if here {
+                for f in &files {
+                    match std::fs::remove_file(f) {
+                        Ok(()) => {}
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(e) => tracing::warn!("{} not deleted: {e}", f.display()),
+                    }
+                }
+            }
+            Ok::<_, CoreError>(whole.len() + batches.len())
+        }
+        .await;
+        match outcome {
+            Ok(0) => {}
+            Ok(n) => {
+                owner.services.bus.info(
+                    Stage::Downloads,
+                    format!(
+                        "{} of {title} stopped and removed",
+                        plural(n as u64, "download", "downloads")
+                    ),
+                    EventBody::Notice,
+                );
+                let _ = list_torrents(&owner);
+            }
+            Err(e) => {
+                owner.services.bus.say(
+                    Level::Warn,
+                    Stage::Downloads,
+                    anibeam_contract::words!("core-downloads-not-stopped", title = &title),
+                    format!("The download of {title} was not stopped: {}", plain(&e)),
+                    EventBody::DownloadsUnavailable {
+                        what: "torrents".to_string(),
+                        error: e,
+                    },
+                );
+            }
+        }
+    });
+}
+
+/// The client's rules that `fills` takes, removed with neither torrents nor files: the
+/// delete before took what was on disk. Their names.
+#[cfg(not(feature = "phone"))]
+async fn unfollow(
+    downloads: &Arc<Downloads>,
+    fills: &(dyn Fn(&str) -> bool + Send + Sync),
+) -> Result<Vec<String>, CoreError> {
+    let backend = DownloadsBackend::open(downloads).await?;
+    let names: Vec<String> = backend
+        .subscriptions()
+        .await?
+        .into_iter()
+        .filter(|r| fills(&r.save_path))
+        .map(|r| r.name)
+        .collect();
+    if !names.is_empty() {
+        backend.remove(&names, false, false, false).await?;
+    }
+    Ok(names)
+}
+
+/// The phone keeps its subscriptions itself.
+#[cfg(feature = "phone")]
+async fn unfollow(
+    downloads: &Arc<Downloads>,
+    fills: &(dyn Fn(&str) -> bool + Send + Sync),
+) -> Result<Vec<String>, CoreError> {
+    phone::unfollow(&downloads.services, fills)
 }
 
 /// After episode files went to the trash (#266): each torrent that held one of them leaves
@@ -3044,6 +3577,14 @@ impl anibeam_library::Incoming for Downloads {
         drop_torrents_of(&self, gone);
     }
 
+    fn stop_following(self: Arc<Self>, series: u64, title: String) {
+        stop_following(&self, series, title);
+    }
+
+    fn stop_downloading(self: Arc<Self>, series: u64, episodes: Vec<u32>, title: String) {
+        stop_downloading(&self, series, episodes, title);
+    }
+
     fn files_arrived(self: Arc<Self>) {
         origins::after_scan(&self);
     }
@@ -3160,15 +3701,15 @@ pub fn overlay(downloads: &Arc<Downloads>, cards: &mut [SeriesCard]) {
 /// How far a torrent has written an episode of a series, while one is still
 /// on it; None for an episode that is whole (or that no torrent carries).
 pub fn episode_progress(downloads: &Downloads, series: u64, number: f64) -> Option<f64> {
+    let st = downloads.state();
+    let eps = st.downloading.get(&series)?;
+    if st.films.contains(&series) {
+        return eps.values().next().copied();
+    }
     if !(number >= 1.0 && number.fract() == 0.0) {
         return None;
     }
-    downloads
-        .state()
-        .downloading
-        .get(&series)?
-        .get(&(number as u32))
-        .copied()
+    eps.get(&(number as u32)).copied()
 }
 
 /// A series' detail with what is still downloading laid over it: the card as
@@ -3187,12 +3728,14 @@ fn mark_downloading(detail: &mut SeriesDetail, writing: &dyn Fn(&str) -> bool) {
     if detail.card.downloading.is_empty() {
         return;
     }
+    // A film's file is its download whatever number its name reads as (#1500)
+    let film = detail.card.kind == SeriesKind::Movie;
     let progress_of = |n: f64| {
         detail
             .card
             .downloading
             .iter()
-            .find(|d| f64::from(d.number) == n)
+            .find(|d| film || f64::from(d.number) == n)
             .map(|d| d.progress)
     };
     let marks: Vec<Option<f64>> = detail
@@ -3511,12 +4054,7 @@ fn link_torrents(services: &Services, torrents: &mut [Torrent]) -> Vec<ShowLink>
         Ok((ids, shows)) => {
             for (t, id) in torrents.iter_mut().zip(ids) {
                 t.series_id = id;
-                let f = facts::read_name(&t.name);
-                t.batch = f.batch || !t.files.is_empty();
-                t.episode = if t.batch { None } else { f.episode };
-                for file in t.files.iter_mut() {
-                    file.episode = facts::read_name(&file.name).episode;
-                }
+                read_episodes(t);
             }
             let mut out: Vec<ShowLink> = shows.into_values().collect();
             out.sort_by_key(|s| s.series_id);
@@ -3526,6 +4064,16 @@ fn link_torrents(services: &Services, torrents: &mut [Torrent]) -> Vec<ShowLink>
             tracing::warn!("torrents not linked to the library: {e}");
             Vec::new()
         }
+    }
+}
+
+/// Reads from a torrent's name, and its files' names, which episodes it carries.
+fn read_episodes(t: &mut Torrent) {
+    let f = facts::read_name(&t.name);
+    t.batch = f.batch || !t.files.is_empty();
+    t.episode = if t.batch { None } else { f.episode };
+    for file in t.files.iter_mut() {
+        file.episode = facts::read_name(&file.name).episode;
     }
 }
 
@@ -4186,7 +4734,7 @@ mod tests {
             ),
         ];
         assert_eq!(t.files[1].episode, Some(2.0));
-        let map = downloading_of(&[t]);
+        let map = downloading_of(&[t], &Default::default());
         assert_eq!(map[&7], Downloading::from([(2, 0.3), (3, 0.0)]));
         let mut cubes = "dddgw".to_string();
         let eps: Downloading = [2, 3, 5, 9].into_iter().map(|n| (n, 0.5)).collect();
@@ -4208,11 +4756,43 @@ mod tests {
         let mut done = t.clone();
         done.episode = Some(7.0);
         done.progress = 1.0;
-        let map = downloading_of(&[t, twin, done]);
+        let map = downloading_of(&[t, twin, done], &Default::default());
         assert_eq!(
             map[&4],
             Downloading::from([(6, 0.5)]),
             "the further torrent counts, a finished one does not"
+        );
+    }
+
+    #[test]
+    fn a_films_torrent_downloads_as_its_one_film() {
+        let mut t = super::qbt::tests_torrent();
+        t.series_id = Some(9);
+        t.episode = Some(2019.0);
+        t.progress = 0.25;
+        let films = std::collections::HashSet::from([9]);
+        assert_eq!(
+            downloading_of(std::slice::from_ref(&t), &films)[&9],
+            Downloading::from([(1, 0.25)]),
+            "whatever number its name reads as"
+        );
+        let file = |name: &str, progress: f64| TorrentFile {
+            name: name.to_string(),
+            size: 1,
+            progress,
+            priority: 1,
+            episode: None,
+        };
+        t.files = vec![file("Film/Film.mkv", 0.6), file("Film/Booklet.pdf", 0.1)];
+        assert_eq!(
+            downloading_of(std::slice::from_ref(&t), &films)[&9],
+            Downloading::from([(1, 0.6)]),
+            "a boxed film at its video's progress"
+        );
+        t.files[0].progress = 1.0;
+        assert!(
+            downloading_of(&[t], &films).is_empty(),
+            "a whole video is not downloading while the booklet still comes"
         );
     }
 

@@ -219,6 +219,10 @@ frame-delete-all = { $count ->
        *[episode] Delete all { $count } episodes
     }
 }
+frame-delete-all-unfollow = { $count ->
+    [one] Delete and stop following
+   *[other] Delete all and stop following
+}
 frame-series-gone = That series is gone
 frame-delete-none-watched = No watched episodes of { $title } on disk
 frame-delete-none = Nothing of { $title } on disk
@@ -252,6 +256,18 @@ frame-delete-and = { $first } and { $second }
 frame-delete-heading = Delete { $what } of { $title }?
 frame-delete-base = The files and their subtitles will be moved to the trash, so you can recover them there. Their torrents will be removed from the torrent client so they can be downloaded again.
 frame-delete-confirm = Move to trash
+frame-delete-unfollow-base = { $count ->
+    [one] The subscription { $names } is removed too, so new episodes stop downloading.
+   *[other] The subscriptions { $names } are removed too, so new episodes stop downloading.
+}
+frame-delete-unfollow-confirm = Delete and stop following
+frame-delete-downloading = { $kind ->
+    [film] The movie is still downloading. That download stops and its unfinished file is deleted.
+   *[episode] { $count ->
+        [one] Episode { $episodes } is still downloading. That download stops and its unfinished file is deleted.
+       *[other] Episodes { $episodes } are still downloading. Those downloads stop and their unfinished files are deleted.
+    }
+}
 frame-delete-done = { $what } of { $title } moved to the trash
 frame-delete-watched-done = { $count ->
     [one] { $count } episode
@@ -1304,6 +1320,7 @@ series-downloading-episodes =
         [one] Downloading { $count } episode
        *[other] Downloading { $count } episodes
     }
+series-downloading-film = Downloading
 series-count-season-ends = Season { $season } ends at episode { $number }
 series-count-ends = Ends at episode { $number }
 series-count-gave-way = You set { $count } episodes, which no longer applies
@@ -1794,6 +1811,14 @@ downloads-files-torrents = what the torrents downloaded
 downloads-files-torrents-remote = what the torrents downloaded, deleted by { $client }
 downloads-files-folder-and = { $folder } and { $torrents }
 downloads-unsubscribe-heading = Unsubscribe from { $title }?
+downloads-followed-times = Followed { $count } times
+downloads-keep-one = Keep one
+downloads-keep-heading = Keep one subscription for { $title }
+downloads-keep-confirm =
+    { $count ->
+        [one] Remove the other
+       *[other] Remove the other { $count }
+    }
 downloads-unsubscribe-base = Its feed and download rule will be removed from { $client }, so no new episodes will download.
 downloads-unsubscribe-complete-heading = Unsubscribe from all { $count } complete shows?
 downloads-unsubscribe-complete-base = Their feeds and download rules will be removed from { $client }. All of their episodes are already in your library.
@@ -2458,6 +2483,7 @@ connect-step-connect-body = Your browser will open so you can sign in to { $name
 
 settings-title = Settings
 settings-search-placeholder = Search settings
+settings-needs-attention = Needs attention
 settings-section-library = Library
 settings-section-accounts = Accounts
 settings-section-appearance = Appearance

@@ -2322,6 +2322,7 @@ connect-step-connect-body = Seu navegador vai abrir para você entrar no { $name
 
 settings-title = Configurações
 settings-search-placeholder = Buscar configurações
+settings-needs-attention = Requer atenção
 settings-section-library = Biblioteca
 settings-section-accounts = Contas
 settings-section-appearance = Aparência

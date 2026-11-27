@@ -2126,6 +2126,7 @@ connect-step-connect-body = 브라우저가 열리면 { $name }에 로그인하�
 
 settings-title = 설정
 settings-search-placeholder = 설정 검색
+settings-needs-attention = 확인 필요
 settings-section-library = 라이브러리
 settings-section-accounts = 계정
 settings-section-appearance = 모양

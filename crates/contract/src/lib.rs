@@ -154,6 +154,7 @@ mod tests {
             ControlTorrents,
             TestTorrentClient,
             RemoveShow,
+            KeepSubscription,
             RepairSubscription,
             CheckEndpoints,
             StartEndpoint,
@@ -168,8 +169,8 @@ mod tests {
                 | Notes | Crawl | SkipWindows | Export | Import | Subscriptions
                 | ConnectDownloads | SearchReleases | RefineReleases | Subscribe | Download
                 | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
-                | RepairSubscription | CheckEndpoints | StartEndpoint | ScheduleAgent
-                | MoveLists => {}
+                | KeepSubscription | RepairSubscription | CheckEndpoints | StartEndpoint
+                | ScheduleAgent | MoveLists => {}
             }
         }
         all

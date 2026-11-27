@@ -325,6 +325,8 @@ core-jobs-test-torrent-client = Testing the download app
     .stopped = Testing the download app stopped with a problem.
 core-jobs-remove-show = Removing a show
     .stopped = Removing a show stopped with a problem.
+core-jobs-keep-subscription = Keeping one subscription
+    .stopped = Keeping one subscription stopped with a problem.
 core-jobs-repair-subscription = Repairing a subscription
     .stopped = Repairing a subscription stopped with a problem.
 core-jobs-check-endpoints = Checking your download sources
@@ -1307,6 +1309,7 @@ core-downloads-nothing-to-remove = nothing to remove
 # $title is the show's title
 core-downloads-removed-show = Removed { $title } from your downloads.
 core-downloads-removed-the-show = Removed the show from your downloads.
+core-downloads-kept-subscription = { $title } keeps one subscription.
 core-downloads-deleted-still-listed = Deleted files are still listed in the download app.
 core-downloads-feed-url = feed URL must start with http:// or https://
 core-downloads-rule-needs-name = rule name cannot be empty
@@ -1361,6 +1364,9 @@ core-downloads-name-not-folder = { $name } is not a folder name
 # $title is the show's title
 core-downloads-pruned = Unsubscribed from { $title } (finished airing).
 core-downloads-prune-failed = Could not unsubscribe from { $title }. Check Downloads in Settings.
+core-downloads-unfollowed = Stopped following { $title }.
+core-downloads-unfollow-failed = Could not stop following { $title }. Check Downloads in Settings.
+core-downloads-not-stopped = Could not stop the download of { $title }. Check Downloads in Settings.
 
 ## library/src/trash.rs
 

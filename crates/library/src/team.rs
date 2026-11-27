@@ -28,6 +28,12 @@ pub trait Incoming: Send + Sync {
     /// These files went to the trash: a torrent that held one leaves the
     /// client too (#266).
     fn files_gone(self: Arc<Self>, gone: Vec<std::path::PathBuf>);
+    /// Delete all took this series' files (#1483): every subscription that fills its
+    /// folder goes, so the next episode is not downloaded again.
+    fn stop_following(self: Arc<Self>, series: u64, title: String);
+    /// Delete all named these episodes of the series as still downloading (#1495): the
+    /// torrents writing them go, with their unfinished files.
+    fn stop_downloading(self: Arc<Self>, series: u64, episodes: Vec<u32>, title: String);
     /// A scan brought files in: where each came from is recorded (#241).
     fn files_arrived(self: Arc<Self>);
 }

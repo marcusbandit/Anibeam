@@ -352,6 +352,13 @@ pub enum EventBody {
         hashes: Vec<String>,
         action: TorrentAction,
     },
+    /// What `KeepSubscription` did: the rule that stays, and the rules it
+    /// removed.
+    SubscriptionKept {
+        title: String,
+        kept: String,
+        removed: Vec<String>,
+    },
 }
 
 /// The listener a shell hands to `subscribe`. Called by value on whatever

@@ -1672,7 +1672,15 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
         .collect();
     assert_eq!(
         order,
-        vec!["rules", "setRule", "items", "removeItem", "addFeed"],
+        // The last read looks for a rule the new one replaces: none here (#1486)
+        vec![
+            "rules",
+            "setRule",
+            "items",
+            "removeItem",
+            "addFeed",
+            "rules"
+        ],
         "the rule moves before any feed does"
     );
     let set = form_of(&rss[1]);
@@ -2218,6 +2226,8 @@ fn deleting_an_episode_removes_the_torrent_that_held_it() {
     core.call(Call::DeleteEpisodes {
         series: series.id,
         files: vec![file],
+        stop_following: false,
+        stop_downloading: Vec::new(),
     })
     .unwrap();
     assert!(!ep(1).exists() && ep(2).exists());
@@ -2238,6 +2248,429 @@ fn deleting_an_episode_removes_the_torrent_that_held_it() {
         std::thread::sleep(Duration::from_millis(25));
     };
     assert_eq!(form_of(&delete), "hashes=aa&deleteFiles=false");
+    core.shutdown();
+}
+
+/// A library with one followed show, two episodes on disk, and anirss holding two rules: the
+/// show's own and another's. The show's id and its files.
+fn followed_show(
+    dir: &Path,
+    core: &Core,
+    c: &anibeam_core::events::Collector,
+    http: &FakeHttp,
+) -> (u64, Vec<u64>) {
+    save(core, remote(), Some("tok"), Some("pw"));
+    let lib = std::fs::canonicalize(dir).unwrap().join("lib");
+    let show = lib.join("Sousou no Frieren");
+    std::fs::create_dir_all(&show).unwrap();
+    for n in 1..=2 {
+        std::fs::write(
+            show.join(format!("[Lumen] Sousou no Frieren - {n:02} (1080p).mkv")),
+            b"x",
+        )
+        .unwrap();
+    }
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+    let series = common::cards(core, Tab::All, true)
+        .into_iter()
+        .find(|s| s.path.ends_with("Sousou no Frieren"))
+        .expect("the show is in the library");
+    let files = match core.call(Call::GetSeries { series: series.id }).unwrap() {
+        Reply::SeriesDetail { detail } => detail.episodes.into_iter().map(|e| e.file).collect(),
+        other => panic!("{other:?}"),
+    };
+    // Checked first, so a lookup of the rules is not answered with the removal's reply
+    http.push_for(
+        "subscriptions/remove",
+        200,
+        json!({"dry_run": false, "plans": []}).to_string(),
+    );
+    http.push_for(
+        "api/v1/subscriptions",
+        200,
+        json!({"subscriptions": [
+            {"name": "Frieren", "feed_url": "http://feeds.example/rss?q=frieren",
+             "save_path": show.to_string_lossy()},
+            {"name": "Other Show", "feed_url": "http://feeds.example/rss?q=other",
+             "save_path": "/downloads/Other Show"},
+        ]})
+        .to_string(),
+    );
+    (series.id, files)
+}
+
+/// Delete all stops following the show (#1483): its rule leaves anirss with the files, and
+/// another show's rule stays.
+#[test]
+fn delete_all_stops_following_the_show() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    let (series, files) = followed_show(dir.path(), &core, &c, &http);
+
+    core.call(Call::DeleteEpisodes {
+        series,
+        files,
+        stop_following: true,
+        stop_downloading: Vec::new(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::SubscriptionRemoved { name } if name == "Frieren"),
+        Duration::from_secs(10),
+    );
+    let requests = http.requests();
+    let removes: Vec<_> = requests
+        .iter()
+        .filter(|r| r.url.contains("subscriptions/remove"))
+        .collect();
+    assert_eq!(removes.len(), 1);
+    let body = form_of(removes[0]);
+    assert!(
+        body.contains("\"names\":[\"Frieren\"]") && body.contains("\"files\":false"),
+        "{body}"
+    );
+    core.shutdown();
+}
+
+/// Delete watched, or any delete that is not Delete all, leaves the follow alone (#1483).
+#[test]
+fn deleting_episodes_keeps_the_follow() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    let (series, files) = followed_show(dir.path(), &core, &c, &http);
+
+    let job = started(
+        &core,
+        Call::DeleteEpisodes {
+            series,
+            files: files[..1].to_vec(),
+            stop_following: false,
+            stop_downloading: Vec::new(),
+        },
+    );
+    common::wait_job(&c, job);
+    // An unfollow runs off the call: time for one to have asked, were it started
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(
+        !http
+            .requests()
+            .iter()
+            .any(|r| r.url.contains("api/v1/subscriptions")),
+        "the rules were not touched"
+    );
+    core.shutdown();
+}
+
+/// Delete all stops the downloads of the episodes its sheet named as still downloading
+/// (#1495), so none finishes and brings the show back: a torrent of one such episode goes
+/// with its file, as does one that finished since the sheet opened. A batch goes without its
+/// data and loses only the named episode's file, so an extra in it stays. A torrent on an
+/// episode the sheet did not name, or of another show, stays.
+#[test]
+fn delete_all_stops_the_downloads_it_named() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    unsafe { std::env::set_var("XDG_DATA_HOME", dir.path().join("share")) };
+    save(&core, settings("anirss"), None, None);
+    let lib = std::fs::canonicalize(dir.path()).unwrap().join("lib");
+    let show = lib.join("Sousou no Frieren");
+    std::fs::create_dir_all(&show).unwrap();
+    let ep = |n: u32| show.join(format!("[Lumen] Sousou no Frieren - {n:02} (1080p).mkv"));
+    for n in 1..=2 {
+        std::fs::write(ep(n), b"x").unwrap();
+    }
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+    let series = common::cards(&core, Tab::All, true)
+        .into_iter()
+        .find(|s| s.path.ends_with("Sousou no Frieren"))
+        .expect("the show is in the library");
+    let file = match core.call(Call::GetSeries { series: series.id }).unwrap() {
+        Reply::SeriesDetail { detail } => {
+            detail
+                .episodes
+                .into_iter()
+                .find(|e| e.number == 1.0)
+                .expect("episode 1")
+                .file
+        }
+        other => panic!("{other:?}"),
+    };
+    // A batch the client is still writing: episode 5, and a creditless opening already whole
+    let batch = show.join("Batch");
+    std::fs::create_dir_all(&batch).unwrap();
+    let ep5 = batch.join("[Lumen] Sousou no Frieren - 05 (1080p).mkv");
+    let ncop = batch.join("[Lumen] Sousou no Frieren - NCOP (1080p).mkv");
+    std::fs::write(&ep5, b"x").unwrap();
+    std::fs::write(&ncop, b"x").unwrap();
+
+    let show_s = show.to_string_lossy().into_owned();
+    let torrent = |hash: &str, name: &str, progress: f64, save: &str, content: &str| {
+        json!({"hash": hash, "name": name, "state": "downloading", "progress": progress,
+               "size": 1, "save_path": save, "content_path": content})
+    };
+    let single = |hash: &str, n: u32, progress: f64| {
+        torrent(
+            hash,
+            &format!("[Lumen] Sousou no Frieren - {n:02} (1080p).mkv"),
+            progress,
+            &show_s,
+            &ep(n).to_string_lossy(),
+        )
+    };
+    let list = json!([
+        single("bb", 2, 0.4),
+        // Finished between the sheet opening and the confirm
+        single("ee", 4, 1.0),
+        // Started since the sheet opened: not named
+        single("cc", 3, 0.4),
+        torrent(
+            "ff",
+            "[Lumen] Sousou no Frieren (Batch)",
+            0.5,
+            &show_s,
+            &batch.to_string_lossy()
+        ),
+        torrent(
+            "dd",
+            "[Lumen] Other Show - 02 (1080p).mkv",
+            0.4,
+            "/downloads/Other Show",
+            "/downloads/Other Show/[Lumen] Other Show - 02 (1080p).mkv"
+        ),
+    ])
+    .to_string();
+    // One read for the torrents of the trashed files, one for the downloads to stop
+    http.push_for("torrents/info", 200, list.clone());
+    http.push_for("torrents/info", 200, list);
+    http.push_for(
+        "torrents/files?hash=ff",
+        200,
+        json!([
+            {"name": "Batch/[Lumen] Sousou no Frieren - 05 (1080p).mkv",
+             "size": 1, "progress": 0.3, "priority": 1},
+            {"name": "Batch/[Lumen] Sousou no Frieren - NCOP (1080p).mkv",
+             "size": 1, "progress": 1.0, "priority": 1},
+        ])
+        .to_string(),
+    );
+    http.push_for("torrents/delete", 200, "");
+    http.push_for("torrents/delete", 200, "");
+
+    core.call(Call::DeleteEpisodes {
+        series: series.id,
+        files: vec![file],
+        stop_following: false,
+        stop_downloading: vec![2, 4, 5],
+    })
+    .unwrap();
+    assert!(!ep(1).exists());
+
+    let deletes = || -> Vec<String> {
+        http.requests()
+            .iter()
+            .filter(|r| r.url.contains("torrents/delete"))
+            .map(form_of)
+            .collect()
+    };
+    let started = Instant::now();
+    while deletes().len() < 2 {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the downloads were not stopped: {:?}",
+            deletes()
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(
+        deletes(),
+        vec![
+            "hashes=bb|ee&deleteFiles=true".to_string(),
+            "hashes=ff&deleteFiles=false".to_string(),
+        ]
+    );
+    assert!(!ep5.exists(), "the named episode of the batch is deleted");
+    assert!(ncop.exists(), "the extra the sheet did not name stays");
+    core.shutdown();
+}
+
+/// A film still downloading counts as the film it carries (#1500): its card and its one
+/// episode show the download, whatever number the file's name reads as, and Delete all
+/// stops that torrent and deletes its data. Another film's torrent stays. A film in a folder
+/// torrent goes like a batch: the torrent without its data, and only the film's video, so
+/// the booklet beside it stays.
+#[test]
+fn delete_all_stops_a_films_download() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    unsafe { std::env::set_var("XDG_DATA_HOME", dir.path().join("share")) };
+    save(&core, settings("anirss"), None, None);
+    let lib = std::fs::canonicalize(dir.path()).unwrap().join("lib");
+    let movies = lib.join("Movies");
+    std::fs::create_dir_all(&movies).unwrap();
+    let film = movies.join("[Lumen] Hoshizora no Tegami (2019) (1080p).mkv");
+    let other = movies.join("[Lumen] Kaze no Tayori (2021) (1080p).mkv");
+    std::fs::write(&film, b"x").unwrap();
+    std::fs::write(&other, b"x").unwrap();
+    let folder = movies.join("Ame no Shirabe (2020)");
+    std::fs::create_dir_all(&folder).unwrap();
+    let boxed = folder.join("Ame no Shirabe (2020).mkv");
+    let booklet = folder.join("Booklet.pdf");
+    std::fs::write(&boxed, b"x").unwrap();
+    std::fs::write(&booklet, b"x").unwrap();
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+    let series = common::cards(&core, Tab::All, true)
+        .into_iter()
+        .find(|s| s.path == film.to_string_lossy())
+        .expect("the film is in the library");
+    assert_eq!(series.kind, SeriesKind::Movie);
+    let boxed_series = common::cards(&core, Tab::All, true)
+        .into_iter()
+        .find(|s| s.path == boxed.to_string_lossy())
+        .expect("the boxed film is in the library");
+
+    let movies_s = movies.to_string_lossy().into_owned();
+    let torrent = |hash: &str, path: &std::path::Path| {
+        json!({"hash": hash, "name": path.file_name().unwrap().to_string_lossy(),
+               "state": "downloading", "progress": 0.4, "size": 1,
+               "save_path": movies_s, "content_path": path.to_string_lossy()})
+    };
+    let list = json!([
+        torrent("aa", &film),
+        torrent("bb", &other),
+        torrent("ff", &folder)
+    ])
+    .to_string();
+    let files = json!([
+        {"name": "Ame no Shirabe (2020)/Ame no Shirabe (2020).mkv",
+         "size": 1, "progress": 0.3, "priority": 1},
+        {"name": "Ame no Shirabe (2020)/Booklet.pdf",
+         "size": 1, "progress": 1.0, "priority": 1},
+    ])
+    .to_string();
+    for _ in 0..3 {
+        http.push_for("torrents/files?hash=ff", 200, files.clone());
+    }
+    http.push_for("torrents/info", 200, list.clone());
+    http.push_for("transfer/info", 200, json!({}).to_string());
+    assert_eq!(core.call(Call::ListTorrents).unwrap(), Reply::Ok);
+    common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::TorrentsRead { .. }),
+        Duration::from_secs(10),
+    );
+    let detail = match core.call(Call::GetSeries { series: series.id }).unwrap() {
+        Reply::SeriesDetail { detail } => detail,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        detail.card.downloading,
+        vec![EpisodeDownload {
+            number: 1,
+            progress: 0.4
+        }],
+        "the film is downloading"
+    );
+    assert_eq!(
+        detail
+            .episodes
+            .iter()
+            .map(|e| e.downloading)
+            .collect::<Vec<_>>(),
+        vec![Some(0.4)],
+        "its file is not playable yet"
+    );
+    let boxed_detail = match core
+        .call(Call::GetSeries {
+            series: boxed_series.id,
+        })
+        .unwrap()
+    {
+        Reply::SeriesDetail { detail } => detail,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        boxed_detail.card.downloading,
+        vec![EpisodeDownload {
+            number: 1,
+            progress: 0.3
+        }],
+        "a boxed film downloads at its video's progress"
+    );
+
+    http.push_for("torrents/info", 200, list.clone());
+    http.push_for("torrents/delete", 200, "");
+    core.call(Call::DeleteEpisodes {
+        series: series.id,
+        files: Vec::new(),
+        stop_following: false,
+        stop_downloading: vec![1],
+    })
+    .unwrap();
+    let deletes = || -> Vec<String> {
+        http.requests()
+            .iter()
+            .filter(|r| r.url.contains("torrents/delete"))
+            .map(form_of)
+            .collect()
+    };
+    let started = Instant::now();
+    while deletes().is_empty() {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the film's download was not stopped"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(deletes(), vec!["hashes=aa&deleteFiles=true".to_string()]);
+
+    http.push_for("torrents/info", 200, list);
+    http.push_for("torrents/delete", 200, "");
+    core.call(Call::DeleteEpisodes {
+        series: boxed_series.id,
+        files: Vec::new(),
+        stop_following: false,
+        stop_downloading: vec![1],
+    })
+    .unwrap();
+    let started = Instant::now();
+    while deletes().len() < 2 {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the boxed film's download was not stopped"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(deletes()[1], "hashes=ff&deleteFiles=false");
+    assert!(!boxed.exists(), "the film's video is deleted");
+    assert!(booklet.exists(), "the booklet the sheet did not name stays");
     core.shutdown();
 }
 

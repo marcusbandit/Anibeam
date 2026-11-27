@@ -2320,6 +2320,7 @@ connect-step-connect-body = Se abrirá tu navegador para que inicies sesión en 
 
 settings-title = Ajustes
 settings-search-placeholder = Buscar ajustes
+settings-needs-attention = Requiere atención
 settings-section-library = Biblioteca
 settings-section-accounts = Cuentas
 settings-section-appearance = Apariencia

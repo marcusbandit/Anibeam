@@ -2320,6 +2320,7 @@ connect-step-connect-body = Je browser opent zodat je kunt inloggen bij { $name 
 
 settings-title = Instellingen
 settings-search-placeholder = Instellingen zoeken
+settings-needs-attention = Vraagt aandacht
 settings-section-library = Bibliotheek
 settings-section-accounts = Accounts
 settings-section-appearance = Weergave

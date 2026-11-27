@@ -771,6 +771,10 @@ Item {
     property var queue: []
     property var running: null
     property real runningJob: -1
+    // Shows' rules being cut to one (#1496), by job: the card's leading rule and the
+    // marks of the rules the job removes
+    property var keepJobs: ({})
+    function keeping(name) { for (var j in page.keepJobs) if (page.keepJobs[j].lead === name) return true; return false }
     property real nowMs: Date.now()
     Timer { interval: 30000; repeat: true; running: page.visible && !frame.removalOpen; onTriggered: page.nowMs = Date.now() }
     // A removal's marks stay until the read after it no longer lists what it took
@@ -1012,7 +1016,8 @@ Item {
         for (var i = 0; i < page.endpoints.length; i++) if (page.feedHost(page.endpoints[i].url) === host) return page.endpoints[i].name
         return ""
     }
-    function feedHost(url) { var m = String(url || "").match(/^[a-z]+:\/\/([^\/?#]+)/i); return m ? m[1] : String(url || "") }
+    // The host alone: a login in the address (user:key@host) is never shown
+    function feedHost(url) { var m = String(url || "").match(/^[a-z]+:\/\/([^\/?#]+)/i); return m ? m[1].replace(/^.*@/, "") : String(url || "") }
     function cancelSearch() {
         // A source asked with results already up runs without the progress card
         if (!page.searching && !page.pendingNames().length) return
@@ -1127,8 +1132,17 @@ Item {
     function torrentKey(t) { return t.series_id !== null && t.series_id !== undefined ? "s" + t.series_id : "p" + folderOf(t.save_path) }
     function ruleKey(r) { return r.show ? "s" + r.show.series_id : "p" + folderOf(r.save_path) }
     function titleOf(r) { return r.show ? r.show.title : r.name }
-    function ruleForSeries(id) { for (var i = 0; i < rules.length; i++) if (rules[i].show && rules[i].show.series_id === id) return rules[i]; return null }
-    readonly property var ruleByKey: { var m = {}; for (var i = 0; i < rules.length; i++) m[ruleKey(rules[i])] = rules[i]; return m }
+    function ruleForSeries(id) { for (var i = 0; i < followed.length; i++) if (followed[i].show && followed[i].show.series_id === id) return followed[i]; return null }
+    // A twin's folder leads to its show's card too
+    readonly property var ruleByKey: {
+        var m = {}
+        for (var i = 0; i < followed.length; i++) {
+            var f = followed[i]
+            m[ruleKey(f)] = f
+            ;(f.twins || []).forEach(function(t) { if (!m[page.ruleKey(t)]) m[page.ruleKey(t)] = f })
+        }
+        return m
+    }
 
     // Active is what is moving or waiting to: not done, not stopped, not broken
     function rank(t) {
@@ -1205,7 +1219,25 @@ Item {
         if (s.next_airing || s.status === "Releasing" || s.status === "NotYetReleased" || s.status === "Hiatus") return "airing"
         return "incomplete"
     }
-    readonly property var completeRules: rules.filter(function(r) { return page.subState(r) === "complete" })
+    // One card per show: rules that fill one show (an older app followed a show again beside
+    // its first rule) are one subscription here, led by one that still fetches, and the rest
+    // ride along as `twins` so unsubscribing takes them all (#1486). A rule with no library
+    // show is told by its folder, or by its name without the " @endpoint" an engine adds
+    function leads(r) { return r.rule_enabled !== false && r.followable !== false }
+    function plainName(r) { return String(r.name).replace(/ @\S+( \d+)?$/, "").toLowerCase() }
+    readonly property var followed: {
+        var m = {}, order = []
+        for (var i = 0; i < rules.length; i++) {
+            var r = rules[i], k = page.ruleKey(r), n = r.show ? "" : "n" + page.plainName(r), g = m[k] || (n ? m[n] : undefined)
+            if (!g) { g = { rule: r, twins: [] }; order.push(g) }
+            else if (page.leads(r) && !page.leads(g.rule)) { g.twins.push(g.rule); g.rule = r }
+            else g.twins.push(r)
+            m[k] = g
+            if (n) m[n] = g
+        }
+        return order.map(function(g) { return g.twins.length ? Object.assign({}, g.rule, { twins: g.twins }) : g.rule })
+    }
+    readonly property var completeRules: followed.filter(function(r) { return page.subState(r) === "complete" })
     readonly property var subSections: {
         var defs = [
             { key: "nofeed", title: words.t("downloads-sub-nofeed"), dot: theme.red, line: words.t("downloads-sub-nofeed-line") },
@@ -1216,7 +1248,7 @@ Item {
         ]
         var by = {}
         for (var i = 0; i < defs.length; i++) { defs[i].items = []; by[defs[i].key] = defs[i] }
-        for (var j = 0; j < rules.length; j++) by[page.subState(rules[j])].items.push(rules[j])
+        for (var j = 0; j < followed.length; j++) by[page.subState(followed[j])].items.push(followed[j])
         by.airing.items.sort(function(a, b) {
             var an = a.show.next_airing ? a.show.next_airing.at : 1e12, bn = b.show.next_airing ? b.show.next_airing.at : 1e12
             return an - bn || page.titleOf(a).localeCompare(page.titleOf(b))
@@ -1333,7 +1365,8 @@ Item {
     }
     readonly property var detailRule: {
         if (!detail || !detail.rule) return null
-        for (var i = 0; i < rules.length; i++) if (rules[i].name === detail.rule) return rules[i]
+        for (var i = 0; i < followed.length; i++) if (followed[i].name === detail.rule) return followed[i]
+        for (var j = 0; j < rules.length; j++) if (rules[j].name === detail.rule) return rules[j]
         return null
     }
     readonly property var detailShow: detailRule && detailRule.show ? detailRule.show : (detail && detail.seriesId >= 0 ? (shows[detail.seriesId] || null) : null)
@@ -1431,6 +1464,60 @@ Item {
         return { title: page.titleOf(r), rule: r.name, hashes: ts.map(function(t) { return t.hash }), series: r.show ? r.show.series_id : -1,
                  rkey: "r:" + r.name, tkeys: ts.map(function(t) { return "t:" + t.hash }), size: page.sumSize(ts), folder: r.show ? r.show.path : "" }
     }
+    // A show's rule and the twins beside it: each twin goes on its own, with the torrents of
+    // its folder that the show's rule does not take already
+    function targetsForRule(r) {
+        var lead = page.targetForRule(r), seen = {}
+        lead.hashes.forEach(function(h) { seen[h] = true })
+        return [lead].concat((r.twins || []).map(function(twin) {
+            var ts = page.torrentsFor(page.ruleKey(twin), page.folderOf(twin.save_path)).filter(function(t) { return !seen[t.hash] })
+            ts.forEach(function(t) { seen[t.hash] = true })
+            return { title: lead.title, rule: twin.name, hashes: ts.map(function(t) { return t.hash }), series: -1, rkey: "r:" + twin.name,
+                     tkeys: ts.map(function(t) { return "t:" + t.hash }), size: page.sumSize(ts), folder: "" }
+        }))
+    }
+    // A show older builds followed more than once: its rules, the one leading the card first.
+    // The picker names each by what tells them apart: its source, its search, its torrents.
+    function rulesOf(r) { return [r].concat(r.twins || []) }
+    function ruleFacts(r) {
+        var f = [page.endpointFor(r.feed_url) || page.feedHost(r.feed_url)]
+        if (r.query) f.push(r.query)
+        f.push(words.t("downloads-torrents", { count: r.torrent_count || 0 }))
+        if (r.followable === false) f.push(words.t("downloads-sub-nofeed"))
+        else if (r.rule_enabled === false) f.push(words.t("status-paused"))
+        return f.join(", ")
+    }
+    function askKeep(anchor, r) {
+        var all = page.rulesOf(r)
+        frame.askRemoval(anchor, {
+            heading: words.t("downloads-keep-heading", { title: page.titleOf(r) }),
+            rule: true, torrentCount: 0, canFiles: false,
+            choices: all.map(function(x) { return { text: page.ruleFacts(x) } }),
+            picked: 0,
+            confirmText: words.t("downloads-keep-confirm", { count: all.length - 1 })
+        }, function(choice) { page.keepRule(page.titleOf(r), all, choice.picked) })
+    }
+    function keepRule(title, all, i) {
+        if (page.keeping(all[0].name)) return
+        var keep = all[i].name, others = all.filter(function(x, j) { return j !== i }).map(function(x) { return x.name })
+        var reply = Door.keepSubscription(title, keep, others)
+        if (reply.error) { frame.fail(reply.error, function() { page.keepRule(title, all, i) }); return }
+        var gone = others.map(function(n) { return "r:" + n }), jobs = Object.assign({}, page.keepJobs)
+        jobs[reply.reply.job] = { lead: all[0].name, gone: gone }
+        page.keepJobs = jobs
+        page.mark(gone, true)
+    }
+    // Ends a keep job, true when it was one; the rules are read again either way, since a
+    // failure can come after some of them went
+    function keepDone(job) {
+        var k = page.keepJobs[job]
+        if (k === undefined) return false
+        var jobs = Object.assign({}, page.keepJobs); delete jobs[job]; page.keepJobs = jobs
+        page.mark(k.gone, false)
+        page.loadRules()
+        return true
+    }
+    function hashCount(ts) { var n = 0; for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length; return n }
     function targetForGroup(g) {
         return { title: g.title, rule: "", hashes: g.torrents.map(function(t) { return t.hash }), series: g.show ? g.show.series_id : -1,
                  rkey: "", tkeys: ["g:" + g.key].concat(g.torrents.map(function(t) { return "t:" + t.hash })), size: g.size, folder: g.show ? g.show.path : "" }
@@ -1453,20 +1540,20 @@ Item {
     // A removal's sentence, with "The subscription stays." after it when the show has one
     function subscriptionStays(base, has) { return has ? words.t("downloads-subscription-stays", { base: base }) : base }
     function askUnsubscribe(anchor, r) {
-        var t = page.targetForRule(r)
+        var ts = page.targetsForRule(r), t = ts[0]
         frame.askRemoval(anchor, {
             heading: words.t("downloads-unsubscribe-heading", { title: t.title }),
             base: words.t("downloads-unsubscribe-base", { client: page.clientName }),
-            rule: true, torrentCount: t.hashes.length,
-            canFiles: t.hashes.length > 0 || t.series >= 0,
+            rule: true, torrentCount: page.hashCount(ts),
+            canFiles: page.hashCount(ts) > 0 || t.series >= 0,
             filesWhere: page.filesWhere(t)
-        }, function(choice) { page.enqueue([t], choice) })
+        }, function(choice) { page.enqueue(ts, choice) })
     }
     function askUnsubscribeComplete(anchor) {
-        var ts = page.completeRules.map(page.targetForRule), n = 0
+        var ts = [].concat.apply([], page.completeRules.map(page.targetsForRule)), n = 0
         for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length
         frame.askRemoval(anchor, {
-            heading: words.t("downloads-unsubscribe-complete-heading", { count: ts.length }),
+            heading: words.t("downloads-unsubscribe-complete-heading", { count: page.completeRules.length }),
             base: words.t("downloads-unsubscribe-complete-base", { client: page.clientName }),
             rule: true, torrentCount: n, canFiles: true,
             filesWhere: words.t("downloads-files-folders-and-torrents"),
@@ -1643,6 +1730,7 @@ Item {
         }
         function onJobFinished(job, kind, ok) {
             if (job === page.startJob && ok) page.startDone(true, null)
+            if (ok) page.keepDone(job)
         }
         function onReleasesEnriched(query, endpoint, entries) {
             if (!page.state && !page.searching) return
@@ -1812,6 +1900,7 @@ Item {
             else if (job === page.connectJob) { page.connecting = false; frame.fail(error, page.connect) }
             else if (job === page.previewJob) { page.previewJob = -1; frame.fail(error, page.previewSubscription) }
             else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.fail(error, page.repairRule) }
+            else if (page.keepDone(job)) frame.fail(error)
             else if (job === page.runningJob) {
                 // The run stops here, so nothing after it is removed; no retry on a guess
                 frame.fail(error)
@@ -1825,6 +1914,7 @@ Item {
             page.takeMagnetJob(job)
             if (page.getJobs[job] !== undefined) { var cn = page.getJobs[job]; var cj = Object.assign({}, page.getJobs); delete cj[job]; page.getJobs = cj; page.setResult(cn, { state: "idle" }) }
             if (job === page.runningJob) { page.queue.forEach(function(q) { page.mark(q.keys, false) }); page.queue = []; page.finishRunning(false) }
+            page.keepDone(job)
             if (page.searchJobs[job] !== undefined) {
                 var sn = page.searchJobs[job]
                 var sj = Object.assign({}, page.searchJobs); delete sj[job]; page.searchJobs = sj
@@ -1872,8 +1962,9 @@ Item {
     readonly property real tileGap: theme.grout
     readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + tileGap) / (theme.posterWidth + tileGap)))
     readonly property real cardWidth: (scroll.innerWidth - tileGap * (cols - 1)) / cols
-    // The lens grids (Gaps, Airing, Following) are four columns across the whole width, fewer
-    // only when a window is too narrow to give each at least a poster's width (#686)
+    // Gaps cards are short rows, poster at the side, so they share the width four across, fewer
+    // only when a window is too narrow (#686). Airing and Following are poster cards and take
+    // Downloaded's cardWidth (#1485)
     readonly property int lensCols: Math.max(1, Math.min(4, Math.floor((scroll.innerWidth + tileGap) / (theme.space(80) + tileGap))))
     readonly property real lensCardWidth: (scroll.innerWidth - tileGap * (lensCols - 1)) / lensCols
     readonly property bool home: page.detail === null && page.getShow === null && page.state === null && !page.searching && page.searchError === ""
@@ -2775,7 +2866,7 @@ Item {
                 options: [
                     { text: words.t("downloads-lens-gaps-count", { count: page.gapCards.length }) },
                     { text: words.t("downloads-lens-airing-count", { count: page.airingCards.length }) },
-                    { text: words.t("downloads-lens-following-count", { count: page.rules.length }) },
+                    { text: words.t("downloads-lens-following-count", { count: page.followed.length }) },
                     { text: words.t("downloads-lens-downloaded-count", { count: page.downloadedCount }) }
                 ]
                 index: ["gaps", "airing", "following", "downloaded"].indexOf(page.lens)
@@ -2873,7 +2964,7 @@ Item {
                     model: page.airingCards
                     ShowCard {
                         required property var modelData
-                        width: page.lensCardWidth
+                        width: page.cardWidth
                         height: implicitHeight
                         poster: modelData.poster || ""
                         title: modelData.title
@@ -2899,8 +2990,8 @@ Item {
             spacing: theme.space(4)
             BandHead {
                 title: words.t("downloads-lens-following")
-                count: page.rules.length
-                line: page.rulesError !== "" ? words.t("downloads-rules-unread") : page.rulesLoaded ? (page.rules.length ? words.t("downloads-lens-following-line") : words.t("downloads-none-yet")) : (page.searchReady ? words.t("downloads-reading") : "")
+                count: page.followed.length
+                line: page.rulesError !== "" ? words.t("downloads-rules-unread") : page.rulesLoaded ? (page.followed.length ? words.t("downloads-lens-following-line") : words.t("downloads-none-yet")) : (page.searchReady ? words.t("downloads-reading") : "")
                 alarm: page.rulesError !== ""
                 view: frame.downloadsSubView
                 viewName: "downloads-sub-view"
@@ -2945,21 +3036,23 @@ Item {
                             model: frame.downloadsSubView === "grid" ? subSection.modelData.items : []
                             ShowCard {
                                 required property var modelData
-                                width: page.lensCardWidth
+                                width: page.cardWidth
                                 // a feed with no library show is a full card too, so rows stay even
                                 height: implicitHeight
                                 poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
                                 title: page.titleOf(modelData)
-                                tag: page.ruleTag(modelData)
-                                tagDot: page.stateDot(page.subState(modelData))
+                                // A show followed more than once says so, and its action keeps one
+                                readonly property bool twice: !!modelData.twins
+                                tag: twice ? words.t("downloads-followed-times", { count: modelData.twins.length + 1 }) : page.ruleTag(modelData)
+                                tagDot: twice ? theme.yellow : page.stateDot(page.subState(modelData))
                                 ledger: page.ruleLedger(modelData)
                                 progress: page.ruleProgress(modelData)
                                 cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
-                                actionText: words.t("downloads-unsubscribe")
+                                actionText: twice ? words.t("downloads-keep-one") : words.t("downloads-unsubscribe")
                                 actionIcon: "rss"
-                                busy: page.isRemoving("r:" + modelData.name)
+                                busy: page.isRemoving("r:" + modelData.name) || page.keeping(modelData.name)
                                 onOpened: page.openRule(modelData)
-                                onAction: function(anchor) { page.askUnsubscribe(anchor, modelData) }
+                                onAction: function(anchor) { if (twice) page.askKeep(anchor, modelData); else page.askUnsubscribe(anchor, modelData) }
                             }
                         }
                     }
@@ -2972,8 +3065,10 @@ Item {
                                 required property var modelData
                                 poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
                                 title: page.titleOf(modelData)
+                                readonly property bool twice: !!modelData.twins
                                 chips: {
                                     var c = []
+                                    if (twice) c.push({ text: words.t("downloads-followed-times", { count: modelData.twins.length + 1 }), dot: theme.yellow })
                                     var tag = page.ruleTag(modelData)
                                     if (tag !== "") c.push({ text: tag, dot: page.stateDot(page.subState(modelData)) })
                                     if (modelData.rule_enabled === false && tag !== words.t("status-paused")) c.push({ text: words.t("status-paused"), dot: theme.textFaint })
@@ -2983,11 +3078,11 @@ Item {
                                 folder: modelData.save_path
                                 progress: page.ruleProgress(modelData)
                                 cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
-                                actionText: words.t("downloads-unsubscribe")
+                                actionText: twice ? words.t("downloads-keep-one") : words.t("downloads-unsubscribe")
                                 actionIcon: "rss"
-                                busy: page.isRemoving("r:" + modelData.name)
+                                busy: page.isRemoving("r:" + modelData.name) || page.keeping(modelData.name)
                                 onOpened: page.openRule(modelData)
-                                onAction: function(anchor) { page.askUnsubscribe(anchor, modelData) }
+                                onAction: function(anchor) { if (twice) page.askKeep(anchor, modelData); else page.askUnsubscribe(anchor, modelData) }
                             }
                         }
                     }

@@ -1820,6 +1820,7 @@ connect-step-connect-body = 浏览器会打开，你可以登录 { $name } 并�
 
 settings-title = 设置
 settings-search-placeholder = 搜索设置
+settings-needs-attention = 需要注意
 settings-section-library = 媒体库
 settings-section-accounts = 账号
 settings-section-appearance = 外观
