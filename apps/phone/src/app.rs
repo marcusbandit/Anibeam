@@ -1814,7 +1814,11 @@ impl App {
         let _ = std::thread::Builder::new()
             .name("delete".into())
             .spawn(move || {
-                let answer = core.call(Call::DeleteEpisodes { series, files });
+                let answer = core.call(Call::DeleteEpisodes {
+                    series,
+                    files,
+                    stop_following: false,
+                });
                 let _ = slint::invoke_from_event_loop(move || {
                     with_app(|app| {
                         app.delete_busy = false;

@@ -433,8 +433,10 @@ fn definitions(values: Vec<serde_json::Value>, core_version: &str) -> Vec<Defini
         .collect()
 }
 
+/// An id of a-z, 0-9, '.', '_' and '-', and not only dots: as the path segment that removes
+/// an endpoint from anirss, `.` and `..` would normalise to another route (#1329).
 fn plain_id(s: &str) -> bool {
-    !s.is_empty()
+    !s.chars().all(|c| c == '.')
         && s.chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
 }
@@ -468,7 +470,7 @@ pub fn check_custom(def: &Definition) -> Result<(), String> {
 fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if !plain_id(&def.id) {
         return Err(format!(
-            "{:?}: the id may hold a-z, 0-9, '.', '_', '-'",
+            "{:?}: the id may hold a-z, 0-9, '.', '_', '-', and not only dots",
             def.id
         ));
     }
@@ -728,6 +730,21 @@ pub(crate) mod tests {
 
     fn index(k: &SigningKey, endpoints: Vec<serde_json::Value>) -> serde_json::Value {
         serde_json::json!({"name": "Test", "key": key_text(k), "serial": 10, "endpoints": endpoints})
+    }
+
+    #[test]
+    fn an_id_of_only_dots_is_refused() {
+        for id in [".", "..", "..."] {
+            let d: Definition =
+                serde_json::from_value(def(id, "rss", "https://p.example/?q={query}")).unwrap();
+            assert!(
+                check(&d).unwrap_err().contains("not only dots"),
+                "id {id:?}"
+            );
+        }
+        let d: Definition =
+            serde_json::from_value(def(".p", "rss", "https://p.example/?q={query}")).unwrap();
+        assert!(check(&d).is_ok(), "{:?}", check(&d));
     }
 
     #[test]

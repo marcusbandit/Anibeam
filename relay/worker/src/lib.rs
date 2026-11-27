@@ -280,7 +280,7 @@ impl Stored {
     }
 
     fn connected(&self) -> usize {
-        self.room.targets(&To::All).len()
+        self.room.connected()
     }
 }
 
@@ -581,7 +581,7 @@ impl RoomObject {
             let Some(stored) = cache.stored.as_mut() else {
                 return Ok(());
             };
-            if !stored.room.targets(&To::All).contains(&conn) {
+            if !stored.room.is_member(conn) {
                 // Never said hello, said bye, or was replaced: nothing to tell.
                 false
             } else {

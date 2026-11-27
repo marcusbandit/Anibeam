@@ -219,6 +219,10 @@ frame-delete-all = { $count ->
        *[episode] Delete all { $count } episodes
     }
 }
+frame-delete-all-unfollow = { $count ->
+    [one] Delete and stop following
+   *[other] Delete all and stop following
+}
 frame-series-gone = That series is gone
 frame-delete-none-watched = No watched episodes of { $title } on disk
 frame-delete-none = Nothing of { $title } on disk
@@ -252,6 +256,11 @@ frame-delete-and = { $first } and { $second }
 frame-delete-heading = Delete { $what } of { $title }?
 frame-delete-base = The files and their subtitles will be moved to the trash, so you can recover them there. Their torrents will be removed from the torrent client so they can be downloaded again.
 frame-delete-confirm = Move to trash
+frame-delete-unfollow-base = { $count ->
+    [one] The subscription { $names } is removed too, so new episodes stop downloading.
+   *[other] The subscriptions { $names } are removed too, so new episodes stop downloading.
+}
+frame-delete-unfollow-confirm = Delete and stop following
 frame-delete-done = { $what } of { $title } moved to the trash
 frame-delete-watched-done = { $count ->
     [one] { $count } episode
@@ -1938,7 +1947,6 @@ downloads-releases-on =
         [one] { $count } release on { $name }
        *[other] { $count } releases on { $name }
     }
-downloads-found-on = Found on
 downloads-found-searching = searching
 downloads-found-failed = failed
 downloads-found-cancelled = canceled
@@ -2087,6 +2095,7 @@ downloads-usage-watched = Watched
 downloads-usage-not-watched = Not watched
 downloads-deleting = Deleting
 downloads-delete-watched = Delete watched
+downloads-delete-watched-frees = Delete { $size } watched
 downloads-remove-all = Remove all { $count }
 downloads-on-disk = On disk
 downloads-on-disk-line = In your library with no torrent in { $client }, the biggest first. Right-click one to delete it.
@@ -2581,6 +2590,8 @@ settings-find-next-few =
     .words = rolling roll episodes ahead delete watched keep disk space
 settings-find-unsubscribe =
     .words = prune feeds finished
+settings-find-delete-watched =
+    .words = delete watched finished shows free disk space clean up trash
 settings-find-last-search =
     .words = downloads query remember
 settings-find-search-sources =
@@ -2680,6 +2691,8 @@ settings-downloads-roll-over = Roll shows longer than
 settings-downloads-roll-watched = Watched episodes
 settings-downloads-keep-all = Keep all
 settings-downloads-keep-behind = Watched episodes to keep
+settings-downloads-disk-title = Disk space
+settings-downloads-watched-on-disk = Watched episodes on disk
 settings-downloads-subscriptions-title = Subscriptions and searches
 settings-downloads-last-search = Keep the last search
 settings-downloads-prune = Unsubscribe from finished shows

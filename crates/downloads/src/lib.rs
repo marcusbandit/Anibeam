@@ -90,6 +90,11 @@ pub struct Downloads {
     /// Set only by a test: a sandboxed core settles on a qBittorrent it finds
     /// answering, as an installed one does.
     sandbox_finds_clients: AtomicBool,
+    /// Set only by a test: `Some` pins the qbittorrent-nox Anibeam's own
+    /// client runs, `Some(None)` says there is none, in place of the one
+    /// `managed::binary` finds. Anibeam's own outlives the app by design, so a
+    /// test that found the real one on the PATH left it running for good (#1489).
+    own_binary: Mutex<Option<Option<std::path::PathBuf>>>,
 }
 
 #[derive(Default)]
@@ -147,6 +152,7 @@ impl Downloads {
             follows: tokio::sync::Mutex::new(()),
             unattended_off: AtomicBool::new(false),
             sandbox_finds_clients: AtomicBool::new(false),
+            own_binary: Mutex::new(None),
         }
     }
 }
@@ -162,6 +168,21 @@ impl Downloads {
 
     pub fn let_sandbox_find_clients(&self) {
         self.sandbox_finds_clients.store(true, Ordering::Relaxed);
+    }
+
+    /// Pins the qbittorrent-nox Anibeam's own client runs to `binary`, or to
+    /// none, in place of the one on the PATH. Tests only.
+    pub fn use_own_qbittorrent(&self, binary: Option<std::path::PathBuf>) {
+        *recover(&self.own_binary) = Some(binary);
+    }
+
+    /// The qbittorrent-nox to run as Anibeam's own: the one a test pinned,
+    /// else the one `managed::binary` finds.
+    fn own_qbittorrent(&self) -> Option<std::path::PathBuf> {
+        match recover(&self.own_binary).clone() {
+            Some(pinned) => pinned,
+            None => managed::binary(),
+        }
     }
 
     pub(crate) fn unattended_allowed(&self) -> bool {
@@ -612,7 +633,7 @@ async fn ensure_torrent(downloads: &Downloads) -> Result<DownloadSettings, CoreE
         s = decide_torrent(downloads, s).await?;
     }
     if s.torrent_mode == TorrentMode::Managed {
-        start_managed(&downloads.services, &s).await?;
+        start_managed(downloads, &s).await?;
     }
     Ok(s)
 }
@@ -660,7 +681,7 @@ async fn decide_torrent(
             _ => false,
         }
     };
-    let message = if is_own && (answered || managed::binary().is_some()) {
+    let message = if is_own && (answered || downloads.own_qbittorrent().is_some()) {
         s.torrent_mode = TorrentMode::Managed;
         s.torrent_username = managed::USERNAME.to_string();
         "Downloads use Anibeam's own qBittorrent".to_string()
@@ -669,7 +690,7 @@ async fn decide_torrent(
         // The client it found becomes a saved one, the first on the list
         settings::settle_clients(&mut s, &[])?;
         format!("Downloads use the qBittorrent at {}", s.torrent_url)
-    } else if managed::binary().is_some() {
+    } else if downloads.own_qbittorrent().is_some() {
         // The port an earlier setup chose, so the profile and the address agree
         let port = match own_port {
             Some(port) => port,
@@ -717,7 +738,8 @@ fn own_address(services: &Services) -> Result<String, CoreError> {
 }
 
 /// Anibeam's own qBittorrent, started when its Web UI does not answer.
-async fn start_managed(services: &Services, s: &DownloadSettings) -> Result<(), CoreError> {
+async fn start_managed(downloads: &Downloads, s: &DownloadSettings) -> Result<(), CoreError> {
+    let services = &downloads.services;
     let client = QbtClient::new(&s.torrent_url, managed::USERNAME, "", services.http.clone());
     let answers = || async {
         matches!(
@@ -729,7 +751,7 @@ async fn start_managed(services: &Services, s: &DownloadSettings) -> Result<(), 
         return Ok(());
     }
     let failed = |message: String| CoreError::service(qbt::SERVICE, "failed", message);
-    let binary = managed::binary().ok_or_else(|| {
+    let binary = downloads.own_qbittorrent().ok_or_else(|| {
         CoreError::service(
             qbt::SERVICE,
             "missing",
@@ -3132,6 +3154,110 @@ fn writing_of(torrents: &[Torrent]) -> std::collections::HashSet<std::path::Path
     out
 }
 
+/// Delete all on a show (#1483): every subscription whose folder is `series` goes, so the
+/// next episode is not downloaded and the show does not come back. Linked the way the
+/// Downloads page links a rule to its show. The series counts even once the scan after the
+/// delete finds its folder empty. Rules that cannot be read are said only for a show the
+/// last read found followed: otherwise downloads are most likely not set up.
+pub fn stop_following(downloads: &Arc<Downloads>, series: u64, title: String) {
+    let owner = downloads.clone();
+    downloads.services.handle.spawn(async move {
+        // Whether the last read of the rules found it followed: a failure then is worth
+        // saying, and with none it most likely means downloads are not set up
+        let read = owner.services.store.read(move |c| {
+            let followed: bool = c.query_row(
+                "SELECT EXISTS (SELECT 1 FROM follows WHERE series_id = ?1)",
+                [series as i64],
+                |r| r.get(0),
+            )?;
+            Ok((link::Linker::load_keeping(c, series)?, followed))
+        });
+        let (linker, followed) = match read {
+            Ok(read) => read,
+            Err(e) => {
+                tracing::warn!("subscriptions of {title} not read: {e}");
+                return;
+            }
+        };
+        let fills = move |save_path: &str| linker.find(save_path) == Some(series);
+        match unfollow(&owner, &fills).await {
+            Ok(names) if names.is_empty() => {}
+            Ok(names) => {
+                let forgot = owner
+                    .services
+                    .store
+                    .write_async(move |c| {
+                        c.execute("DELETE FROM follows WHERE series_id = ?1", [series as i64])?;
+                        Ok(())
+                    })
+                    .await;
+                if let Err(e) = forgot {
+                    tracing::warn!("{title} still held as followed until the next read: {e}");
+                }
+                owner.services.bus.say(
+                    Level::Info,
+                    Stage::Downloads,
+                    anibeam_contract::words!("core-downloads-unfollowed", title = &title),
+                    format!("Stopped following {title}"),
+                    EventBody::Notice,
+                );
+                for name in names {
+                    owner.services.bus.debug(
+                        Stage::Downloads,
+                        format!("subscription {name} removed"),
+                        EventBody::SubscriptionRemoved { name },
+                    );
+                }
+            }
+            Err(e) if !followed => {
+                tracing::debug!("subscriptions of {title} not read: {}", plain(&e));
+            }
+            Err(e) => {
+                owner.services.bus.say(
+                    Level::Warn,
+                    Stage::Downloads,
+                    anibeam_contract::words!("core-downloads-unfollow-failed", title = &title),
+                    format!("Could not stop following {title}: {}", plain(&e)),
+                    EventBody::DownloadsUnavailable {
+                        what: "unsubscribe".to_string(),
+                        error: e,
+                    },
+                );
+            }
+        }
+    });
+}
+
+/// The client's rules that `fills` takes, removed with neither torrents nor files: the
+/// delete before took what was on disk. Their names.
+#[cfg(not(feature = "phone"))]
+async fn unfollow(
+    downloads: &Arc<Downloads>,
+    fills: &(dyn Fn(&str) -> bool + Send + Sync),
+) -> Result<Vec<String>, CoreError> {
+    let backend = DownloadsBackend::open(downloads).await?;
+    let names: Vec<String> = backend
+        .subscriptions()
+        .await?
+        .into_iter()
+        .filter(|r| fills(&r.save_path))
+        .map(|r| r.name)
+        .collect();
+    if !names.is_empty() {
+        backend.remove(&names, false, false, false).await?;
+    }
+    Ok(names)
+}
+
+/// The phone keeps its subscriptions itself.
+#[cfg(feature = "phone")]
+async fn unfollow(
+    downloads: &Arc<Downloads>,
+    fills: &(dyn Fn(&str) -> bool + Send + Sync),
+) -> Result<Vec<String>, CoreError> {
+    phone::unfollow(&downloads.services, fills)
+}
+
 /// After episode files went to the trash (#266): each torrent that held one of them leaves
 /// the client too, so the same release can be downloaded again (the client refuses a torrent
 /// it already has) and nothing is left behind under Files missing. A season pack goes when
@@ -3264,6 +3390,10 @@ impl anibeam_library::Incoming for Downloads {
 
     fn files_gone(self: Arc<Self>, gone: Vec<std::path::PathBuf>) {
         drop_torrents_of(&self, gone);
+    }
+
+    fn stop_following(self: Arc<Self>, series: u64, title: String) {
+        stop_following(&self, series, title);
     }
 
     fn files_arrived(self: Arc<Self>) {

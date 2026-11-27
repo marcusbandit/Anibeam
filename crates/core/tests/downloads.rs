@@ -1899,9 +1899,9 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
     )
     .unwrap();
     std::fs::set_permissions(&nox, std::fs::Permissions::from_mode(0o755)).unwrap();
-    unsafe { std::env::set_var("ANIBEAM_QBITTORRENT_NOX", &nox) };
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
+    core.use_own_qbittorrent(Some(nox));
     core.let_sandbox_find_torrent_clients();
     // Nothing at the stock address, nothing on the new port until it starts
     http.fail_next("connection refused");
@@ -1950,7 +1950,6 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
     let settled = downloads_status(&core).settings;
     assert_eq!(settled.torrent_mode, TorrentMode::Managed);
     assert_eq!(settled.torrent_url, status.settings.torrent_url);
-    unsafe { std::env::remove_var("ANIBEAM_QBITTORRENT_NOX") };
     core.shutdown();
 }
 
@@ -2227,6 +2226,7 @@ fn deleting_an_episode_removes_the_torrent_that_held_it() {
     core.call(Call::DeleteEpisodes {
         series: series.id,
         files: vec![file],
+        stop_following: false,
     })
     .unwrap();
     assert!(!ep(1).exists() && ep(2).exists());
@@ -2247,6 +2247,123 @@ fn deleting_an_episode_removes_the_torrent_that_held_it() {
         std::thread::sleep(Duration::from_millis(25));
     };
     assert_eq!(form_of(&delete), "hashes=aa&deleteFiles=false");
+    core.shutdown();
+}
+
+/// A library with one followed show, two episodes on disk, and anirss holding two rules: the
+/// show's own and another's. The show's id and its files.
+fn followed_show(
+    dir: &Path,
+    core: &Core,
+    c: &anibeam_core::events::Collector,
+    http: &FakeHttp,
+) -> (u64, Vec<u64>) {
+    save(core, remote(), Some("tok"), Some("pw"));
+    let lib = std::fs::canonicalize(dir).unwrap().join("lib");
+    let show = lib.join("Sousou no Frieren");
+    std::fs::create_dir_all(&show).unwrap();
+    for n in 1..=2 {
+        std::fs::write(
+            show.join(format!("[Lumen] Sousou no Frieren - {n:02} (1080p).mkv")),
+            b"x",
+        )
+        .unwrap();
+    }
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+    let series = common::cards(core, Tab::All, true)
+        .into_iter()
+        .find(|s| s.path.ends_with("Sousou no Frieren"))
+        .expect("the show is in the library");
+    let files = match core.call(Call::GetSeries { series: series.id }).unwrap() {
+        Reply::SeriesDetail { detail } => detail.episodes.into_iter().map(|e| e.file).collect(),
+        other => panic!("{other:?}"),
+    };
+    // Checked first, so a lookup of the rules is not answered with the removal's reply
+    http.push_for(
+        "subscriptions/remove",
+        200,
+        json!({"dry_run": false, "plans": []}).to_string(),
+    );
+    http.push_for(
+        "api/v1/subscriptions",
+        200,
+        json!({"subscriptions": [
+            {"name": "Frieren", "feed_url": "http://feeds.example/rss?q=frieren",
+             "save_path": show.to_string_lossy()},
+            {"name": "Other Show", "feed_url": "http://feeds.example/rss?q=other",
+             "save_path": "/downloads/Other Show"},
+        ]})
+        .to_string(),
+    );
+    (series.id, files)
+}
+
+/// Delete all stops following the show (#1483): its rule leaves anirss with the files, and
+/// another show's rule stays.
+#[test]
+fn delete_all_stops_following_the_show() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    let (series, files) = followed_show(dir.path(), &core, &c, &http);
+
+    core.call(Call::DeleteEpisodes {
+        series,
+        files,
+        stop_following: true,
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::SubscriptionRemoved { name } if name == "Frieren"),
+        Duration::from_secs(10),
+    );
+    let requests = http.requests();
+    let removes: Vec<_> = requests
+        .iter()
+        .filter(|r| r.url.contains("subscriptions/remove"))
+        .collect();
+    assert_eq!(removes.len(), 1);
+    let body = form_of(removes[0]);
+    assert!(
+        body.contains("\"names\":[\"Frieren\"]") && body.contains("\"files\":false"),
+        "{body}"
+    );
+    core.shutdown();
+}
+
+/// Delete watched, or any delete that is not Delete all, leaves the follow alone (#1483).
+#[test]
+fn deleting_episodes_keeps_the_follow() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    let (series, files) = followed_show(dir.path(), &core, &c, &http);
+
+    let job = started(
+        &core,
+        Call::DeleteEpisodes {
+            series,
+            files: files[..1].to_vec(),
+            stop_following: false,
+        },
+    );
+    common::wait_job(&c, job);
+    // An unfollow runs off the call: time for one to have asked, were it started
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(
+        !http
+            .requests()
+            .iter()
+            .any(|r| r.url.contains("api/v1/subscriptions")),
+        "the rules were not touched"
+    );
     core.shutdown();
 }
 

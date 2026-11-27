@@ -1364,6 +1364,8 @@ core-downloads-name-not-folder = { $name } is not a folder name
 # $title is the show's title
 core-downloads-pruned = Unsubscribed from { $title } (finished airing).
 core-downloads-prune-failed = Could not unsubscribe from { $title }. Check Downloads in Settings.
+core-downloads-unfollowed = Stopped following { $title }.
+core-downloads-unfollow-failed = Could not stop following { $title }. Check Downloads in Settings.
 
 ## library/src/trash.rs
 

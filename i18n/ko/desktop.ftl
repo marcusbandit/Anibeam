@@ -1697,7 +1697,6 @@ downloads-releases-on =
     { $count ->
        *[other] { $name }의 릴리스 { $count }개
     }
-downloads-found-on = 찾은 곳
 downloads-found-searching = 검색 중
 downloads-found-failed = 실패
 downloads-found-cancelled = 취소됨

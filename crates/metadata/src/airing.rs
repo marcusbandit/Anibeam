@@ -30,13 +30,14 @@
 //! fetch, one call with the episodes embedded, and `fetched_at` is its
 //! clock.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::Metadata;
-use crate::apply::{card_for, provider_stopped};
+use crate::apply::{cards_for_all, provider_stopped};
 use crate::fetch::{self, message_of};
 use crate::record;
 use anibeam_contract::*;
@@ -53,11 +54,14 @@ use anibeam_net::tvmaze;
 /// every time a page is opened.
 pub const TTL: Duration = Duration::from_secs(6 * 60 * 60);
 
-/// One series worth asking about. `folder_name` is what the log lines
-/// name it by.
+/// One show worth asking about. `series` is every folder matched to it,
+/// so two folders on one show are one fetch and both their cards are told
+/// (#1326). The first is the one the candidate is named by, `folder_name`
+/// in the log lines: the series asked about for a single refresh, the
+/// lowest id for the sweep. The rest follow in id order.
 #[derive(Clone, Debug)]
 pub struct Candidate {
-    pub series: u64,
+    pub series: Vec<u64>,
     pub behind: Behind,
     pub folder_name: String,
 }
@@ -91,9 +95,13 @@ const ELIGIBILITY_SQL: &str = "SELECT * FROM (
     FROM series s JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
 )";
 
-/// One row of that query, before the tests below have been applied.
+/// One row of that query, before the tests below have been applied. A
+/// row is one series; `candidates` and `candidate` fold the rows of one
+/// show into one `Candidate`.
 struct Row {
-    candidate: Candidate,
+    series: u64,
+    behind: Behind,
+    folder_name: String,
     status: Option<String>,
     refreshed_at: Option<i64>,
     has_files: bool,
@@ -122,11 +130,9 @@ fn read_row(r: &rusqlite::Row) -> rusqlite::Result<Row> {
         ),
     };
     Ok(Row {
-        candidate: Candidate {
-            series: r.get::<_, i64>(0)? as u64,
-            behind,
-            folder_name: r.get(4)?,
-        },
+        series: r.get::<_, i64>(0)? as u64,
+        behind,
+        folder_name: r.get(4)?,
         status,
         refreshed_at: r.get(6)?,
         has_files: r.get::<_, i64>(7)? == 1,
@@ -155,7 +161,55 @@ fn ttl_secs() -> i64 {
     i64::try_from(TTL.as_secs()).unwrap_or(i64::MAX)
 }
 
-/// Whether this one series is worth a fetch right now.
+impl Behind {
+    /// The record itself, without the MAL id a row may or may not carry:
+    /// two rows with the same key are one show.
+    fn key(&self) -> (bool, u64) {
+        match *self {
+            Behind::Anilist { anilist_id, .. } => (false, anilist_id),
+            Behind::Tvmaze { show_id } => (true, show_id),
+        }
+    }
+}
+
+/// Folds one show's rows, in id order, into its candidate. The first row
+/// names it; a MAL id any of them knows is the show's.
+fn fold(rows: Vec<Row>) -> Option<Candidate> {
+    let first = rows.first()?;
+    let mut behind = first.behind.clone();
+    let folder_name = first.folder_name.clone();
+    if let Behind::Anilist { mal_id, .. } = &mut behind
+        && mal_id.is_none()
+    {
+        *mal_id = rows.iter().find_map(|r| match r.behind {
+            Behind::Anilist { mal_id, .. } => mal_id,
+            Behind::Tvmaze { .. } => None,
+        });
+    }
+    Some(Candidate {
+        series: rows.iter().map(|r| r.series).collect(),
+        behind,
+        folder_name,
+    })
+}
+
+/// Every row matched to the same show as `behind`, in id order.
+fn rows_of(conn: &Connection, behind: &Behind) -> Result<Vec<Row>, CoreError> {
+    let (column, id) = match *behind {
+        Behind::Anilist { anilist_id, .. } => ("anilist_id", anilist_id),
+        Behind::Tvmaze { show_id } => ("show_id", show_id),
+    };
+    let sql = format!("{ELIGIBILITY_SQL} WHERE {column} = ?1 ORDER BY id");
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map(params![id as i64], read_row)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Whether this one series is worth a fetch right now, and if it is, the
+/// show behind it with every other folder matched to that show. The
+/// series asked about names the candidate.
 pub fn candidate(
     conn: &Connection,
     series: u64,
@@ -166,23 +220,42 @@ pub fn candidate(
     let row = conn
         .query_row(&sql, params![series as i64], read_row)
         .optional()?;
-    Ok(row
-        .filter(|row| eligible(row, now, force))
-        .map(|row| row.candidate))
+    let Some(row) = row.filter(|row| eligible(row, now, force)) else {
+        return Ok(None);
+    };
+    let mut rows = rows_of(conn, &row.behind)?;
+    rows.retain(|r| r.series != series);
+    rows.insert(0, row);
+    Ok(fold(rows))
 }
 
-/// Every series worth a fetch right now, in id order, which is what the
-/// launch sweep walks.
+/// Every show worth a fetch right now, one candidate per show however
+/// many folders are matched to it, in the order of its lowest series id,
+/// which is what the launch sweep walks. A show is due when any of its
+/// folders is: the status and the stamp are the show's, only the files
+/// are the folder's.
 pub fn candidates(conn: &Connection, now: i64) -> Result<Vec<Candidate>, CoreError> {
     let sql = format!("{ELIGIBILITY_SQL} ORDER BY id");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt
         .query_map([], read_row)?
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(rows
+    // Groups in the order of their first row, which is the lowest id.
+    let mut shows: Vec<Vec<Row>> = Vec::new();
+    let mut at: HashMap<(bool, u64), usize> = HashMap::new();
+    for row in rows {
+        match at.get(&row.behind.key()) {
+            Some(&i) => shows[i].push(row),
+            None => {
+                at.insert(row.behind.key(), shows.len());
+                shows.push(vec![row]);
+            }
+        }
+    }
+    Ok(shows
         .into_iter()
-        .filter(|row| eligible(row, now, false))
-        .map(|row| row.candidate)
+        .filter(|group| group.iter().any(|row| eligible(row, now, false)))
+        .filter_map(fold)
         .collect())
 }
 
@@ -520,8 +593,10 @@ pub fn start_refresh(metadata: &Arc<Metadata>, series: u64) -> Result<u64, CoreE
                 });
             };
             let updated = refresh_reported(&owner, &ctx, &cand, now).await?;
-            if updated && let Some(card) = card_for(&owner.services, series).await? {
-                ctx.changed(card);
+            // The refresh wrote the show, so every folder matched to it
+            // changed, not only the one asked about.
+            if updated {
+                ctx.changed_all(cards_for_all(&owner.services, cand.series.clone()).await?);
             }
             // A new date for a followed show's next episode is a new timer (#215)
             if updated {
@@ -540,7 +615,7 @@ pub fn start_refresh(metadata: &Arc<Metadata>, series: u64) -> Result<u64, CoreE
         }))
 }
 
-/// Starts the launch sweep: every releasing series whose schedule is older
+/// Starts the launch sweep: every releasing show whose schedule is older
 /// than the window, one at a time, paced by the limiter. Electron's
 /// `refreshAiringForLibrary`.
 ///
@@ -560,7 +635,11 @@ pub fn start_refresh_library(metadata: &Arc<Metadata>) -> u64 {
                 .write_async(move |c| candidates(c, now))
                 .await?;
             let total = work.len() as u64;
+            // Folders whose card the sweep pushed, and whether any show
+            // changed at all, which a show whose folders all went away
+            // mid-sweep still did.
             let mut updated = 0u64;
+            let mut moved = false;
             for (done, cand) in work.into_iter().enumerate() {
                 ctx.checkpoint()?;
                 ctx.progress(done as u64, Some(total), &cand.folder_name);
@@ -568,13 +647,13 @@ pub fn start_refresh_library(metadata: &Arc<Metadata>) -> u64 {
                 // the time the sweep started: a long walk would otherwise
                 // stamp the last series hours before it was actually fetched.
                 if refresh_reported(&owner, &ctx, &cand, time::now_secs()).await? {
-                    updated += 1;
-                    if let Some(card) = card_for(&owner.services, cand.series).await? {
-                        ctx.changed(card);
-                    }
+                    moved = true;
+                    let cards = cards_for_all(&owner.services, cand.series).await?;
+                    updated += cards.len() as u64;
+                    ctx.changed_all(cards);
                 }
             }
-            if updated > 0 {
+            if moved {
                 owner.services.bus.signal(Signal::SchedulesMoved);
             }
             Ok(Finished {

@@ -37,6 +37,21 @@ impl Linker {
         Ok(Linker::from_pairs(pairs))
     }
 
+    /// `load`, with `series` kept even once a scan marked it missing: a show whose files
+    /// were just deleted is still what its subscriptions fill (#1483).
+    pub fn load_keeping(conn: &Connection, series: u64) -> Result<Linker, CoreError> {
+        let mut stmt =
+            conn.prepare("SELECT id, path FROM series WHERE missing_since IS NULL OR id = ?1")?;
+        let rows = stmt.query_map([series as i64], |r| {
+            Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?))
+        })?;
+        let mut pairs = Vec::new();
+        for row in rows {
+            pairs.push(row?);
+        }
+        Ok(Linker::from_pairs(pairs))
+    }
+
     pub fn from_pairs(pairs: Vec<(u64, String)>) -> Linker {
         let mut linker = Linker {
             by_path: HashMap::new(),

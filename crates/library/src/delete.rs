@@ -101,6 +101,7 @@ pub fn delete_episodes(
     library: &Arc<Library>,
     series: u64,
     files: Vec<u64>,
+    stop_following: bool,
 ) -> Result<Reply, CoreError> {
     if files.is_empty() {
         return Ok(Reply::Ok);
@@ -152,7 +153,11 @@ pub fn delete_episodes(
     // A trash that fails part way has still moved what it moved: the library is read again
     // either way, and the failure is reported after.
     let moved = super::trash::move_to_trash(&targets);
-    downloads.files_gone(gone(&targets));
+    downloads.clone().files_gone(gone(&targets));
+    // Asked only once the files went: a delete refused or failed keeps the follow
+    if stop_following && moved.is_ok() {
+        downloads.stop_following(series, title.clone());
+    }
     if moved.is_ok() {
         let line = format!(
             "{} {} of {title} {}",
