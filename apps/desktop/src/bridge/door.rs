@@ -342,6 +342,15 @@ pub mod qobject {
             files: bool,
             series: f64,
         ) -> QJsonObject;
+        /// Keeps `keep` of a show's rules and removes `others`, rules only. The job's
+        /// end comes as `jobFinished` or `jobFailed`.
+        #[qinvokable]
+        fn keep_subscription(
+            self: &Door,
+            title: &QString,
+            keep: &QString,
+            others: &QJsonArray,
+        ) -> QJsonObject;
         /// `secrets` carries `anirss_token` and `torrent_password` only when they are to
         /// change: a key left out keeps what is stored, an empty string removes it.
         #[qinvokable]
@@ -1460,6 +1469,8 @@ impl qobject::Door {
                 .as_mut()
                 .downloads_unavailable(s("what"), to_qjson_object(&json::error_json(error))),
             EventBody::SubscriptionRemoved { .. } => self.as_mut().subscription_removed(s("name")),
+            // Rules went, so whatever lists them reads them again (#1496)
+            EventBody::SubscriptionKept { .. } => self.as_mut().subscription_removed(s("kept")),
             EventBody::ShowRemoved { rule, .. } => self.as_mut().show_removed(
                 job_id,
                 s("title"),
@@ -2099,6 +2110,22 @@ impl qobject::Door {
             torrents,
             files,
             series: (series >= 0.0).then_some(series as u64),
+        }))
+    }
+    pub fn keep_subscription(
+        &self,
+        title: &QString,
+        keep: &QString,
+        others: &QJsonArray,
+    ) -> QJsonObject {
+        let others: Vec<String> = others
+            .iter()
+            .filter_map(|h| json::from_qjson(&h).as_str().map(String::from))
+            .collect();
+        self.dispatch(Ok(Call::KeepSubscription {
+            title: title.to_string(),
+            keep: keep.to_string(),
+            others,
         }))
     }
     pub fn set_download_settings(

@@ -7,8 +7,11 @@
 // deleted for good here: files go to the trash, on their own drive.
 //
 // Opened through frame.askRemoval(anchor, spec, done). `spec`: { heading, base, rule (bool),
-// torrentCount, canFiles, filesWhere, note }; `done` gets { torrents, files }. A click
-// outside, Escape or Cancel closes it without a word; Return confirms.
+// torrentCount, canFiles, filesWhere, note, choices, picked }; `done` gets { torrents,
+// files, picked }. `choices` ({ text } each) is a list to pick one from, such as
+// the subscription of a show that stays while the others go (#1496); `picked` is the one
+// picked first, and Up and Down move it. A click outside, Escape or Cancel closes it
+// without a word; Return confirms.
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -22,6 +25,8 @@ Item {
     property Item prevFocus: null
     property bool torrents: false
     property bool files: false
+    property int picked: 0
+    readonly property var choices: spec.choices || []
     // Where the asking button sat when the sheet opened, in the sheet's own coordinates: the
     // sheet is placed again whenever its height settles, and the button may be gone by then.
     property var anchorRect: null
@@ -40,6 +45,7 @@ Item {
         root.done = cb
         root.torrents = false
         root.files = s && s.filesOn === true
+        root.picked = s && s.picked >= 0 ? s.picked : 0
         root.prevFocus = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
         if (anchor) {
             var p = anchor.mapToItem(root, 0, 0)
@@ -61,7 +67,7 @@ Item {
     // Without a subscription the torrents are what goes, ticked or not; the check that adds
     // them is only there beside a subscription.
     function confirm() {
-        var cb = root.done, choice = { torrents: !root.rule || root.torrents || root.files, files: root.files }
+        var cb = root.done, choice = { torrents: !root.rule || root.torrents || root.files, files: root.files, picked: root.picked }
         root.close()
         if (cb) cb(choice)
     }
@@ -78,6 +84,8 @@ Item {
         Keys.onReturnPressed: root.confirm()
         Keys.onEnterPressed: root.confirm()
         Keys.onEscapePressed: root.close()
+        Keys.onUpPressed: if (root.choices.length) root.picked = Math.max(0, root.picked - 1)
+        Keys.onDownPressed: if (root.choices.length) root.picked = Math.min(root.choices.length - 1, root.picked + 1)
         // Below the anchor, or above it when the window ends first; never over it unless
         // neither fits, and always wholly inside the window. Placed again when the height
         // settles: the Column reports its height only once it has laid out, so the first
@@ -103,6 +111,17 @@ Item {
             spacing: theme.space(3)
             Label { width: parent.width; text: root.spec.heading || ""; role: "title"; font.pointSize: theme.typeNormal * 1.08; wrapMode: Text.Wrap }
             Label { width: parent.width; visible: text !== ""; text: root.spec.base || ""; role: "ui"; color: theme.textDim; wrapMode: Text.Wrap }
+            Repeater {
+                model: root.choices
+                Pick {
+                    required property var modelData
+                    required property int index
+                    objectName: "remove-sheet-choice-" + index
+                    text: modelData.text || ""
+                    checked: root.picked === index
+                    onToggled: root.picked = index
+                }
+            }
             Check {
                 visible: root.canTorrents
                 checked: root.torrents || root.files
@@ -131,6 +150,35 @@ Item {
                 }
             }
         }
+    }
+
+    // One of the choices: a round mark in the accent, since the picked one is what stays
+    component Pick: Item {
+        id: pick
+        property bool checked: false
+        property string text: ""
+        signal toggled()
+        width: parent ? parent.width : 0
+        height: Math.max(ring.height, pickLine.implicitHeight) + theme.space(1)
+        Rectangle {
+            id: ring
+            y: theme.space(0.25)
+            width: theme.space(5); height: width
+            radius: width / 2
+            color: "transparent"
+            border.color: pick.checked ? theme.accent : (pm.containsMouse ? theme.textDim : theme.lineStrong)
+            border.width: 1.5
+            Rectangle { visible: pick.checked; anchors.centerIn: parent; width: parent.width * 0.5; height: width; radius: width / 2; color: theme.accent }
+        }
+        Label {
+            id: pickLine
+            anchors.left: ring.right
+            anchors.leftMargin: theme.space(2.5)
+            anchors.right: parent.right
+            text: pick.text; role: "ui"; color: theme.text; wrapMode: Text.Wrap
+        }
+        MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pick.toggled(); Accessible.role: Accessible.RadioButton; Accessible.name: pick.text; Accessible.checkable: true; Accessible.checked: pick.checked
+            Accessible.onPressAction: pick.toggled() }
     }
 
     // A check mark with its line and a dim line under it

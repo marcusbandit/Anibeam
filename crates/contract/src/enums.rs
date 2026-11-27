@@ -610,6 +610,7 @@ pub enum JobKind {
     ControlTorrents,
     TestTorrentClient,
     RemoveShow,
+    KeepSubscription,
     RepairSubscription,
     CheckEndpoints,
     StartEndpoint,
@@ -632,7 +633,9 @@ impl JobKind {
             Export | Import => Stage::Store,
             ConnectDownloads | SearchReleases | RefineReleases | Subscribe | Download
             | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
-            | RepairSubscription | CheckEndpoints | StartEndpoint => Stage::Downloads,
+            | KeepSubscription | RepairSubscription | CheckEndpoints | StartEndpoint => {
+                Stage::Downloads
+            }
         }
     }
 
@@ -679,6 +682,7 @@ impl JobKind {
             ControlTorrents => "core-jobs-control-torrents",
             TestTorrentClient => "core-jobs-test-torrent-client",
             RemoveShow => "core-jobs-remove-show",
+            KeepSubscription => "core-jobs-keep-subscription",
             RepairSubscription => "core-jobs-repair-subscription",
             CheckEndpoints => "core-jobs-check-endpoints",
             StartEndpoint => "core-jobs-start-endpoint",
@@ -705,7 +709,7 @@ impl JobKind {
             | ClearImages | ConnectTracker | Mark | SetProgress | Score | SetStatus | MoveLists
             | Notes | Export | Import | SearchReleases | RefineReleases | Subscribe | Download
             | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
-            | RepairSubscription | StartEndpoint | ScheduleAgent => false,
+            | KeepSubscription | RepairSubscription | StartEndpoint | ScheduleAgent => false,
         }
     }
 
@@ -773,6 +777,7 @@ column_strings!(
         ControlTorrents => "ControlTorrents",
         TestTorrentClient => "TestTorrentClient",
         RemoveShow => "RemoveShow",
+        KeepSubscription => "KeepSubscription",
         RepairSubscription => "RepairSubscription",
         CheckEndpoints => "CheckEndpoints",
         StartEndpoint => "StartEndpoint",

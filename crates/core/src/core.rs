@@ -890,6 +890,11 @@ impl Core {
                 series,
             )
             .map(started),
+            Call::KeepSubscription {
+                title,
+                keep,
+                others,
+            } => downloads::keep_subscription(&self.downloads, title, keep, others).map(started),
             Call::ControlTorrents { hashes, action } => {
                 downloads::control(&self.downloads, hashes, action).map(started)
             }
