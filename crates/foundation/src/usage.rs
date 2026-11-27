@@ -5,12 +5,16 @@
 //! be read, saved or sent as it is. It never leaves the machine on its own; the core's
 //! `SendUsage` is the one way out.
 //!
-//! The counts live in memory and reach the file on a save: at shutdown, before the log is
-//! shown, saved or sent, and after a change once the last save is a minute old. The change
-//! itself does the save, so the log runs no timer of its own. The last 90 UTC days are kept.
-//! Switched off, nothing more is counted and the file stays as it was until it is cleared.
+//! Only the counts not saved yet live in memory. A save takes the file's lock, reads the
+//! file again, adds those counts to it and writes it back, so two Anibeams on one data
+//! folder (the window and `anibeam-cli`, say) both count, and a clear in one is not undone
+//! by the other's next save. What the log shows is the file plus the counts not saved yet.
+//! A save happens at shutdown, before the log is shown, saved or sent, and after a change
+//! once the last save is a minute old. The last 90 UTC days are kept. Switched off, nothing
+//! more is counted and the file stays as it was until it is cleared.
 
 use std::collections::BTreeMap;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -35,6 +39,9 @@ const PAGE_MAX: usize = 40;
 /// The file's name in the data folder.
 pub const FILE_NAME: &str = "usage.json";
 
+/// The sibling every save and clear locks, in every process, while it reads and writes.
+const LOCK_NAME: &str = "usage.json.lock";
+
 /// One day's counts. Maps keep their keys sorted, so the same counts always read the same.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,6 +64,29 @@ impl Day {
     fn events(&self) -> u64 {
         self.calls.values().sum::<u64>() + self.pages.values().sum::<u64>()
     }
+
+    /// Adds `other`'s counts to this day's.
+    fn add(&mut self, other: Day) {
+        for (call, n) in other.calls {
+            *self.calls.entry(call).or_default() += n;
+        }
+        for (page, n) in other.pages {
+            *self.pages.entry(page).or_default() += n;
+        }
+        for (call, kinds) in other.errors {
+            let into = self.errors.entry(call).or_default();
+            for (kind, n) in kinds {
+                *into.entry(kind).or_default() += n;
+            }
+        }
+    }
+}
+
+/// Adds every day of `from` into `into`.
+fn add_days(into: &mut BTreeMap<String, Day>, from: BTreeMap<String, Day>) {
+    for (date, day) in from {
+        into.entry(date).or_default().add(day);
+    }
 }
 
 /// The file, and the text `SendUsage` sends.
@@ -75,17 +105,20 @@ pub struct File {
 }
 
 struct Inner {
-    days: BTreeMap<String, Day>,
+    /// Counts not in the file yet.
+    pending: BTreeMap<String, Day>,
     enabled: bool,
-    /// Counts not on disk yet.
-    dirty: bool,
     last_save: Option<Instant>,
 }
 
 pub struct UsageLog {
     path: PathBuf,
+    lock_path: PathBuf,
     version: String,
     inner: Mutex<Inner>,
+    /// Held by every read and write of the file in this process, so a save that has taken
+    /// the counts out of `inner` and not written them yet is never read half done.
+    io: Mutex<()>,
 }
 
 /// Which kind of Anibeam this is, for the header.
@@ -128,25 +161,20 @@ pub fn date_of(day: i64) -> String {
 }
 
 impl UsageLog {
-    /// The log in `data_dir`, with what its file already holds. A file that cannot be read,
-    /// or is in another format, reads as an empty log, and the next save replaces it.
+    /// The log in `data_dir`. Its file is read on every save and show, never kept: a file
+    /// that cannot be read, or is in another format, reads as an empty log, and the next
+    /// save replaces it.
     pub fn open(data_dir: &Path, version: &str, enabled: bool) -> UsageLog {
-        let path = data_dir.join(FILE_NAME);
-        let days = std::fs::read(&path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice::<File>(&bytes).ok())
-            .filter(|f| f.format == FORMAT)
-            .map(|f| f.days)
-            .unwrap_or_default();
         UsageLog {
-            path,
+            path: data_dir.join(FILE_NAME),
+            lock_path: data_dir.join(LOCK_NAME),
             version: version.to_string(),
             inner: Mutex::new(Inner {
-                days,
+                pending: BTreeMap::new(),
                 enabled,
-                dirty: false,
                 last_save: None,
             }),
+            io: Mutex::new(()),
         }
     }
 
@@ -194,35 +222,79 @@ impl UsageLog {
     /// Counts into the day `day`, drops the days past `KEEP_DAYS`, and saves when the last
     /// save is a minute old.
     fn record_at(&self, day: i64, count: impl FnOnce(&mut Day)) {
-        let mut inner = recover(&self.inner);
-        if !inner.enabled {
+        let due = {
+            let mut inner = recover(&self.inner);
+            if !inner.enabled {
+                return;
+            }
+            count(inner.pending.entry(date_of(day)).or_default());
+            prune(&mut inner.pending, day);
+            inner.last_save.is_none_or(|at| at.elapsed() >= SAVE_EVERY)
+        };
+        if due {
+            self.flush();
+        }
+    }
+
+    /// The file's lock, held until the returned file is dropped. A filesystem that cannot
+    /// lock gets the save anyway, unlocked, rather than losing it.
+    fn file_lock(&self) -> Option<std::fs::File> {
+        let open = || {
+            if let Some(dir) = self.lock_path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            let file = OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .write(true)
+                .open(&self.lock_path)?;
+            file.lock()?;
+            Ok::<_, std::io::Error>(file)
+        };
+        open()
+            .inspect_err(|e| tracing::warn!("could not lock the usage log: {e}"))
+            .ok()
+    }
+
+    /// What the file holds now.
+    fn read_file(&self) -> BTreeMap<String, Day> {
+        std::fs::read(&self.path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<File>(&bytes).ok())
+            .filter(|f| f.format == FORMAT)
+            .map(|f| f.days)
+            .unwrap_or_default()
+    }
+
+    /// Adds the counts not saved yet to the file, under its lock.
+    pub fn flush(&self) {
+        let _io = recover(&self.io);
+        let pending = {
+            let mut inner = recover(&self.inner);
+            inner.last_save = Some(Instant::now());
+            std::mem::take(&mut inner.pending)
+        };
+        if pending.is_empty() {
             return;
         }
-        count(inner.days.entry(date_of(day)).or_default());
-        prune(&mut inner.days, day);
-        inner.dirty = true;
-        if inner.last_save.is_none_or(|at| at.elapsed() >= SAVE_EVERY) {
-            self.save_locked(&mut inner);
+        let _lock = self.file_lock();
+        let mut days = self.read_file();
+        add_days(&mut days, pending.clone());
+        prune(&mut days, today());
+        if let Err(e) = crate::atomic_file::write(&self.path, self.text_of(&days)) {
+            // The counts go back, and the next save tries again
+            tracing::warn!("could not save the usage log: {e}");
+            add_days(&mut recover(&self.inner).pending, pending);
         }
     }
 
-    /// Puts any counts not on disk yet into the file.
-    pub fn flush(&self) {
-        let mut inner = recover(&self.inner);
-        prune(&mut inner.days, today());
-        if inner.dirty {
-            self.save_locked(&mut inner);
-        }
-    }
-
-    fn save_locked(&self, inner: &mut Inner) {
-        let text = self.text_of(&inner.days);
-        match crate::atomic_file::write(&self.path, text) {
-            Ok(()) => inner.dirty = false,
-            // Counts stay in memory, and the next save tries again
-            Err(e) => tracing::warn!("could not save the usage log: {e}"),
-        }
-        inner.last_save = Some(Instant::now());
+    /// The file plus the counts not saved yet, past days dropped.
+    fn days_now(&self) -> BTreeMap<String, Day> {
+        let _io = recover(&self.io);
+        let mut days = self.read_file();
+        add_days(&mut days, recover(&self.inner).pending.clone());
+        prune(&mut days, today());
+        days
     }
 
     fn text_of(&self, days: &BTreeMap<String, Day>) -> String {
@@ -249,27 +321,29 @@ impl UsageLog {
     /// The log's text, after a save, so what is shown is what is on disk.
     pub fn text(&self) -> String {
         self.flush();
-        self.text_of(&recover(&self.inner).days)
+        self.text_of(&self.days_now())
     }
 
     /// Days with anything in them, and the calls and page opens over all of them.
     pub fn summary(&self) -> (u64, u64) {
-        let inner = recover(&self.inner);
-        let days = inner.days.values().filter(|d| !d.is_empty()).count() as u64;
-        let events = inner.days.values().map(Day::events).sum();
-        (days, events)
+        let days = self.days_now();
+        let with = days.values().filter(|d| !d.is_empty()).count() as u64;
+        let events = days.values().map(Day::events).sum();
+        (with, events)
     }
 
-    /// Empties the log and removes its file.
+    /// Empties the log: removes its file and the counts not saved yet, under the file's
+    /// lock, so no save in another process puts back what was there.
     pub fn clear(&self) -> Result<(), CoreError> {
-        let mut inner = recover(&self.inner);
-        inner.days.clear();
-        inner.dirty = false;
+        let _io = recover(&self.io);
+        let _lock = self.file_lock();
         match std::fs::remove_file(&self.path) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(CoreError::io_at(self.path.to_string_lossy(), e)),
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(CoreError::io_at(self.path.to_string_lossy(), e)),
         }
+        recover(&self.inner).pending.clear();
+        Ok(())
     }
 }
 
@@ -324,7 +398,7 @@ mod tests {
         log.record_at(today() - 1, count);
         log.record_at(today(), count);
         log.record_at(today(), count);
-        let days = &recover(&log.inner).days;
+        let days = log.days_now();
         assert_eq!(days[&date_of(today() - 1)].calls["About"], 1);
         assert_eq!(days[&date_of(today())].calls["About"], 2);
     }
@@ -338,7 +412,7 @@ mod tests {
         log.record_at(now - KEEP_DAYS, count);
         log.record_at(now - (KEEP_DAYS - 1), count);
         log.record_at(now, count);
-        let days: Vec<String> = recover(&log.inner).days.keys().cloned().collect();
+        let days: Vec<String> = log.days_now().keys().cloned().collect();
         assert_eq!(days, vec![date_of(now - (KEEP_DAYS - 1)), date_of(now)]);
     }
 
@@ -376,6 +450,40 @@ mod tests {
         }
         let again = log(dir.path());
         assert_eq!(again.summary(), (1, 2));
+    }
+
+    /// The window and the CLI on one data folder: both count, the file holds the sum, and a
+    /// clear in one is not undone by the other's next save.
+    #[test]
+    fn two_logs_on_one_folder_add_up_and_a_clear_holds() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = log(dir.path());
+        let b = log(dir.path());
+        for _ in 0..2 {
+            a.record_call("Scan", None);
+            b.record_call("Scan", None);
+        }
+        b.record_call("Lookup", None);
+        a.flush();
+        b.flush();
+        let on_disk: File = serde_json::from_slice(&std::fs::read(a.path()).unwrap()).unwrap();
+        let day = &on_disk.days[&date_of(today())];
+        assert_eq!(day.calls["Scan"], 4);
+        assert_eq!(day.calls["Lookup"], 1);
+        assert_eq!(a.summary(), (1, 5));
+        assert_eq!(b.summary(), (1, 5));
+
+        a.clear().unwrap();
+        b.flush();
+        assert!(!a.path().exists());
+        assert_eq!(b.summary(), (0, 0));
+        b.record_call("About", None);
+        b.flush();
+        let on_disk: File = serde_json::from_slice(&std::fs::read(a.path()).unwrap()).unwrap();
+        let day = &on_disk.days[&date_of(today())];
+        assert_eq!(day.calls.len(), 1);
+        assert_eq!(day.calls["About"], 1);
+        assert_eq!(a.summary(), (1, 1));
     }
 
     #[test]
