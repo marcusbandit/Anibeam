@@ -17,6 +17,15 @@ class_name = "RoomObject"
 tag = "v1"
 new_sqlite_classes = ["RoomObject"]
 
+# The usage log's sends (#1532): one object, one row per send.
+[[durable_objects.bindings]]
+name = "USAGE"
+class_name = "UsageObject"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["UsageObject"]
+
 # Per address, per Cloudflare location, approximate. The namespace ids only
 # have to be unique within the account.
 [[ratelimits]]
@@ -33,3 +42,8 @@ simple = { limit = 30, period = 60 }
 name = "PAGE_LIMIT"
 namespace_id = "8463"
 simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "USAGE_LIMIT"
+namespace_id = "8464"
+simple = { limit = 5, period = 60 }

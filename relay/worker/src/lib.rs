@@ -11,6 +11,9 @@
 //! - `GET /{code}` is the join page a shared link opens.
 //! - `GET /health` answers `ok`.
 //!
+//! It is also where an app's usage log arrives when its owner sends it (#1532):
+//! `POST /usage`, read back with `GET /usage` and the owner's token (`usage`).
+//!
 //! Each room is one SQLite-backed Durable Object named by its code, holding one
 //! [`anibeam_room::Room`]. Sockets use the WebSocket Hibernation API, so a room
 //! nobody is talking in is evicted from memory and costs nothing. Because
@@ -24,6 +27,10 @@
 //! socket that has not said hello within 10 s is closed: each socket carries
 //! when it opened as a second tag, every message checks it, and the alarm
 //! sweeps the ones that never send anything.
+
+mod usage;
+
+pub use usage::UsageObject;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -96,6 +103,9 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             Method::Get | Method::Head => Response::ok("ok"),
             _ => text(405, "method not allowed"),
         };
+    }
+    if path == "/usage" {
+        return usage::route(req, &env).await;
     }
     if path == "/rooms" {
         return match method {
@@ -228,7 +238,8 @@ fn find_page(req: &Request) -> Result<Response> {
     match page::code_from_query(query.as_deref()) {
         Ok(Some(room_code)) => {
             let mut res = Response::empty()?.with_status(303);
-            res.headers_mut().set("Location", &format!("/{room_code}"))?;
+            res.headers_mut()
+                .set("Location", &format!("/{room_code}"))?;
             Ok(res)
         }
         Ok(None) => Response::from_html(page::find_html(None)),

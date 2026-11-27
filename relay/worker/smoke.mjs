@@ -14,6 +14,9 @@
 //             61st join page in a minute gets 429
 //   close     a room nobody joins closes after 10 minutes (the alarm)
 //   gone      after a restart that room is still gone: its storage was deleted
+//   usage     a usage log send is stored once per send id, a bad or oversized
+//             one is refused, reading needs the token (SMOKE_USAGE_TOKEN),
+//             and the 6th send in a minute gets 429
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
@@ -340,7 +343,55 @@ async function gone() {
   check(status === 404, `after a restart the closed room is still gone (got ${status})`);
 }
 
-const phases = { rooms, reload, timers, limits, close, gone };
+const usageLog = {
+  format: 1,
+  app_version: "0.0.0-smoke",
+  platform: "desktop",
+  os: "linux",
+  days: { "2026-11-27": { calls: { Scan: 2 }, pages: { library: 1 }, errors: {} } },
+};
+
+function hexId() {
+  return [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function sendUsage(body) {
+  const res = await fetch(`${base}/usage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+  await res.text();
+  return res.status;
+}
+
+async function readUsage(token) {
+  const headers = token === undefined ? {} : { authorization: `Bearer ${token}` };
+  const res = await fetch(`${base}/usage`, { headers });
+  return { status: res.status, body: res.status === 200 ? await res.json() : await res.text() };
+}
+
+async function usage() {
+  const token = process.env.SMOKE_USAGE_TOKEN ?? "";
+  const id = hexId();
+  check((await sendUsage({ send_id: id, usage: usageLog })) === 201, "a usage log send is stored");
+  check((await sendUsage({ send_id: id, usage: usageLog })) === 200, "the same send id twice is one send");
+  check((await sendUsage("not json")) === 400, "a body that is not JSON is refused");
+  const big = { send_id: hexId(), usage: { ...usageLog, days: { pad: "x".repeat(300 * 1024) } } };
+  check((await sendUsage(big)) === 413, "a send over 256 KiB is refused");
+
+  check((await readUsage()).status === 401, "reading without the token is refused");
+  check((await readUsage("wrong")).status === 401, "reading with the wrong token is refused");
+  const read = await readUsage(token);
+  const found = read.status === 200 && read.body.sends.filter((s) => s.send_id === id);
+  check(found && found.length === 1 && found[0].usage.days["2026-11-27"].calls.Scan === 2, `the owner reads the send back (got ${read.status})`);
+
+  const statuses = [];
+  for (let i = 0; i < 6; i++) statuses.push(await sendUsage({ send_id: hexId(), usage: usageLog }));
+  check(statuses.includes(429), `sends past 5 a minute get 429 (${statuses.join(" ")})`);
+}
+
+const phases = { rooms, reload, timers, limits, close, gone, usage };
 if (!phases[phase]) {
   console.error(`unknown phase ${phase}`);
   process.exit(2);
