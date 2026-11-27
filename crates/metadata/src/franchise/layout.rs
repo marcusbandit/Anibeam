@@ -32,7 +32,8 @@ type Cell = (i64, i64);
 
 /// The formats that count as print rather than screen. Print leads an
 /// adaptation only when the data contradicts itself about which end is the
-/// original. AniList's own set; a media type of MANGA covers anything new
+/// original, and a chain of nothing but print is never the main line of
+/// seasons. AniList's own set; a media type of MANGA covers anything new
 /// it invents.
 const PRINT_FORMATS: [&str; 5] = ["MANGA", "NOVEL", "LIGHT_NOVEL", "ONE_SHOT", "VISUAL_NOVEL"];
 
@@ -393,8 +394,9 @@ fn order_rows(
 ///
 /// A node in no chain that is a side story of a placed one takes that
 /// chain's column grid, centred on the targets it names, one row above
-/// when that row is free and one row below when it is not. The print
-/// source of an adaptation takes the same grid and always the row above.
+/// when that row is free and one row below when it is not. The source of
+/// an adaptation takes the same grid and always the row above; what was
+/// made of the chain takes the row below.
 /// The rows around it shift by one to make the space, and satellites that
 /// share a target spread sideways into free columns.
 ///
@@ -445,11 +447,12 @@ fn satellites(
         if positions.contains_key(&id) {
             continue;
         }
-        // A side story sits beside the chain it belongs to. The print
-        // source of an adaptation sits above it, always: a manga over the
-        // anime it became is how the relation reads and how Electron drew
-        // it, and a source pushed to the loose row at the bottom read as
-        // unconnected when it is the thing the chain came from.
+        // A side story sits beside the chain it belongs to. The source of
+        // an adaptation sits above it, always: a manga over the anime it
+        // became is how the relation reads and how Electron drew it, and a
+        // source pushed to the loose row at the bottom read as unconnected
+        // when it is the thing the chain came from. What was made of the
+        // chain, such as an anime original's manga, sits below.
         let mut targets = joined(edges, id, "SIDE_STORY", positions);
         let adaptation = targets.is_empty();
         if adaptation {
@@ -498,11 +501,18 @@ fn satellites(
         // The midpoint of an odd span lands between two columns; it takes
         // the higher of the two rather than half a column.
         let column = low + (high - low + 1) / 2;
+        let above = if adaptation {
+            edges
+                .iter()
+                .any(|x| x.relation == "ADAPTATION" && x.from == id && x.to == target)
+        } else {
+            !occupied(positions, row - 1)
+        };
         plans.push(Plan {
             id,
             target,
             row,
-            above: adaptation || !occupied(positions, row - 1),
+            above,
             column,
         });
     }
@@ -913,9 +923,10 @@ mod tests {
         );
     }
 
-    /// Two print entries, or two screen entries, have no print side to run
-    /// from, so the relation alone says which is the original: the far end
-    /// of a SOURCE. A reciprocal pair then lands on one edge.
+    /// Between two print entries, or two screen entries, the relation names
+    /// the original just as it does across media: the near end of an
+    /// ADAPTATION, the far end of a SOURCE. A reciprocal pair then lands on
+    /// one edge.
     #[test]
     fn a_source_between_two_of_a_kind_runs_from_the_original() {
         let nodes = [
@@ -1260,6 +1271,25 @@ mod tests {
         );
         let cells: HashSet<Cell> = positions.values().copied().collect();
         assert_eq!(cells.len(), positions.len(), "no two nodes share a cell");
+    }
+
+    /// A lone manga made of an anime original is what the chain became, so
+    /// it sits directly below the chain, not above it as a source would.
+    #[test]
+    fn an_anime_originals_lone_manga_sits_below_the_chain() {
+        let closure = closure_of(
+            1,
+            vec![anime(1, 2000), anime(2, 2001), manga(10, 2002)],
+            vec![
+                e(1, 2, "SEQUEL"),
+                e(1, 10, "ADAPTATION"),
+                e(10, 1, "SOURCE"),
+            ],
+            &[],
+        );
+        let placed = plan(&closure, 1).positions;
+        assert_eq!(placed[&10].1, placed[&1].1 + V_GAP, "one row below");
+        assert_eq!(placed[&10].0, placed[&1].0, "on its target's column");
     }
 
     /// However many side stories hang off one chain, each gets a cell of
