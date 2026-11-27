@@ -1277,6 +1277,8 @@ FocusScope {
             if (files.indexOf(eps[i].file) >= 0 && trashed.indexOf(eps[i].number) < 0) trashed.push(eps[i].number)
         var counted = trashed.slice()
         downloading.forEach(function(n) { if (counted.indexOf(n) < 0) counted.push(n) })
+        // A film is one film, whatever number its file reads as (#1500)
+        if (noun === "film") { counted = counted.slice(0, 1); trashed = trashed.slice(0, 1) }
         var extrasNamed = extras.length ? words.t("frame-delete-extras", { count: extras.length }) : ""
         function phrase(n) {
             var named = n ? words.t("frame-delete-files", { count: n, kind: noun, watched: watchedOnly ? "yes" : "no" }) : ""
@@ -1290,7 +1292,7 @@ FocusScope {
         var rules = watchedOnly ? [] : frame.rulesOf(c.id), unfollow = rules.length > 0
         var base = words.t("frame-delete-base")
         if (rules.length) base += " " + words.t("frame-delete-unfollow-base", { count: rules.length, names: rules.join(", ") })   // i18n: none
-        if (downloading.length) base += " " + words.t("frame-delete-downloading", { count: downloading.length, episodes: downloading.join(", ") })   // i18n: none
+        if (downloading.length) base += " " + words.t("frame-delete-downloading", { count: downloading.length, episodes: downloading.join(", "), kind: noun })   // i18n: none
         removeSheet.openAt(anchor, {
             heading: words.t("frame-delete-heading", { what: what, title: c.title }),
             base: base,

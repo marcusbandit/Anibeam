@@ -2511,6 +2511,169 @@ fn delete_all_stops_the_downloads_it_named() {
     core.shutdown();
 }
 
+/// A film still downloading counts as the film it carries (#1500): its card and its one
+/// episode show the download, whatever number the file's name reads as, and Delete all
+/// stops that torrent and deletes its data. Another film's torrent stays. A film in a folder
+/// torrent goes like a batch: the torrent without its data, and only the film's video, so
+/// the booklet beside it stays.
+#[test]
+fn delete_all_stops_a_films_download() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    unsafe { std::env::set_var("XDG_DATA_HOME", dir.path().join("share")) };
+    save(&core, settings("anirss"), None, None);
+    let lib = std::fs::canonicalize(dir.path()).unwrap().join("lib");
+    let movies = lib.join("Movies");
+    std::fs::create_dir_all(&movies).unwrap();
+    let film = movies.join("[Lumen] Hoshizora no Tegami (2019) (1080p).mkv");
+    let other = movies.join("[Lumen] Kaze no Tayori (2021) (1080p).mkv");
+    std::fs::write(&film, b"x").unwrap();
+    std::fs::write(&other, b"x").unwrap();
+    let folder = movies.join("Ame no Shirabe (2020)");
+    std::fs::create_dir_all(&folder).unwrap();
+    let boxed = folder.join("Ame no Shirabe (2020).mkv");
+    let booklet = folder.join("Booklet.pdf");
+    std::fs::write(&boxed, b"x").unwrap();
+    std::fs::write(&booklet, b"x").unwrap();
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+    let series = common::cards(&core, Tab::All, true)
+        .into_iter()
+        .find(|s| s.path == film.to_string_lossy())
+        .expect("the film is in the library");
+    assert_eq!(series.kind, SeriesKind::Movie);
+    let boxed_series = common::cards(&core, Tab::All, true)
+        .into_iter()
+        .find(|s| s.path == boxed.to_string_lossy())
+        .expect("the boxed film is in the library");
+
+    let movies_s = movies.to_string_lossy().into_owned();
+    let torrent = |hash: &str, path: &std::path::Path| {
+        json!({"hash": hash, "name": path.file_name().unwrap().to_string_lossy(),
+               "state": "downloading", "progress": 0.4, "size": 1,
+               "save_path": movies_s, "content_path": path.to_string_lossy()})
+    };
+    let list = json!([
+        torrent("aa", &film),
+        torrent("bb", &other),
+        torrent("ff", &folder)
+    ])
+    .to_string();
+    let files = json!([
+        {"name": "Ame no Shirabe (2020)/Ame no Shirabe (2020).mkv",
+         "size": 1, "progress": 0.3, "priority": 1},
+        {"name": "Ame no Shirabe (2020)/Booklet.pdf",
+         "size": 1, "progress": 1.0, "priority": 1},
+    ])
+    .to_string();
+    for _ in 0..3 {
+        http.push_for("torrents/files?hash=ff", 200, files.clone());
+    }
+    http.push_for("torrents/info", 200, list.clone());
+    http.push_for("transfer/info", 200, json!({}).to_string());
+    assert_eq!(core.call(Call::ListTorrents).unwrap(), Reply::Ok);
+    common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::TorrentsRead { .. }),
+        Duration::from_secs(10),
+    );
+    let detail = match core.call(Call::GetSeries { series: series.id }).unwrap() {
+        Reply::SeriesDetail { detail } => detail,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        detail.card.downloading,
+        vec![EpisodeDownload {
+            number: 1,
+            progress: 0.4
+        }],
+        "the film is downloading"
+    );
+    assert_eq!(
+        detail
+            .episodes
+            .iter()
+            .map(|e| e.downloading)
+            .collect::<Vec<_>>(),
+        vec![Some(0.4)],
+        "its file is not playable yet"
+    );
+    let boxed_detail = match core
+        .call(Call::GetSeries {
+            series: boxed_series.id,
+        })
+        .unwrap()
+    {
+        Reply::SeriesDetail { detail } => detail,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        boxed_detail.card.downloading,
+        vec![EpisodeDownload {
+            number: 1,
+            progress: 0.3
+        }],
+        "a boxed film downloads at its video's progress"
+    );
+
+    http.push_for("torrents/info", 200, list.clone());
+    http.push_for("torrents/delete", 200, "");
+    core.call(Call::DeleteEpisodes {
+        series: series.id,
+        files: Vec::new(),
+        stop_following: false,
+        stop_downloading: vec![1],
+    })
+    .unwrap();
+    let deletes = || -> Vec<String> {
+        http.requests()
+            .iter()
+            .filter(|r| r.url.contains("torrents/delete"))
+            .map(form_of)
+            .collect()
+    };
+    let started = Instant::now();
+    while deletes().is_empty() {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the film's download was not stopped"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(deletes(), vec!["hashes=aa&deleteFiles=true".to_string()]);
+
+    http.push_for("torrents/info", 200, list);
+    http.push_for("torrents/delete", 200, "");
+    core.call(Call::DeleteEpisodes {
+        series: boxed_series.id,
+        files: Vec::new(),
+        stop_following: false,
+        stop_downloading: vec![1],
+    })
+    .unwrap();
+    let started = Instant::now();
+    while deletes().len() < 2 {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the boxed film's download was not stopped"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(deletes()[1], "hashes=ff&deleteFiles=false");
+    assert!(!boxed.exists(), "the film's video is deleted");
+    assert!(booklet.exists(), "the booklet the sheet did not name stays");
+    core.shutdown();
+}
+
 /// A pasted magnet that turns out to hold no video (#1391): once the client knows its files a
 /// notice says Anibeam cannot play it, and it moves to the Downloads folder, the sandbox's own
 /// here. A film that holds one stays where it went, with nothing said.
