@@ -869,6 +869,25 @@ pub fn rules(downloads: &std::sync::Arc<Downloads>) -> Result<Reply, CoreError> 
     Ok(Reply::PhoneRules { rules })
 }
 
+/// The phone's own subscriptions whose folder `fills` takes, removed (#1483). Their names.
+#[cfg(feature = "phone")]
+pub fn unfollow(
+    services: &Services,
+    fills: &(dyn Fn(&str) -> bool + Send + Sync),
+) -> Result<Vec<String>, CoreError> {
+    let store = rules_store(services);
+    let names: Vec<String> = store
+        .load()
+        .into_iter()
+        .filter(|r| fills(&r.save_path))
+        .map(|r| r.name)
+        .collect();
+    if !names.is_empty() {
+        store.remove(&names)?;
+    }
+    Ok(names)
+}
+
 #[cfg(feature = "phone")]
 pub fn unsubscribe(
     downloads: &std::sync::Arc<Downloads>,
