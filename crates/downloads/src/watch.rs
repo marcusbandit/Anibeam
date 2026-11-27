@@ -243,23 +243,27 @@ async fn watch(downloads: &Downloads, d: &Due) -> bool {
             }
             tokio::time::sleep(std::time::Duration::from_secs((left as u64).min(NAP))).await;
         }
-        let read = d.clone();
-        let now = match downloads
-            .services
-            .store
-            .write_async(move |c| standing(c, &read))
-            .await
-        {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::debug!("followed episode not read: {e}");
-                continue;
+        let last = i + 1 == steps.len();
+        let now = if last {
+            // The last look reads until it can: ending here would leave
+            // the miss unsaid for good, since no later arming takes an
+            // episode this old, and giving up unread could say a miss that
+            // is not one (#1340).
+            settle(|| look(downloads, d), "followed episode not read").await
+        } else {
+            match look(downloads, d).await {
+                Ok(s) => s,
+                // The next look reads again.
+                Err(e) => {
+                    tracing::debug!("followed episode not read: {e}");
+                    continue;
+                }
             }
         };
         match now {
             Standing::Arrived => return true,
             Standing::Stale => return false,
-            Standing::Missing if i + 1 == steps.len() => {
+            Standing::Missing if last => {
                 give_up(&downloads.services, d).await;
                 return true;
             }
@@ -267,6 +271,43 @@ async fn watch(downloads: &Downloads, d: &Due) -> bool {
         }
     }
     true
+}
+
+/// The wait before `settle` tries a store step again; short in tests.
+const RETRY: std::time::Duration = if cfg!(test) {
+    std::time::Duration::from_millis(10)
+} else {
+    std::time::Duration::from_secs(NAP)
+};
+
+/// Where the episode stands, read from the library.
+async fn look(downloads: &Downloads, d: &Due) -> Result<Standing, CoreError> {
+    let read = d.clone();
+    downloads
+        .services
+        .store
+        .write_async(move |c| standing(c, &read))
+        .await
+}
+
+/// Runs a store step until it succeeds, a nap apart, saying the first
+/// failure as a warning and the rest at debug. The runtime ends the wait
+/// with the core.
+async fn settle<T, F, Fut>(mut step: F, what: &str) -> T
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, CoreError>>,
+{
+    let mut tries = 0u32;
+    loop {
+        match step().await {
+            Ok(v) => return v,
+            Err(e) if tries == 0 => tracing::warn!("{what}, trying again: {e}"),
+            Err(e) => tracing::debug!("{what} ({}): {e}", tries + 1),
+        }
+        tries += 1;
+        tokio::time::sleep(RETRY).await;
+    }
 }
 
 /// A client to ask the feeds through, only one that runs without the core
@@ -325,16 +366,21 @@ async fn refresh(downloads: &Downloads, series: u64) {
 /// The one line for an episode that never came, said once ever.
 async fn give_up(services: &Services, d: &Due) {
     let (series, episode, now) = (d.series, d.episode, anibeam_foundation::time::now_secs());
-    let first = services
-        .store
-        .write_async(move |c| {
-            Ok(c.execute(
-                "INSERT OR IGNORE INTO follow_misses (series_id, episode, said_at) VALUES (?1, ?2, ?3)",
-                params![series as i64, i64::from(episode), now],
-            )? == 1)
-        })
-        .await;
-    if !matches!(first, Ok(true)) {
+    // Kept until it lands, for the same reason the last look reads until
+    // it can: nothing after this watch says the miss.
+    let first = settle(
+        || {
+            services.store.write_async(move |c| {
+                Ok(c.execute(
+                    "INSERT OR IGNORE INTO follow_misses (series_id, episode, said_at) VALUES (?1, ?2, ?3)",
+                    params![series as i64, i64::from(episode), now],
+                )? == 1)
+            })
+        },
+        "followed episode's miss not kept",
+    )
+    .await;
+    if !first {
         return;
     }
     services.bus.say(
@@ -500,6 +546,61 @@ mod tests {
             let armed = armed();
             assert!(armed.contains(&next) && armed.contains(&missed));
         }
+        teams.shutdown();
+    }
+
+    /// The last look reads until it can rather than ending quietly when
+    /// the library cannot be read, so the miss is still kept and said
+    /// once, with nobody left after it to report it (#1340).
+    #[test]
+    fn a_failed_read_on_the_last_look_is_tried_again() {
+        let (_dir, teams) = teams();
+        let now = anibeam_foundation::time::now_secs();
+        followed(&teams, now);
+        // Aired past the window: the give-up is the only step left, now.
+        let late = Due {
+            series: 1,
+            title: "Show".into(),
+            episode: 2,
+            aired_at: now - 80 * H,
+        };
+        let aired_at = late.aired_at;
+        teams
+            .services
+            .store
+            .write(move |c| {
+                c.execute(
+                    "UPDATE anilist_episodes SET aired_at = ?1 WHERE number = 2",
+                    [aired_at],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        // The read a step makes fails for now.
+        exec(&teams, "ALTER TABLE files RENAME TO files_gone");
+        assert!(teams.services.store.read(|c| standing(c, &late)).is_err());
+        let downloads = teams.downloads.clone();
+        let task = teams
+            .services
+            .handle
+            .spawn(async move { watch(&downloads, &late).await });
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(!task.is_finished(), "the watch ended without a read");
+        // The store comes back: the next try reads the miss and keeps it.
+        exec(&teams, "ALTER TABLE files_gone RENAME TO files");
+        assert!(teams.services.handle.block_on(task).unwrap());
+        let kept: i64 = teams
+            .services
+            .store
+            .read(|c| {
+                Ok(c.query_row(
+                    "SELECT COUNT(*) FROM follow_misses WHERE series_id = 1 AND episode = 2",
+                    [],
+                    |r| r.get(0),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(kept, 1);
         teams.shutdown();
     }
 
