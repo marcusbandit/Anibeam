@@ -46,7 +46,7 @@ pub mod watch;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use anibeam_contract::*;
@@ -1412,39 +1412,7 @@ pub fn search(
                     search_native(&owner, &ctx, &query, endpoint.clone()).await?
                 }
                 DownloadsEngine::Anirss => {
-                    // The endpoint the search starts on, for the progress line: the
-                    // one asked for, else the first anirss lists
-                    let first = default_target(endpoint.clone(), &owner.state().endpoints);
-                    let ondemand = first.as_deref().and_then(|name| {
-                        settings::anirss_config_path(&owner.services)
-                            .and_then(|p| settings::anirss_ondemand(&p, name))
-                    });
-                    let phase = Arc::new(AtomicU8::new(PHASE_CONNECTING));
-                    let watch = watch_search(
-                        ctx.clone(),
-                        owner.services.http.clone(),
-                        phase.clone(),
-                        first.clone().unwrap_or_else(|| {
-                            anibeam_contract::i18n::tr("core-downloads-first-endpoint", &[])
-                        }),
-                        ondemand,
-                    );
-                    let work = async {
-                        let backend =
-                            DownloadsBackend::with(&owner, DownloadsEngine::Anirss).await?;
-                        let listed = owner.state().endpoints.clone();
-                        let target = default_target(endpoint.clone(), &listed);
-                        let fallback =
-                            guard_search(&owner.services, &listed, target.as_deref()).await?;
-                        phase.store(PHASE_FETCHING, Ordering::Relaxed);
-                        let raw = backend.search(&query, target.as_deref(), fallback).await?;
-                        phase.store(PHASE_READING, Ordering::Relaxed);
-                        read_search(&owner.services, backend, raw).await
-                    };
-                    tokio::select! {
-                        r = work => r?,
-                        _ = watch => unreachable!("the watch never ends"),
-                    }
+                    search_anirss(&owner, &ctx, &query, endpoint.clone()).await?
                 }
             };
             let message = if search.fell_back {
@@ -1472,6 +1440,64 @@ pub fn search(
                 body: EventBody::ReleasesFound { search },
             })
         }))
+}
+
+/// The search through anirss. The endpoint it lands on is worked out once
+/// the backend is open, never before: opening it may start anirss again and
+/// read its list, so the list from before is stale, or empty after a crash
+/// cleared it (#1436). Until then the progress line says the search is
+/// starting, which names no endpoint.
+async fn search_anirss(
+    owner: &Arc<Downloads>,
+    ctx: &Arc<JobCtx>,
+    query: &str,
+    endpoint: Option<String>,
+) -> Result<ReleaseSearch, CoreError> {
+    let phase = Arc::new(AtomicU8::new(PHASE_CONNECTING));
+    let on = Arc::new(OnceLock::new());
+    let watch = watch_search(
+        ctx.clone(),
+        owner.services.http.clone(),
+        phase.clone(),
+        on.clone(),
+    );
+    let work = async {
+        let backend = DownloadsBackend::with(owner, DownloadsEngine::Anirss).await?;
+        let listed = owner.state().endpoints.clone();
+        let target = default_target(endpoint, &listed);
+        let fallback = guard_search(&owner.services, &listed, target.as_deref()).await?;
+        let _ = on.set(SearchOn::of(&owner.services, target.as_deref()));
+        phase.store(PHASE_FETCHING, Ordering::Relaxed);
+        let raw = backend.search(query, target.as_deref(), fallback).await?;
+        phase.store(PHASE_READING, Ordering::Relaxed);
+        read_search(&owner.services, backend, raw).await
+    };
+    tokio::select! {
+        r = work => r,
+        _ = watch => unreachable!("the watch never ends"),
+    }
+}
+
+/// The endpoint a search through anirss is on, for its progress line: its
+/// name, else the generic first-endpoint wording when anirss lists none,
+/// and its on-demand settings when anirss starts it on demand.
+struct SearchOn {
+    name: String,
+    ondemand: Option<settings::OnDemand>,
+}
+
+impl SearchOn {
+    fn of(services: &Services, target: Option<&str>) -> SearchOn {
+        SearchOn {
+            name: target.map(str::to_string).unwrap_or_else(|| {
+                anibeam_contract::i18n::tr("core-downloads-first-endpoint", &[])
+            }),
+            ondemand: target.and_then(|name| {
+                settings::anirss_config_path(services)
+                    .and_then(|p| settings::anirss_ondemand(&p, name))
+            }),
+        }
+    }
 }
 
 /// The search on the core's own engine. There is no sidecar to start and
@@ -1585,26 +1611,26 @@ async fn watch_search(
     ctx: Arc<JobCtx>,
     http: Arc<dyn Http>,
     phase: Arc<AtomicU8>,
-    endpoint: String,
-    ondemand: Option<settings::OnDemand>,
+    on: Arc<OnceLock<SearchOn>>,
 ) {
     let started = std::time::Instant::now();
     loop {
-        let label = match phase.load(Ordering::Relaxed) {
-            PHASE_CONNECTING => anibeam_contract::i18n::tr("core-downloads-search-starting", &[]),
-            PHASE_READING => anibeam_contract::i18n::tr("core-downloads-search-reading", &[]),
-            _ => match &ondemand {
-                Some(od) if !od.ready.is_empty() && !answers(http.as_ref(), &od.ready).await => {
-                    anibeam_contract::i18n::tr(
-                        "core-downloads-search-starting-endpoint",
-                        &[("endpoint", endpoint.as_str().into())],
-                    )
-                }
-                _ => anibeam_contract::i18n::tr(
-                    "core-downloads-search-searching-endpoint",
-                    &[("endpoint", endpoint.as_str().into())],
-                ),
-            },
+        let label = match (phase.load(Ordering::Relaxed), on.get()) {
+            (PHASE_READING, _) => anibeam_contract::i18n::tr("core-downloads-search-reading", &[]),
+            (PHASE_CONNECTING, _) | (_, None) => {
+                anibeam_contract::i18n::tr("core-downloads-search-starting", &[])
+            }
+            (_, Some(on)) => {
+                let key = match &on.ondemand {
+                    Some(od)
+                        if !od.ready.is_empty() && !answers(http.as_ref(), &od.ready).await =>
+                    {
+                        "core-downloads-search-starting-endpoint"
+                    }
+                    _ => "core-downloads-search-searching-endpoint",
+                };
+                anibeam_contract::i18n::tr(key, &[("endpoint", on.name.as_str().into())])
+            }
         };
         // No total: the seconds are not a count of anything, and the page
         // knows an on-demand endpoint's ceiling from the endpoint list
@@ -4343,6 +4369,119 @@ mod tests {
             Held::No
         ));
         assert!(matches!(held("", &gone), Held::No));
+    }
+
+    /// An [`Http`] that holds `/search` a while before it answers, so the
+    /// progress line ticks while the search is out.
+    struct SlowSearch(Arc<anibeam_net::FakeHttp>);
+
+    impl anibeam_net::Http for SlowSearch {
+        fn send(
+            &self,
+            req: HttpRequest,
+        ) -> anibeam_net::BoxFuture<'_, Result<anibeam_net::HttpResponse, anibeam_net::HttpError>>
+        {
+            Box::pin(async move {
+                if req.url.contains("/search") {
+                    tokio::time::sleep(Duration::from_millis(1500)).await;
+                }
+                self.0.send(req).await
+            })
+        }
+    }
+
+    /// A search that starts the search helper names the endpoint it lands on from the
+    /// list that start read, not from the empty one it found (#1436).
+    #[cfg(unix)]
+    #[test]
+    fn a_search_that_starts_anirss_names_the_endpoint_from_the_list_it_read() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let fake = bin.path().join("anirss");
+        std::fs::write(&fake, "#!/bin/sh\nexec sleep 300\n").unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let http = anibeam_net::FakeHttp::new();
+        let teams = Teams::open(dir.path(), Arc::new(SlowSearch(http.clone())));
+        let mut s = settings::read(&teams.services).unwrap();
+        s.anirss_mode = AnirssMode::Sidecar;
+        s.anirss_command = fake.to_string_lossy().into_owned();
+        s.torrent_mode = TorrentMode::Existing;
+        s.torrent_url = "http://127.0.0.1:9".to_string();
+        s.engine = DownloadsEngine::Anirss;
+        teams
+            .services
+            .store
+            .write(move |c| settings::save(c, &s))
+            .unwrap();
+        assert!(teams.downloads.state().endpoints.is_empty());
+        for _ in 0..2 {
+            http.push_for(
+                "/health",
+                200,
+                serde_json::json!({"ok": true, "version": "0.5.0", "features": ["qbt_clients", "qbt_env_session"]})
+                    .to_string(),
+            );
+        }
+        http.push_for(
+            "/endpoints",
+            200,
+            serde_json::json!({"endpoints": [{"name": "tracker", "kind": "rss", "url": "http://127.0.0.1:4/rss"}]}).to_string(),
+        );
+        http.push_for(
+            "/qbt/status",
+            200,
+            serde_json::json!({"url": "http://127.0.0.1:9", "reachable": true}).to_string(),
+        );
+        http.push_for(
+            "/search",
+            200,
+            serde_json::json!({"query": "Example Show", "endpoint": "tracker", "fell_back": false, "tried": [], "items": []}).to_string(),
+        );
+        let seen = Arc::new(anibeam_foundation::events::Collector::default());
+        teams.services.bus.subscribe(seen.clone());
+
+        let job = search(&teams.downloads, "Example Show".to_string(), None).unwrap();
+        let ended = |events: &[Event]| {
+            events.iter().any(|e| {
+                e.job.as_ref().is_some_and(|j| j.id == job)
+                    && matches!(
+                        e.body,
+                        EventBody::ReleasesFound { .. } | EventBody::JobFailed { .. }
+                    )
+            })
+        };
+        assert!(seen.wait_for(ended, Duration::from_secs(20)));
+        let events = seen.events();
+        assert!(
+            events
+                .iter()
+                .any(|e| e.job.as_ref().is_some_and(|j| j.id == job)
+                    && matches!(e.body, EventBody::ReleasesFound { .. })),
+            "{events:?}"
+        );
+        let labels: Vec<String> = events
+            .into_iter()
+            .filter(|e| e.job.as_ref().is_some_and(|j| j.id == job))
+            .filter_map(|e| match e.body {
+                EventBody::JobProgress { label, .. } => Some(label),
+                _ => None,
+            })
+            .collect();
+        let named = anibeam_contract::i18n::tr(
+            "core-downloads-search-searching-endpoint",
+            &[("endpoint", "tracker".into())],
+        );
+        let generic = anibeam_contract::i18n::tr(
+            "core-downloads-search-searching-endpoint",
+            &[(
+                "endpoint",
+                anibeam_contract::i18n::tr("core-downloads-first-endpoint", &[]).into(),
+            )],
+        );
+        assert!(labels.contains(&named), "{labels:?}");
+        assert!(!labels.contains(&generic), "{labels:?}");
+        teams.shutdown();
     }
 
     #[test]
