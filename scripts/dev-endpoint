@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""Read the developer endpoints at dev.anibeam.app (relay/dev).
+
+    dev-endpoint usage list                  one line per send
+    dev-endpoint usage pull [dir]            save new sends, one JSON file each
+    dev-endpoint usage summary [dir]         sum calls and pages over pulled sends
+    dev-endpoint usage prune --before DATE   drop sends received before DATE
+    dev-endpoint token new|set|show          the read token in the keyring
+
+The token comes from ANIBEAM_DEV_TOKEN, or else the keyring entry
+`service anibeam-dev account read-token` (secret-tool). ANIBEAM_DEV_ENDPOINT
+points it at another Worker, such as a local `wrangler dev`.
+See docs/agents/dev-endpoint.md.
+"""
+
+import argparse
+import json
+import os
+import secrets
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+
+DEFAULT_ENDPOINT = "https://dev.anibeam.app"
+KEYRING = ["service", "anibeam-dev", "account", "read-token"]
+LAST_PULL = ".last-pull"
+
+
+class Failure(Exception):
+    """A plain message for the person at the prompt, no traceback."""
+
+
+def endpoint(args):
+    return (args.endpoint or os.environ.get("ANIBEAM_DEV_ENDPOINT") or DEFAULT_ENDPOINT).rstrip("/")
+
+
+def keyring_token():
+    if not shutil.which("secret-tool"):
+        return None
+    out = subprocess.run(["secret-tool", "lookup", *KEYRING], capture_output=True, text=True)
+    return out.stdout.strip() or None if out.returncode == 0 else None
+
+
+def token(args):
+    value = os.environ.get("ANIBEAM_DEV_TOKEN") or (None if args.no_keyring else keyring_token())
+    if not value:
+        raise Failure(
+            "no read token. Set ANIBEAM_DEV_TOKEN, or store it in the keyring with\n"
+            "  dev-endpoint token set    (paste the token, then Ctrl-D)\n"
+            "The token is the DEV_READ_TOKEN secret on the anibeam-dev Worker; "
+            "see docs/agents/dev-endpoint.md."
+        )
+    return value
+
+
+def request(args, method, path, query=None):
+    url = f"{endpoint(args)}{path}"
+    if query:
+        url += "?" + urllib.parse.urlencode(query)
+    req = urllib.request.Request(url, method=method, headers={
+        "Authorization": f"Bearer {token(args)}",
+        "User-Agent": "anibeam-dev-endpoint",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=30) as res:
+            return json.loads(res.read() or b"null")
+    except urllib.error.HTTPError as err:
+        body = err.read().decode(errors="replace").strip()
+        hint = {401: " (wrong token?)", 503: " (the Worker has no DEV_READ_TOKEN secret yet)"}
+        raise Failure(f"{method} {url}: {err.code} {body}{hint.get(err.code, '')}") from None
+    except urllib.error.URLError as err:
+        raise Failure(f"{method} {url}: {err.reason}") from None
+
+
+def sends(args, since=0):
+    """Every send received after `since` (unix ms), oldest first, all pages."""
+    after = 0
+    while True:
+        page = request(args, "GET", "/usage", {"since": since, "after": after})
+        yield from page["sends"]
+        if page.get("next") is None:
+            return
+        after = page["next"]
+
+
+def when(ms):
+    return datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+
+
+def day_counts(day):
+    calls = Counter(day.get("calls", {}))
+    pages = Counter(day.get("pages", {}))
+    errors = Counter()
+    for call, kinds in day.get("errors", {}).items():
+        for kind, n in kinds.items():
+            errors[f"{call}:{kind}"] += n
+    return calls, pages, errors
+
+
+def events(usage):
+    total = 0
+    for day in (usage.get("days") or {}).values():
+        for counter in day_counts(day):
+            total += sum(counter.values())
+    return total
+
+
+def parse_time(text):
+    """`2026-11-01`, `2026-11-01T12:00`, or unix ms, as unix ms in UTC."""
+    if text.isdigit():
+        return int(text)
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        raise Failure(f"not a date: {text} (use 2026-11-01, 2026-11-01T12:00 or unix ms)") from None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp() * 1000)
+
+
+def sends_dir(given):
+    if given:
+        return Path(given).expanduser()
+    data = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local/share")
+    return Path(data) / "anibeam" / "usage-sends"
+
+
+def cmd_list(args):
+    since = parse_time(args.since) if args.since else 0
+    for s in sends(args, since):
+        u = s.get("usage") or {}
+        print(f"{when(s['at'])}  {u.get('app_version', '?'):<24} {u.get('platform', '?'):<8} "
+              f"{len(u.get('days') or {}):>3} days  {events(u):>7} events  {s['send_id']}")
+
+
+def cmd_pull(args):
+    folder = sends_dir(args.dir)
+    folder.mkdir(parents=True, exist_ok=True)
+    mark = folder / LAST_PULL
+    last = int(mark.read_text().strip() or 0) if mark.exists() else 0
+    # One millisecond back, so a send stored in the same millisecond as the last one
+    # pulled is not missed; one already saved is skipped by its file name.
+    saved, newest = 0, last
+    for s in sends(args, max(last - 1, 0)):
+        stamp = datetime.fromtimestamp(s["at"] / 1000, timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        path = folder / f"{stamp}-{s['send_id']}.json"
+        newest = max(newest, s["at"])
+        if path.exists():
+            continue
+        path.write_text(json.dumps(s, indent=2, sort_keys=True) + "\n")
+        saved += 1
+    mark.write_text(f"{newest}\n")
+    print(f"{saved} new send{'' if saved == 1 else 's'} saved to {folder}" if saved else f"no new sends since {when(last) if last else 'ever'}")
+
+
+def cmd_summary(args):
+    folder = sends_dir(args.dir)
+    files = sorted(folder.glob("*.json")) if folder.is_dir() else []
+    if not files:
+        raise Failure(f"no pulled sends in {folder}; run `dev-endpoint usage pull` first")
+    calls, pages, errors = Counter(), Counter(), Counter()
+    versions = Counter()
+    for f in files:
+        usage = json.loads(f.read_text()).get("usage") or {}
+        versions[f"{usage.get('app_version', '?')} {usage.get('platform', '?')}"] += 1
+        for day in (usage.get("days") or {}).values():
+            c, p, e = day_counts(day)
+            calls += c
+            pages += p
+            errors += e
+    print(f"{len(files)} send{'' if len(files) == 1 else 's'} in {folder}")
+    for title, counter in (("versions", versions), ("calls", calls), ("pages", pages), ("errors", errors)):
+        if not counter:
+            continue
+        print(f"\n{title} (top {args.top} of {len(counter)})")
+        width = max(len(k) for k, _ in counter.most_common(args.top))
+        for key, n in counter.most_common(args.top):
+            print(f"  {key:<{width}}  {n:>8}")
+
+
+def cmd_prune(args):
+    before = parse_time(args.before)
+    out = request(args, "DELETE", "/usage", {"before": before})
+    n = out.get("deleted", 0)
+    print(f"{n} send{'' if n == 1 else 's'} received before {when(before)} deleted")
+
+
+def store(value):
+    out = subprocess.run(
+        ["secret-tool", "store", "--label", "Anibeam dev endpoint read token", *KEYRING],
+        input=value, text=True,
+    )
+    if out.returncode != 0:
+        raise Failure("secret-tool could not store the token (is the keyring unlocked?)")
+
+
+def cmd_token_new(args):
+    if not shutil.which("secret-tool"):
+        raise Failure("secret-tool is not installed (libsecret)")
+    if keyring_token() and not args.force:
+        raise Failure("the keyring already holds a read token; --force replaces it")
+    value = secrets.token_hex(32)
+    store(value)
+    print("A new read token is in the keyring. Put it on the Worker with:\n"
+          "  dev-endpoint token show | npx wrangler@4.161.0 secret put DEV_READ_TOKEN\n"
+          "(run that in relay/dev, logged in to Cloudflare).")
+
+
+def cmd_token_set(args):
+    if not shutil.which("secret-tool"):
+        raise Failure("secret-tool is not installed (libsecret)")
+    value = sys.stdin.readline().strip()
+    if not value:
+        raise Failure("no token on stdin")
+    store(value)
+    print("read token stored in the keyring")
+
+
+def cmd_token_show(args):
+    print(token(args))
+
+
+def parser():
+    top = argparse.ArgumentParser(
+        prog="dev-endpoint",
+        description="Read the developer endpoints at dev.anibeam.app.",
+        epilog="Token: ANIBEAM_DEV_TOKEN, or the keyring (service anibeam-dev account read-token). "
+               "Guide: docs/agents/dev-endpoint.md.",
+    )
+    top.add_argument("--endpoint", metavar="URL",
+                     help=f"the Worker to talk to (default ANIBEAM_DEV_ENDPOINT or {DEFAULT_ENDPOINT})")
+    top.add_argument("--no-keyring", action="store_true", help="never read the token from the keyring")
+    groups = top.add_subparsers(dest="group", metavar="{usage,token}", required=True)
+
+    usage = groups.add_parser("usage", help="the usage log sends (#1532)",
+                              description="The usage log sends apps posted to POST /usage.")
+    u = usage.add_subparsers(dest="cmd", metavar="{list,pull,summary,prune}", required=True)
+    p = u.add_parser("list", help="one line per send: received, version, platform, days, events",
+                     description="One line per send on the Worker: when it was received (UTC), "
+                                 "app version, platform, days it covers, total events, send id.")
+    p.add_argument("--since", metavar="DATE", help="only sends received after DATE (2026-11-01 or unix ms)")
+    p.set_defaults(func=cmd_list)
+    p = u.add_parser("pull", help="save sends new since the last pull, one JSON file each",
+                     description="Save every send received since the last pull into DIR, one JSON "
+                                 "file each, and remember the newest one's time in DIR/.last-pull.")
+    p.add_argument("dir", nargs="?", help="where to save (default $XDG_DATA_HOME/anibeam/usage-sends)")
+    p.set_defaults(func=cmd_pull)
+    p = u.add_parser("summary", help="sum calls, pages and errors over pulled sends",
+                     description="Sum calls, pages and errors over every pulled send in DIR, "
+                                 "largest first. Reads only local files.")
+    p.add_argument("dir", nargs="?", help="where the pulled sends are (default as for pull)")
+    p.add_argument("--top", type=int, default=20, metavar="N", help="rows per section (default 20)")
+    p.set_defaults(func=cmd_summary)
+    p = u.add_parser("prune", help="delete sends received before a date, on the Worker",
+                     description="Delete every send received before DATE from the Worker. "
+                                 "Pulled files are kept.")
+    p.add_argument("--before", required=True, metavar="DATE", help="2026-11-01, 2026-11-01T12:00 or unix ms (UTC)")
+    p.set_defaults(func=cmd_prune)
+
+    tok = groups.add_parser("token", help="the read token in the keyring",
+                            description="The read token (DEV_READ_TOKEN) in the keyring.")
+    t = tok.add_subparsers(dest="cmd", metavar="{new,set,show}", required=True)
+    p = t.add_parser("new", help="make a fresh token and store it",
+                     description="Make a fresh random token and store it in the keyring.")
+    p.add_argument("--force", action="store_true", help="replace a token already stored")
+    p.set_defaults(func=cmd_token_new)
+    p = t.add_parser("set", help="store a token read from stdin",
+                     description="Store the token read from stdin in the keyring.")
+    p.set_defaults(func=cmd_token_set)
+    p = t.add_parser("show", help="print the token, for piping into wrangler",
+                     description="Print the token, for `| wrangler secret put DEV_READ_TOKEN`.")
+    p.set_defaults(func=cmd_token_show)
+    return top
+
+
+def main():
+    args = parser().parse_args()
+    try:
+        args.func(args)
+    except Failure as err:
+        print(f"dev-endpoint: {err}", file=sys.stderr)
+        sys.exit(1)
+    except BrokenPipeError:
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

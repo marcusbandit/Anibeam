@@ -1,0 +1,56 @@
+#compdef dev-endpoint
+# zsh completion for scripts/dev-endpoint. Install as _dev-endpoint on fpath.
+
+_dev-endpoint() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    _arguments -C \
+        '(- *)'{-h,--help}'[show help]' \
+        '--endpoint[the Worker to talk to]:url:(https\://dev.anibeam.app http\://127.0.0.1\:8796)' \
+        '--no-keyring[never read the token from the keyring]' \
+        '1:group:((usage\:"the usage log sends" token\:"the read token in the keyring"))' \
+        '*::arg:->rest' && return
+
+    case $state in
+    rest)
+        case $line[1] in
+        usage)
+            if (( CURRENT == 2 )); then
+                local -a cmds=(
+                    'list:one line per send'
+                    'pull:save sends new since the last pull'
+                    'summary:sum calls, pages and errors over pulled sends'
+                    'prune:delete sends received before a date'
+                )
+                _describe -t commands 'usage command' cmds
+                return
+            fi
+            case $line[2] in
+            list) _arguments '(- *)'{-h,--help}'[show help]' '--since[only sends received after DATE]:date' ;;
+            pull) _arguments '(- *)'{-h,--help}'[show help]' '1:folder:_files -/' ;;
+            summary) _arguments '(- *)'{-h,--help}'[show help]' '--top[rows per section]:n' '1:folder:_files -/' ;;
+            prune) _arguments '(- *)'{-h,--help}'[show help]' '--before[delete sends received before DATE]:date' ;;
+            esac
+            ;;
+        token)
+            if (( CURRENT == 2 )); then
+                local -a cmds=(
+                    'new:make a fresh token and store it'
+                    'set:store a token read from stdin'
+                    'show:print the token, for piping into wrangler'
+                )
+                _describe -t commands 'token command' cmds
+                return
+            fi
+            case $line[2] in
+            new) _arguments '(- *)'{-h,--help}'[show help]' '--force[replace a token already stored]' ;;
+            set|show) _arguments '(- *)'{-h,--help}'[show help]' ;;
+            esac
+            ;;
+        esac
+        ;;
+    esac
+}
+
+_dev-endpoint "$@"
