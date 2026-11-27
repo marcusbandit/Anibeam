@@ -731,6 +731,19 @@ pub async fn card_for(services: &Services, series: u64) -> Result<Option<SeriesC
     Ok(cards.into_iter().next())
 }
 
+/// The cards a job that touched several series at once reports, in one
+/// read. A series that went away is left out, the way `card_for` leaves it.
+pub async fn cards_for_all(
+    services: &Services,
+    series: Vec<u64>,
+) -> Result<Vec<SeriesCard>, CoreError> {
+    let dir = services.paths.images_dir();
+    services
+        .store
+        .write_async(move |c| cards::cards_for(c, &dir, &series))
+        .await
+}
+
 /// A rate limit the limiter could not ride out: the provider saying stop.
 pub(crate) fn is_rate_limited(e: &CoreError) -> bool {
     matches!(
