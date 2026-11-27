@@ -1118,3 +1118,16 @@ fn a_stored_room_keeps_its_episode_or_its_lack_of_one() {
     let back: Room = serde_json::from_value(v).unwrap();
     assert_eq!(back.episode(), None);
 }
+
+#[test]
+fn names_are_cleaned_like_the_relay_does() {
+    assert_eq!(clean_name("  Ann "), Some("Ann".into()));
+    assert_eq!(clean_name(""), None);
+    assert_eq!(clean_name("   "), None);
+    assert_eq!(clean_name("a\u{7}b"), None);
+    assert_eq!(
+        clean_name(&"x".repeat(NAME_MAX)),
+        Some("x".repeat(NAME_MAX))
+    );
+    assert_eq!(clean_name(&"x".repeat(NAME_MAX + 1)), None);
+}
