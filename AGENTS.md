@@ -57,6 +57,10 @@ Only one Anibeam GUI instance runs at a time: a second start hands off to the ru
 - On desktop, use `anibeam ctl` instead of simulating raw mouse clicks (`anibeam ctl help`). `anibeam ctl open --root <dir> --offscreen` launches a headless sandbox window, followed by `go <page>`, `tree`, `click <words|objectName|x,y>`, `type`, `key`, `shot <file.png>`, `where`, `eval <js>`, and `quit`. See `apps/desktop/README.md` for `apps/desktop/scripts/shoot.sh`, `apps/desktop/scripts/drive.sh`, and `apps/desktop/scripts/longshot.py`.
 - On phone, use `apps/phone/scripts/ctl.sh` (`ctl.sh help`, `tree`, `go`, `click`, `type`, `key`, `shot`, `wait`, `perf`) over `adb` (`$ANDROID_SERIAL`). See `apps/phone/README.md`.
 
+## Usage log
+
+The core keeps a usage log (`usage.json` in the data folder: counts of calls, pages and errors per day, nothing personal). Agents may read and export it freely with `anibeam-cli usage show` and `usage export <file>`. Before `anibeam-cli usage send --yes`, show the owner the file and get an explicit yes in that conversation, every time. A yes from an earlier conversation, or for an earlier send, does not count.
+
 ## Workflow guides for repository automation
 
 - Issue tracking and project board state: [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md)

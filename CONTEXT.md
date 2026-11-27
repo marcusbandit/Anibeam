@@ -154,6 +154,10 @@ _Avoid_: backup, dump, migration file
 What the full export adds: tracker accounts and their tokens, API keys, history, preferences.
 _Avoid_: secrets, credentials, settings
 
+**Usage log**:
+Counts of what this Anibeam was used for, per UTC day: each call by name, each page by its id, each error by its kind. Kept on the machine in `usage.json` for 90 days, nothing personal in it, and sent only when the owner presses send, once, with a fresh random id.
+_Avoid_: telemetry, analytics, tracking
+
 **Import**:
 The job that merges an export into the library. The file wins for matches, flags, accounts and preferences; the newer timestamp wins for history; nothing is deleted.
 _Avoid_: restore, load, sync
