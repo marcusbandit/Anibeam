@@ -1,8 +1,9 @@
 name: Issue labels
 
-# Creates the labels the issue forms, triage (docs/agents/triage.md), issue-state.yml, pr-build.yml, pr-issue.yml and pr-labels.yml use, with these colours
-# and descriptions, and puts them back when the forms or this list change on main, or when one
-# of them is deleted.
+# Creates the labels the issue forms, triage (docs/agents/triage.md), issue-state.yml,
+# pr-build.yml, pr-issue.yml, pr-labels.yml and the agent loop use, with these colours and
+# descriptions, and puts them back when the forms or this list change on main, or when one of
+# them is deleted.
 on:
   push:
     branches: [main]
@@ -36,3 +37,12 @@ jobs:
           gh label create "enhancement" --force --color a2eeef --description "New feature or request"
           gh label create "documentation" --force --color 0075ca --description "Improvements or additions to documentation"
           gh label create "question" --force --color d876e3 --description "Further information is requested"
+          # The agent loop owns these five. Its jev-label.py and jev-risk.py live outside this repo
+          # and force their colour and text: the four sort labels on every pass, risky whenever it
+          # rates a new PR head. These lines copy both exactly, so only the owner changes them, in
+          # the loop first. They come last so a failing line cannot stop the labels above.
+          gh label create "agent-ready" --force --color 0e8a16 --description "A coding agent can do this alone"
+          gh label create "needs-human" --force --color d93f0b --description "The owner has to decide or do something first"
+          gh label create "unclear" --force --color fef2c0 --description "The issue does not say what is wrong or what done looks like, so nobody could start without asking t"
+          gh label create "duplicate" --force --color cfd3d7 --description "One of the open issues in the state already asks for the same change."
+          gh label create "risky" --force --color b60205 --description "Jev rated this PR high risk: a person reads it before it merges"
