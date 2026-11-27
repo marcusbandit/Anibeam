@@ -9,8 +9,10 @@
 //! file again, adds those counts to it and writes it back, so two Anibeams on one data
 //! folder (the window and `anibeam-cli`, say) both count, and a clear in one is not undone
 //! by the other's next save. What the log shows is the file plus the counts not saved yet.
-//! A save happens at shutdown, before the log is shown, saved or sent, and after a change
-//! once the last save is a minute old. The last 90 UTC days are kept. Switched off, nothing
+//! A save happens at shutdown, before the log is shown, saved or sent, and at most once a
+//! minute after a change. A change never saves on the thread that made it: it hands back
+//! how long its owner should wait before calling `save_due`, off that thread (the core does
+//! it on its runtime). The last 90 UTC days are kept. Switched off, nothing
 //! more is counted and the file stays as it was until it is cleared.
 
 use std::collections::BTreeMap;
@@ -30,7 +32,7 @@ pub const FORMAT: u32 = 1;
 /// Days kept, today included.
 pub const KEEP_DAYS: i64 = 90;
 
-/// The longest a change waits in memory once another change comes along.
+/// The shortest time between two saves a change asks for.
 const SAVE_EVERY: Duration = Duration::from_secs(60);
 
 /// The longest page id the log takes.
@@ -109,6 +111,8 @@ struct Inner {
     pending: BTreeMap<String, Day>,
     enabled: bool,
     last_save: Option<Instant>,
+    /// A change asked for a save that has not run yet.
+    save_asked: bool,
 }
 
 pub struct UsageLog {
@@ -173,6 +177,7 @@ impl UsageLog {
                 pending: BTreeMap::new(),
                 enabled,
                 last_save: None,
+                save_asked: false,
             }),
             io: Mutex::new(()),
         }
@@ -191,8 +196,9 @@ impl UsageLog {
         recover(&self.inner).enabled = on;
     }
 
-    /// One call by its variant name, and the kind of error it ended in, if any.
-    pub fn record_call(&self, call: &'static str, error: Option<&'static str>) {
+    /// One call by its variant name, and the kind of error it ended in, if any. Hands back
+    /// how long to wait before `save_due` when this change asks for a save.
+    pub fn record_call(&self, call: &'static str, error: Option<&'static str>) -> Option<Duration> {
         self.record_at(today(), |day| {
             *day.calls.entry(call.to_string()).or_default() += 1;
             if let Some(kind) = error {
@@ -202,36 +208,46 @@ impl UsageLog {
                     .entry(kind.to_string())
                     .or_default() += 1;
             }
-        });
+        })
     }
 
-    /// A page the shell opened. Refused unless it is a page id (`page_ok`).
-    pub fn record_page(&self, page: &str) -> Result<(), CoreError> {
+    /// A page the shell opened. Refused unless it is a page id (`page_ok`). Hands back a
+    /// save to make the way `record_call` does.
+    pub fn record_page(&self, page: &str) -> Result<Option<Duration>, CoreError> {
         if !page_ok(page) {
             return Err(CoreError::invalid(
                 "page",
                 anibeam_contract::i18n::tr("core-usage-bad-page", &[]),
             ));
         }
-        self.record_at(today(), |day| {
+        Ok(self.record_at(today(), |day| {
             *day.pages.entry(page.to_string()).or_default() += 1;
-        });
-        Ok(())
+        }))
     }
 
-    /// Counts into the day `day`, drops the days past `KEEP_DAYS`, and saves when the last
-    /// save is a minute old.
-    fn record_at(&self, day: i64, count: impl FnOnce(&mut Day)) {
-        let due = {
-            let mut inner = recover(&self.inner);
-            if !inner.enabled {
-                return;
-            }
-            count(inner.pending.entry(date_of(day)).or_default());
-            prune(&mut inner.pending, day);
-            inner.last_save.is_none_or(|at| at.elapsed() >= SAVE_EVERY)
-        };
-        if due {
+    /// Counts into the day `day` and drops the days past `KEEP_DAYS`, in memory only. The
+    /// first change since the last save asks for one, a minute after that save.
+    fn record_at(&self, day: i64, count: impl FnOnce(&mut Day)) -> Option<Duration> {
+        let mut inner = recover(&self.inner);
+        if !inner.enabled {
+            return None;
+        }
+        count(inner.pending.entry(date_of(day)).or_default());
+        prune(&mut inner.pending, day);
+        if inner.save_asked {
+            return None;
+        }
+        inner.save_asked = true;
+        Some(
+            inner
+                .last_save
+                .map_or(Duration::ZERO, |at| SAVE_EVERY.saturating_sub(at.elapsed())),
+        )
+    }
+
+    /// The save a change asked for. Nothing to do when another save has run since.
+    pub fn save_due(&self) {
+        if recover(&self.inner).save_asked {
             self.flush();
         }
     }
@@ -272,6 +288,7 @@ impl UsageLog {
         let pending = {
             let mut inner = recover(&self.inner);
             inner.last_save = Some(Instant::now());
+            inner.save_asked = false;
             std::mem::take(&mut inner.pending)
         };
         if pending.is_empty() {
@@ -435,21 +452,29 @@ mod tests {
     }
 
     #[test]
-    fn the_file_is_read_back_and_saved_once_a_minute() {
+    fn a_change_asks_for_one_save_a_minute_and_never_saves_itself() {
         let dir = tempfile::tempdir().unwrap();
         {
             let log = log(dir.path());
-            // The first change saves at once, the next waits for a minute or a flush
-            log.record_call("Scan", None);
-            assert!(log.path().exists());
-            log.record_call("Scan", None);
+            // The first change asks for a save at once, and the next rides along with it
+            assert_eq!(log.record_call("Scan", None), Some(Duration::ZERO));
+            assert_eq!(log.record_call("Scan", None), None);
+            assert!(!log.path().exists());
+            log.save_due();
             let on_disk: File =
                 serde_json::from_slice(&std::fs::read(log.path()).unwrap()).unwrap();
-            assert_eq!(on_disk.days[&date_of(today())].calls["Scan"], 1);
+            assert_eq!(on_disk.days[&date_of(today())].calls["Scan"], 2);
+            // After a save the next one waits for the rest of the minute
+            let after = log.record_call("Scan", None).unwrap();
+            assert!(after > SAVE_EVERY - Duration::from_secs(5), "{after:?}");
+            // A save that ran in the meantime leaves the asked one nothing to do
             log.flush();
+            let before = std::fs::read(log.path()).unwrap();
+            log.save_due();
+            assert_eq!(std::fs::read(log.path()).unwrap(), before);
         }
         let again = log(dir.path());
-        assert_eq!(again.summary(), (1, 2));
+        assert_eq!(again.summary(), (1, 3));
     }
 
     /// The window and the CLI on one data folder: both count, the file holds the sum, and a

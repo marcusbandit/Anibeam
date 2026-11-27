@@ -137,6 +137,23 @@ fn a_clear_with_the_log_on_leaves_it_empty() {
 }
 
 #[test]
+fn a_count_reaches_the_file_from_the_runtime() {
+    let (dir, core, _c) = common::open_core();
+    let file = dir.path().join("data").join("usage.json");
+    assert!(!file.exists());
+    core.call(Call::ListSources).unwrap();
+    // Nothing showed or saved the log: the save the count asked for ran on its own
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !file.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    let day = saved["days"].as_object().unwrap().values().next().unwrap();
+    assert_eq!(day["calls"]["ListSources"], 1);
+    core.shutdown();
+}
+
+#[test]
 fn the_log_survives_a_restart() {
     let dir = tempfile::tempdir().unwrap();
     let paths = CorePaths::under(dir.path());

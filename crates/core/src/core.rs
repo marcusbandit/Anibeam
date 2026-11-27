@@ -645,9 +645,12 @@ impl Core {
         let name =
             (!matches!(call, Call::NoteUsage { .. } | Call::ClearUsage)).then(|| call.name());
         let reply = self.route(call);
-        if let Some(name) = name {
-            self.usage
-                .record_call(name, reply.as_ref().err().map(CoreError::kind));
+        if let Some(name) = name
+            && let Some(after) = self
+                .usage
+                .record_call(name, reply.as_ref().err().map(CoreError::kind))
+        {
+            usage::save_later(self, after);
         }
         reply
     }

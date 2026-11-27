@@ -4,6 +4,13 @@
 //! `SendUsage` is the only code that sends it anywhere: once, to the collection route on
 //! the rooms relay, with a fresh random id that is never kept, so two sends from one
 //! machine cannot be tied together.
+//!
+//! A count never touches the disk on the thread that made it: the save it asks for runs on
+//! the core's runtime, at most once a minute (`save_later`). Showing, saving, sending and
+//! clearing the log, and shutdown, save at once.
+
+use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::json;
 
@@ -21,8 +28,20 @@ pub fn send_url() -> String {
 }
 
 pub(crate) fn note(core: &Core, page: &str) -> Result<Reply, CoreError> {
-    core.usage.record_page(page)?;
+    if let Some(after) = core.usage.record_page(page)? {
+        save_later(core, after);
+    }
     Ok(Reply::Ok)
+}
+
+/// The save a count asked for, `after` from now, on a blocking thread of the core's
+/// runtime. A runtime already shut down drops it; shutdown saved first.
+pub(crate) fn save_later(core: &Core, after: Duration) {
+    let log = Arc::clone(&core.usage);
+    core.services.handle.spawn(async move {
+        tokio::time::sleep(after).await;
+        let _ = tokio::task::spawn_blocking(move || log.save_due()).await;
+    });
 }
 
 pub(crate) fn get(core: &Core) -> Result<Reply, CoreError> {
