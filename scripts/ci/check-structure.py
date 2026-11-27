@@ -6,7 +6,7 @@ Checks:
      (new Rust crates go in crates/, apps in apps/, relays in relay/, scripts in scripts/).
   2. Every visible top-level directory appears at the top level of the repository map tree in
      ARCHITECTURE.md.
-  3. Every Cargo workspace member (plus standalone workspaces apps/phone and relay/worker) is
+  3. Every Cargo workspace member (plus standalone workspaces apps/phone, relay/worker and relay/dev) is
      documented by full path in ARCHITECTURE.md.
   4. Every Cargo.toml directly under crates/* is listed in root Cargo.toml workspace.members.
 """
@@ -38,6 +38,7 @@ ALLOWED_ROOT_DIRS = {
 STANDALONE_WORKSPACES = [
     "apps/phone",
     "relay/worker",
+    "relay/dev",
 ]
 
 TREE_LINE_RE = re.compile(r"^((?:│   |    )*)(?:├── |└── )([A-Za-z0-9._-]+)/")

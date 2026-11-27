@@ -8,8 +8,6 @@
 #   SMOKE_QUICK=1 ./smoke.sh   skip the two minute timer phase
 #   SMOKE_CLOSE=1 ./smoke.sh   also wait out the 10 minute empty room close
 #
-# The usage phase checks POST /usage and GET /usage with a token made for the run.
-#
 # Needs node 22 or later, worker-build on PATH and the wasm32-unknown-unknown
 # target. PORT picks the local port (default 8797).
 set -euo pipefail
@@ -20,8 +18,6 @@ base="http://127.0.0.1:${port}"
 wrangler="${WRANGLER:-npx --yes wrangler@4.161.0}"
 work="$(mktemp -d)"
 pid=""
-# The usage log's read token for this run only, handed to wrangler as a var.
-export SMOKE_USAGE_TOKEN="smoke-$RANDOM-$RANDOM"
 
 stop() {
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
@@ -34,8 +30,7 @@ trap 'stop; rm -rf "$work"' EXIT
 
 start() {
     (cd "$here" && exec $wrangler dev --local --ip 127.0.0.1 --port "$port" \
-        --persist-to "$work/state" --show-interactive-dev-session=false \
-        --var "USAGE_READ_TOKEN:$SMOKE_USAGE_TOKEN") \
+        --persist-to "$work/state" --show-interactive-dev-session=false) \
         >>"$work/wrangler.log" 2>&1 &
     pid=$!
     for _ in $(seq 1 300); do
@@ -62,7 +57,6 @@ if [[ -z "${SMOKE_QUICK:-}" ]]; then
     node "$here/smoke.mjs" "$base" timers
 fi
 node "$here/smoke.mjs" "$base" limits
-node "$here/smoke.mjs" "$base" usage
 if [[ -n "${SMOKE_CLOSE:-}" ]]; then
     closed="$work/smoke-closed.json"
     node "$here/smoke.mjs" "$base" close "$closed"

@@ -3,9 +3,11 @@
 //! and the log's counts. Each send is kept as one row in one SQLite-backed Durable Object
 //! (`UsageObject`), size capped, shape checked and rate limited per address before the
 //! object is touched. The object keeps the newest `MAX_ROWS` sends and drops the oldest.
-//! `GET /usage` reads them back, only with `Authorization: Bearer <USAGE_READ_TOKEN>`, a
-//! Worker secret. Nothing here records the sender's address: the limiter counts it and
-//! forgets it.
+//!
+//! The owner's side, past `auth::check`: `GET /usage` reads the sends, oldest first, 100 at
+//! a time (`?since=<unix ms>` only those received after then, `?after=<id>` the next page),
+//! and `DELETE /usage?before=<unix ms>` drops the ones received before then. Nothing here
+//! records the sender's address: the limiter counts it and forgets it.
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -13,16 +15,13 @@ use worker::{
     DurableObject, Env, Method, Request, RequestInit, Response, Result, State, durable_object,
 };
 
-use crate::{allowed, now_ms, text};
+use crate::{allowed, now_ms, query_number, text};
 
 /// The Durable Object namespace binding in `wrangler.toml`.
 const USAGE: &str = "USAGE";
 
 /// Sends per address a minute, set in `wrangler.toml`.
 const USAGE_LIMIT: &str = "USAGE_LIMIT";
-
-/// The secret `GET /usage` checks.
-const READ_TOKEN: &str = "USAGE_READ_TOKEN";
 
 /// The largest send.
 pub const MAX_SEND: usize = 256 * 1024;
@@ -160,32 +159,17 @@ pub fn check_send(body: &[u8]) -> std::result::Result<(String, String), Refusal>
     Ok((send.send_id, send.usage.to_string()))
 }
 
-/// Whether the request carries the read token. Compared over every byte, so the time it
-/// takes says nothing about how much of a guess was right.
-pub fn token_ok(header: Option<&str>, token: &str) -> bool {
-    let Some(given) = header.and_then(|h| h.strip_prefix("Bearer ")) else {
-        return false;
-    };
-    if token.is_empty() || given.len() != token.len() {
-        return false;
-    }
-    given
-        .bytes()
-        .zip(token.bytes())
-        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-        == 0
-}
-
-/// `POST /usage` and `GET /usage`.
+/// The owner's `GET /usage` and `DELETE /usage`, past `auth::check`.
 pub async fn route(req: Request, env: &Env) -> Result<Response> {
     match req.method() {
-        Method::Post => receive(req, env).await,
         Method::Get => read(req, env).await,
+        Method::Delete => prune(req, env).await,
         _ => text(405, "method not allowed"),
     }
 }
 
-async fn receive(mut req: Request, env: &Env) -> Result<Response> {
+/// `POST /usage`, the one route anyone may call.
+pub async fn receive(mut req: Request, env: &Env) -> Result<Response> {
     if !allowed(env, USAGE_LIMIT, &req).await {
         return text(429, "too many sends, try again in a minute");
     }
@@ -213,21 +197,23 @@ async fn receive(mut req: Request, env: &Env) -> Result<Response> {
 }
 
 async fn read(req: Request, env: &Env) -> Result<Response> {
-    let token = env.secret(READ_TOKEN).map(|s| s.to_string()).ok();
-    let Some(token) = token.filter(|t| !t.is_empty()) else {
-        return text(404, "not found");
+    let url = req.url()?;
+    let (Ok(since), Ok(after)) = (query_number(&url, "since"), query_number(&url, "after")) else {
+        return text(400, "since and after are whole numbers");
     };
-    let header = req.headers().get("Authorization").ok().flatten();
-    if !token_ok(header.as_deref(), &token) {
-        return text(401, "unauthorized");
-    }
-    let after = req
-        .url()?
-        .query_pairs()
-        .find(|(k, _)| k == "after")
-        .and_then(|(_, v)| v.parse::<i64>().ok())
-        .unwrap_or(0);
-    let internal = Request::new(&format!("{INTERNAL}/list?after={after}"), Method::Get)?;
+    let (since, after) = (since.unwrap_or(0), after.unwrap_or(0));
+    let internal = Request::new(
+        &format!("{INTERNAL}/list?since={since}&after={after}"),
+        Method::Get,
+    )?;
+    stub(env)?.fetch_with_request(internal).await
+}
+
+async fn prune(req: Request, env: &Env) -> Result<Response> {
+    let Ok(Some(before)) = query_number(&req.url()?, "before") else {
+        return text(400, "expected ?before=<unix ms>");
+    };
+    let internal = Request::new(&format!("{INTERNAL}/prune?before={before}"), Method::Delete)?;
     stub(env)?.fetch_with_request(internal).await
 }
 
@@ -242,6 +228,11 @@ struct Row {
     at: i64,
     send_id: String,
     body: String,
+}
+
+/// A number the Worker already checked, read back off its own internal request.
+fn internal_number(req: &Request, key: &str) -> Result<i64> {
+    Ok(query_number(&req.url()?, key).ok().flatten().unwrap_or(0))
 }
 
 /// Every send, one row each.
@@ -269,6 +260,7 @@ impl DurableObject for UsageObject {
 
     async fn fetch(&self, mut req: Request) -> Result<Response> {
         let path = req.path();
+        let sql = self.state.storage().sql();
         match (req.method(), path.as_str()) {
             (Method::Post, "/store") => {
                 #[derive(Deserialize)]
@@ -277,7 +269,7 @@ impl DurableObject for UsageObject {
                     usage: String,
                 }
                 let row: Store = req.json().await?;
-                let cursor = self.state.storage().sql().exec(
+                let cursor = sql.exec(
                     "INSERT OR IGNORE INTO sends (at, send_id, body) VALUES (?, ?, ?)",
                     vec![
                         (now_ms() as i64).into(),
@@ -291,7 +283,7 @@ impl DurableObject for UsageObject {
                 }
                 // The newest MAX_ROWS stay. With fewer, the inner select is empty and
                 // nothing goes.
-                self.state.storage().sql().exec(
+                sql.exec(
                     "DELETE FROM sends WHERE id < \
                      (SELECT id FROM sends ORDER BY id DESC LIMIT 1 OFFSET ?)",
                     vec![(MAX_ROWS - 1).into()],
@@ -299,19 +291,13 @@ impl DurableObject for UsageObject {
                 text(201, "stored")
             }
             (Method::Get, "/list") => {
-                let after = req
-                    .url()?
-                    .query_pairs()
-                    .find(|(k, _)| k == "after")
-                    .and_then(|(_, v)| v.parse::<i64>().ok())
-                    .unwrap_or(0);
-                let rows: Vec<Row> = self
-                    .state
-                    .storage()
-                    .sql()
+                let since = internal_number(&req, "since")?;
+                let after = internal_number(&req, "after")?;
+                let rows: Vec<Row> = sql
                     .exec(
-                        "SELECT id, at, send_id, body FROM sends WHERE id > ? ORDER BY id LIMIT ?",
-                        vec![after.into(), PAGE.into()],
+                        "SELECT id, at, send_id, body FROM sends \
+                         WHERE at > ? AND id > ? ORDER BY id LIMIT ?",
+                        vec![since.into(), after.into(), PAGE.into()],
                     )?
                     .to_array()?;
                 let next = (rows.len() as i64 == PAGE).then(|| rows.last().map(|r| r.id));
@@ -327,6 +313,11 @@ impl DurableObject for UsageObject {
                     })
                     .collect();
                 Response::from_json(&json!({ "sends": sends, "next": next.flatten() }))
+            }
+            (Method::Delete, "/prune") => {
+                let before = internal_number(&req, "before")?;
+                let cursor = sql.exec("DELETE FROM sends WHERE at < ?", vec![before.into()])?;
+                Response::from_json(&json!({ "deleted": cursor.rows_written() }))
             }
             _ => text(404, "not found"),
         }
@@ -460,15 +451,5 @@ mod tests {
             400
         );
         assert_eq!(refused(&|u| u["days"]["2026-11-27"] = json!(5)), 400);
-    }
-
-    #[test]
-    fn only_the_exact_token_reads() {
-        assert!(token_ok(Some("Bearer s3cret"), "s3cret"));
-        assert!(!token_ok(Some("Bearer s3cre"), "s3cret"));
-        assert!(!token_ok(Some("Bearer s3creT"), "s3cret"));
-        assert!(!token_ok(Some("s3cret"), "s3cret"));
-        assert!(!token_ok(None, "s3cret"));
-        assert!(!token_ok(Some("Bearer "), ""));
     }
 }

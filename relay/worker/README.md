@@ -12,8 +12,6 @@ machine.
 | `GET /` | the find page, where a code is typed, `200`; `/?code=...` answers `303` to that room's page, or `400` with the page again when it is not a code |
 | `GET /{code}` | the join page, `200`, or `404` with a "Room not found" page |
 | `GET /health` | `200 ok` |
-| `POST /usage` `{"send_id", "usage"}` | `201` stored, `200` that send id is already stored, `400` not a usage log, `413` over 256 KiB, `429` over the limit |
-| `GET /usage` `?after=<id>` | `200 {"sends": [...], "next"}` with `Authorization: Bearer <USAGE_READ_TOKEN>`, `401` without it, `404` when the secret is not set |
 
 This crate is its own Cargo workspace, so `cargo test --workspace` at the repo
 root never builds it. It only builds for `wasm32-unknown-unknown`.
@@ -60,13 +58,6 @@ root never builds it. It only builds for `wasm32-unknown-unknown`.
   hibernatable socket that never sent a frame open until the object leaves
   memory, about 10 s later (cloudflare/workerd#7566), so a client that waits
   for its `close` event sees it then. Not yet seen on the deployed relay.
-- The usage log's sends (#1532) go to one more SQLite-backed Durable Object,
-  `UsageObject`, from the `v2` migration: one object for every send, one row
-  per send, keyed by its random `send_id` so a repeat changes nothing. The
-  Worker checks the size (256 KiB), the shape and a limit of 5 sends a minute
-  per address (`USAGE_LIMIT`) before the object is touched. Nothing stores the
-  sender's address. `GET /usage` answers 100 sends at a time, oldest first;
-  `next` is the `after` for the following page, or null at the end.
 - TODO: the native relay also caps open rooms at 10,000. The Worker has no
   global count; the 32^6 code space and the free plan's daily caps stand in
   for it.
@@ -132,20 +123,8 @@ On the free plan, from this directory:
 3. `npx wrangler@4.161.0 deploy`.
 
 The first deploy creates the `RoomObject` class from the `v1` migration and the
-rate limiters, and the `UsageObject` class from `v2`. Then set the app's
-`room_relay` default to that address.
+two rate limiters. Then set the app's `room_relay` default to that address.
 
-## Reading the usage sends
-
-`GET /usage` needs the `USAGE_READ_TOKEN` secret. It is never in the repo or in
-`wrangler.toml`; set it once on the deployed Worker and keep it in a password
-manager:
-
-    openssl rand -hex 32 | npx wrangler@4.161.0 secret put USAGE_READ_TOKEN
-
-Then read with it:
-
-    curl -H "Authorization: Bearer $USAGE_READ_TOKEN" https://rooms.anibeam.app/usage
-
-Until the secret is set, `GET /usage` answers 404. Locally, `smoke.sh` hands
-`wrangler dev` a token made for the run as a `--var`.
+The `v2` and `v3` migrations are history: one deploy carried the usage log's
+`UsageObject` before it moved to the dev Worker in [`relay/dev`](../dev/), and
+`v3` deletes that class and its data.

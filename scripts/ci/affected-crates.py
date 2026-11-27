@@ -76,6 +76,7 @@ NO_CRATE = [
     "assets/",
     "Casks/",
     "relay/worker/",
+    "relay/dev/",
     "apps/phone/",
     # Build output a pull leaves behind in a checkout from before the app folder renames.
     "apps/android/",
