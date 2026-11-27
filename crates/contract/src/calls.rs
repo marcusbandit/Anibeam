@@ -1063,6 +1063,7 @@ impl Call {
             Call::ReportFix { .. } => "ReportFix",
             Call::TriageAgent => "TriageAgent",
             Call::RemoveShow { .. } => "RemoveShow",
+            Call::KeepSubscription { .. } => "KeepSubscription",
             Call::ControlTorrents { .. } => "ControlTorrents",
             Call::SetRoll { .. } => "SetRoll",
             Call::RollMore { .. } => "RollMore",
