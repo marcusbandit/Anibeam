@@ -794,8 +794,9 @@ pub fn prune_and_list(services: &Services) -> Result<Reply, CoreError> {
             [],
             |r| r.get(0),
         )?;
-        // The same guard the read itself has: a read stopped at the page cap may have left
-        // shows on air unread, and their marks must stay
+        // A read stopped at the page cap may have left shows on air unread, and their marks
+        // must stay. The cache does not keep whether its read was whole, so this guesses
+        // from the count, and a capped read under 500 shows slips past it (#1502).
         if on_air > 0 && on_air < i64::from(MAX_PAGES * 50) {
             prune_not_interested(tx)?;
         }
