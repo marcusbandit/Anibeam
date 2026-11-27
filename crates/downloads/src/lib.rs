@@ -4371,9 +4371,14 @@ mod tests {
         assert!(matches!(held("", &gone), Held::No));
     }
 
-    /// An [`Http`] that holds `/search` a while before it answers, so the
-    /// progress line ticks while the search is out.
-    struct SlowSearch(Arc<anibeam_net::FakeHttp>);
+    /// An [`Http`] that holds `/search` until the progress line has said `label`, or ten
+    /// seconds have gone, so the line is read while the search is out however slow the
+    /// runner is.
+    struct SlowSearch {
+        inner: Arc<anibeam_net::FakeHttp>,
+        seen: Arc<anibeam_foundation::events::Collector>,
+        label: String,
+    }
 
     impl anibeam_net::Http for SlowSearch {
         fn send(
@@ -4383,9 +4388,16 @@ mod tests {
         {
             Box::pin(async move {
                 if req.url.contains("/search") {
-                    tokio::time::sleep(Duration::from_millis(1500)).await;
+                    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                    while std::time::Instant::now() < deadline
+                        && !self.seen.bodies().iter().any(|b| {
+                            matches!(b, EventBody::JobProgress { label, .. } if *label == self.label)
+                        })
+                    {
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                    }
                 }
-                self.0.send(req).await
+                self.inner.send(req).await
             })
         }
     }
@@ -4401,8 +4413,18 @@ mod tests {
         let fake = bin.path().join("anirss");
         std::fs::write(&fake, "#!/bin/sh\nexec sleep 300\n").unwrap();
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let named = anibeam_contract::i18n::tr(
+            "core-downloads-search-searching-endpoint",
+            &[("endpoint", "tracker".into())],
+        );
+        let seen = Arc::new(anibeam_foundation::events::Collector::default());
         let http = anibeam_net::FakeHttp::new();
-        let teams = Teams::open(dir.path(), Arc::new(SlowSearch(http.clone())));
+        let slow = Arc::new(SlowSearch {
+            inner: http.clone(),
+            seen: seen.clone(),
+            label: named.clone(),
+        });
+        let teams = Teams::open(dir.path(), slow);
         let mut s = settings::read(&teams.services).unwrap();
         s.anirss_mode = AnirssMode::Sidecar;
         s.anirss_command = fake.to_string_lossy().into_owned();
@@ -4438,7 +4460,6 @@ mod tests {
             200,
             serde_json::json!({"query": "Example Show", "endpoint": "tracker", "fell_back": false, "tried": [], "items": []}).to_string(),
         );
-        let seen = Arc::new(anibeam_foundation::events::Collector::default());
         teams.services.bus.subscribe(seen.clone());
 
         let job = search(&teams.downloads, "Example Show".to_string(), None).unwrap();
@@ -4468,10 +4489,6 @@ mod tests {
                 _ => None,
             })
             .collect();
-        let named = anibeam_contract::i18n::tr(
-            "core-downloads-search-searching-endpoint",
-            &[("endpoint", "tracker".into())],
-        );
         let generic = anibeam_contract::i18n::tr(
             "core-downloads-search-searching-endpoint",
             &[(
