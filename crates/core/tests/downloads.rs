@@ -2363,11 +2363,13 @@ fn deleting_episodes_keeps_the_follow() {
     core.shutdown();
 }
 
-/// Delete all stops the download of an episode its sheet named as still downloading (#1495):
-/// that torrent leaves the client with its unfinished file, so it cannot finish and bring
-/// the show back. One on an episode the sheet did not name, or of another show, stays.
+/// Delete all stops the downloads of the episodes its sheet named as still downloading
+/// (#1495), so none finishes and brings the show back: a torrent of one such episode goes
+/// with its file, as does one that finished since the sheet opened. A batch goes without its
+/// data and loses only the named episode's file, so an extra in it stays. A torrent on an
+/// episode the sheet did not name, or of another show, stays.
 #[test]
-fn delete_all_stops_the_download_it_named() {
+fn delete_all_stops_the_downloads_it_named() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     unsafe { std::env::set_var("XDG_DATA_HOME", dir.path().join("share")) };
@@ -2403,28 +2405,45 @@ fn delete_all_stops_the_download_it_named() {
         }
         other => panic!("{other:?}"),
     };
+    // A batch the client is still writing: episode 5, and a creditless opening already whole
+    let batch = show.join("Batch");
+    std::fs::create_dir_all(&batch).unwrap();
+    let ep5 = batch.join("[Lumen] Sousou no Frieren - 05 (1080p).mkv");
+    let ncop = batch.join("[Lumen] Sousou no Frieren - NCOP (1080p).mkv");
+    std::fs::write(&ep5, b"x").unwrap();
+    std::fs::write(&ncop, b"x").unwrap();
 
     let show_s = show.to_string_lossy().into_owned();
-    let torrent = |hash: &str, name: &str, save: &str, content: &str| {
-        json!({"hash": hash, "name": name, "state": "downloading", "progress": 0.4, "size": 1,
-               "save_path": save, "content_path": content})
+    let torrent = |hash: &str, name: &str, progress: f64, save: &str, content: &str| {
+        json!({"hash": hash, "name": name, "state": "downloading", "progress": progress,
+               "size": 1, "save_path": save, "content_path": content})
+    };
+    let single = |hash: &str, n: u32, progress: f64| {
+        torrent(
+            hash,
+            &format!("[Lumen] Sousou no Frieren - {n:02} (1080p).mkv"),
+            progress,
+            &show_s,
+            &ep(n).to_string_lossy(),
+        )
     };
     let list = json!([
+        single("bb", 2, 0.4),
+        // Finished between the sheet opening and the confirm
+        single("ee", 4, 1.0),
+        // Started since the sheet opened: not named
+        single("cc", 3, 0.4),
         torrent(
-            "bb",
-            "[Lumen] Sousou no Frieren - 02 (1080p).mkv",
+            "ff",
+            "[Lumen] Sousou no Frieren (Batch)",
+            0.5,
             &show_s,
-            &ep(2).to_string_lossy()
-        ),
-        torrent(
-            "cc",
-            "[Lumen] Sousou no Frieren - 03 (1080p).mkv",
-            &show_s,
-            &ep(3).to_string_lossy()
+            &batch.to_string_lossy()
         ),
         torrent(
             "dd",
             "[Lumen] Other Show - 02 (1080p).mkv",
+            0.4,
             "/downloads/Other Show",
             "/downloads/Other Show/[Lumen] Other Show - 02 (1080p).mkv"
         ),
@@ -2433,40 +2452,55 @@ fn delete_all_stops_the_download_it_named() {
     // One read for the torrents of the trashed files, one for the downloads to stop
     http.push_for("torrents/info", 200, list.clone());
     http.push_for("torrents/info", 200, list);
+    http.push_for(
+        "torrents/files?hash=ff",
+        200,
+        json!([
+            {"name": "Batch/[Lumen] Sousou no Frieren - 05 (1080p).mkv",
+             "size": 1, "progress": 0.3, "priority": 1},
+            {"name": "Batch/[Lumen] Sousou no Frieren - NCOP (1080p).mkv",
+             "size": 1, "progress": 1.0, "priority": 1},
+        ])
+        .to_string(),
+    );
+    http.push_for("torrents/delete", 200, "");
     http.push_for("torrents/delete", 200, "");
 
     core.call(Call::DeleteEpisodes {
         series: series.id,
         files: vec![file],
         stop_following: false,
-        stop_downloading: vec![2],
+        stop_downloading: vec![2, 4, 5],
     })
     .unwrap();
     assert!(!ep(1).exists());
 
+    let deletes = || -> Vec<String> {
+        http.requests()
+            .iter()
+            .filter(|r| r.url.contains("torrents/delete"))
+            .map(form_of)
+            .collect()
+    };
     let started = Instant::now();
-    let delete = loop {
-        if let Some(r) = http
-            .requests()
-            .into_iter()
-            .find(|r| r.url.contains("torrents/delete"))
-        {
-            break r;
-        }
+    while deletes().len() < 2 {
         assert!(
             started.elapsed() < Duration::from_secs(10),
-            "no download was stopped"
+            "the downloads were not stopped: {:?}",
+            deletes()
         );
         std::thread::sleep(Duration::from_millis(25));
-    };
-    assert_eq!(form_of(&delete), "hashes=bb&deleteFiles=true");
+    }
     std::thread::sleep(Duration::from_millis(300));
-    let deletes = http
-        .requests()
-        .iter()
-        .filter(|r| r.url.contains("torrents/delete"))
-        .count();
-    assert_eq!(deletes, 1, "only the named download went");
+    assert_eq!(
+        deletes(),
+        vec![
+            "hashes=bb|ee&deleteFiles=true".to_string(),
+            "hashes=ff&deleteFiles=false".to_string(),
+        ]
+    );
+    assert!(!ep5.exists(), "the named episode of the batch is deleted");
+    assert!(ncop.exists(), "the extra the sheet did not name stays");
     core.shutdown();
 }
 
