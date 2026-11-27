@@ -2719,6 +2719,7 @@ settings-usage-preview-send = Einmalig senden
 settings-usage-saved = Gespeichert in { $path }
 settings-usage-sent = Nutzungsprotokoll gesendet. Danke.
 settings-usage-send-failed = Das Nutzungsprotokoll konnte nicht gesendet werden: { $error }
+settings-usage-send-not-started = Das Senden konnte nicht starten. Die Datei ist gespeichert in { $path }
 settings-usage-cleared = Nutzungsprotokoll geleert
 settings-about-ratings = Bewertungen
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.

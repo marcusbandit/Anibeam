@@ -2209,6 +2209,7 @@ settings-usage-preview-send = 发送一次
 settings-usage-saved = 已保存到 { $path }
 settings-usage-sent = 使用日志已发送，谢谢。
 settings-usage-send-failed = 无法发送使用日志：{ $error }
+settings-usage-send-not-started = 无法开始发送。文件已保存到 { $path }
 settings-usage-cleared = 使用日志已清除
 settings-about-ratings = 评分
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.

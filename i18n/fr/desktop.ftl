@@ -2719,6 +2719,7 @@ settings-usage-preview-send = Envoyer une fois
 settings-usage-saved = Enregistré dans { $path }
 settings-usage-sent = Journal d'utilisation envoyé. Merci.
 settings-usage-send-failed = Impossible d'envoyer le journal d'utilisation : { $error }
+settings-usage-send-not-started = Impossible de commencer l'envoi. Le fichier est enregistré dans { $path }
 settings-usage-cleared = Journal d'utilisation effacé
 settings-about-ratings = Notes
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.

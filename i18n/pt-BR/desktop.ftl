@@ -2722,6 +2722,7 @@ settings-usage-preview-send = Enviar uma vez
 settings-usage-saved = Salvo em { $path }
 settings-usage-sent = Registro de uso enviado. Obrigado.
 settings-usage-send-failed = Não foi possível enviar o registro de uso: { $error }
+settings-usage-send-not-started = Não foi possível começar o envio. O arquivo está salvo em { $path }
 settings-usage-cleared = Registro de uso limpo
 settings-about-ratings = Notas
 settings-about-ratings-helper = Informações cedidas pelo IMDb (https://www.imdb.com). Usadas com permissão.

@@ -2271,6 +2271,7 @@ settings-usage-preview-send = 一度だけ送信
 settings-usage-saved = { $path }に保存しました
 settings-usage-sent = 利用ログを送信しました。ありがとうございます。
 settings-usage-send-failed = 利用ログを送信できませんでした: { $error }
+settings-usage-send-not-started = 送信を開始できませんでした。ファイルは{ $path }に保存されています
 settings-usage-cleared = 利用ログをクリアしました
 settings-about-ratings = 評価
 settings-about-ratings-helper = 情報提供: IMDb（https://www.imdb.com）。許可を得て使用しています。

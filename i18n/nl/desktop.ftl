@@ -2718,6 +2718,7 @@ settings-usage-preview-send = Eenmalig versturen
 settings-usage-saved = Opgeslagen in { $path }
 settings-usage-sent = Gebruikslog verstuurd. Bedankt.
 settings-usage-send-failed = Kon het gebruikslog niet versturen: { $error }
+settings-usage-send-not-started = Kon het versturen niet starten. Het bestand staat in { $path }
 settings-usage-cleared = Gebruikslog leeggemaakt
 settings-about-ratings = Beoordelingen
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.

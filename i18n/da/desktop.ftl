@@ -2719,6 +2719,7 @@ settings-usage-preview-send = Send én gang
 settings-usage-saved = Gemt i { $path }
 settings-usage-sent = Brugslog sendt. Tak.
 settings-usage-send-failed = Kunne ikke sende brugsloggen: { $error }
+settings-usage-send-not-started = Kunne ikke begynde at sende. Filen er gemt i { $path }
 settings-usage-cleared = Brugslog ryddet
 settings-about-ratings = Bedømmelser
 settings-about-ratings-helper = Oplysninger stillet til rådighed af IMDb (https://www.imdb.com). Brugt med tilladelse.

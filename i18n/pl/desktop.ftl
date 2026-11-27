@@ -3039,6 +3039,7 @@ settings-usage-preview-send = Wyślij raz
 settings-usage-saved = Zapisano w { $path }
 settings-usage-sent = Dziennik użycia wysłany. Dziękujemy.
 settings-usage-send-failed = Nie udało się wysłać dziennika użycia: { $error }
+settings-usage-send-not-started = Nie udało się rozpocząć wysyłania. Plik zapisano w { $path }
 settings-usage-cleared = Dziennik użycia wyczyszczony
 settings-about-ratings = Oceny
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.

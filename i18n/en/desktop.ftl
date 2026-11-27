@@ -2871,6 +2871,7 @@ settings-usage-preview-send = Send once
 settings-usage-saved = Saved to { $path }
 settings-usage-sent = Usage log sent. Thank you.
 settings-usage-send-failed = Could not send the usage log: { $error }
+settings-usage-send-not-started = Could not start sending. The file is saved in { $path }
 settings-usage-cleared = Usage log cleared
 settings-about-ratings = Ratings
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.

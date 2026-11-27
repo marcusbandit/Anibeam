@@ -63,7 +63,7 @@ SettingsTab {
         var shown = usagePreview.text
         if (!tab.saveUsage(path, shown)) return
         var t = Door.callAsync("SendUsage", { text: shown })
-        if (t < 0) { frame.toast(words.t("settings-usage-send-failed", { error: "" })); return }
+        if (t < 0) { frame.toast(words.t("settings-usage-send-not-started", { path: path })); return }
         tab.usageToken = t
         tab.sendingUsage = true
         tab.lastUsageFile = path

@@ -2518,6 +2518,7 @@ settings-usage-preview-send = 한 번 보내기
 settings-usage-saved = { $path }에 저장했어요
 settings-usage-sent = 사용 기록을 보냈어요. 고마워요.
 settings-usage-send-failed = 사용 기록을 보내지 못했어요: { $error }
+settings-usage-send-not-started = 보내기를 시작하지 못했어요. 파일은 { $path }에 저장되어 있어요
 settings-usage-cleared = 사용 기록을 지웠어요
 settings-about-ratings = 평점
 settings-about-ratings-helper = 정보 제공: IMDb (https://www.imdb.com). 허가를 받아 사용해요.

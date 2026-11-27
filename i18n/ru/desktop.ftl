@@ -2991,6 +2991,7 @@ settings-usage-preview-send = Отправить один раз
 settings-usage-saved = Сохранено в { $path }
 settings-usage-sent = Журнал использования отправлен. Спасибо.
 settings-usage-send-failed = Не удалось отправить журнал использования: { $error }
+settings-usage-send-not-started = Не удалось начать отправку. Файл сохранён в { $path }
 settings-usage-cleared = Журнал использования очищен
 settings-about-ratings = Рейтинги
 settings-about-ratings-helper = Данные предоставлены IMDb (https://www.imdb.com) с разрешения.
