@@ -30,6 +30,7 @@
 //! fetch, one call with the episodes embedded, and `fetched_at` is its
 //! clock.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -54,8 +55,10 @@ use anibeam_net::tvmaze;
 pub const TTL: Duration = Duration::from_secs(6 * 60 * 60);
 
 /// One show worth asking about. `series` is every folder matched to it,
-/// in id order, so two folders on one show are one fetch and both their
-/// cards are told (#1326). `folder_name` is what the log lines name it by.
+/// so two folders on one show are one fetch and both their cards are told
+/// (#1326). The first is the one the candidate is named by, `folder_name`
+/// in the log lines: the series asked about for a single refresh, the
+/// lowest id for the sweep. The rest follow in id order.
 #[derive(Clone, Debug)]
 pub struct Candidate {
     pub series: Vec<u64>,
@@ -237,18 +240,22 @@ pub fn candidates(conn: &Connection, now: i64) -> Result<Vec<Candidate>, CoreErr
     let rows = stmt
         .query_map([], read_row)?
         .collect::<Result<Vec<_>, _>>()?;
-    let mut shows: Vec<((bool, u64), Vec<Row>)> = Vec::new();
+    // Groups in the order of their first row, which is the lowest id.
+    let mut shows: Vec<Vec<Row>> = Vec::new();
+    let mut at: HashMap<(bool, u64), usize> = HashMap::new();
     for row in rows {
-        let key = row.behind.key();
-        match shows.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, group)) => group.push(row),
-            None => shows.push((key, vec![row])),
+        match at.get(&row.behind.key()) {
+            Some(&i) => shows[i].push(row),
+            None => {
+                at.insert(row.behind.key(), shows.len());
+                shows.push(vec![row]);
+            }
         }
     }
     Ok(shows
         .into_iter()
-        .filter(|(_, group)| group.iter().any(|row| eligible(row, now, false)))
-        .filter_map(|(_, group)| fold(group))
+        .filter(|group| group.iter().any(|row| eligible(row, now, false)))
+        .filter_map(fold)
         .collect())
 }
 
@@ -628,7 +635,11 @@ pub fn start_refresh_library(metadata: &Arc<Metadata>) -> u64 {
                 .write_async(move |c| candidates(c, now))
                 .await?;
             let total = work.len() as u64;
+            // Folders whose card the sweep pushed, and whether any show
+            // changed at all, which a show whose folders all went away
+            // mid-sweep still did.
             let mut updated = 0u64;
+            let mut moved = false;
             for (done, cand) in work.into_iter().enumerate() {
                 ctx.checkpoint()?;
                 ctx.progress(done as u64, Some(total), &cand.folder_name);
@@ -636,11 +647,13 @@ pub fn start_refresh_library(metadata: &Arc<Metadata>) -> u64 {
                 // the time the sweep started: a long walk would otherwise
                 // stamp the last series hours before it was actually fetched.
                 if refresh_reported(&owner, &ctx, &cand, time::now_secs()).await? {
-                    updated += cand.series.len() as u64;
-                    ctx.changed_all(cards_for_all(&owner.services, cand.series).await?);
+                    moved = true;
+                    let cards = cards_for_all(&owner.services, cand.series).await?;
+                    updated += cards.len() as u64;
+                    ctx.changed_all(cards);
                 }
             }
-            if updated > 0 {
+            if moved {
                 owner.services.bus.signal(Signal::SchedulesMoved);
             }
             Ok(Finished {

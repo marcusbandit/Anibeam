@@ -1684,3 +1684,55 @@ fn a_multi_season_guess_counts_within_the_season() {
     assert_eq!(d.upcoming.first().map(|u| u.number), Some(5));
     core.shutdown();
 }
+
+/// Two folders on one TVmaze show are one airing candidate (#1326), so
+/// the sweep fetches the show once for both.
+#[test]
+fn two_folders_on_one_tvmaze_show_are_one_airing_candidate() {
+    let (_dir, core, _c) = common::open_core_with_http(FakeHttp::new());
+    insert_show(&core, 7, "Running", &[(1, vec![time::now_secs() - 86_400])]);
+    let first = tv_series(&core, 7, &[(1, 1)]);
+    let src = fixtures::insert_source(&core, "/extras");
+    let second = fixtures::insert_series(
+        &core,
+        src,
+        SeriesKind::Show,
+        "/extras/Two Seasons",
+        "Two Seasons extras",
+    );
+    fixtures::insert_file(
+        &core,
+        second,
+        "/extras/Two Seasons/Two.Seasons.S01E01.mkv",
+        1.0,
+        Some(1),
+        "episode",
+        1,
+    );
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE series SET provider = 'tvmaze', tvmaze_id = 7 WHERE id = ?1",
+                params![second as i64],
+            )?;
+            c.execute("UPDATE tvmaze_shows SET fetched_at = 0", [])?;
+            Ok(())
+        })
+        .unwrap();
+
+    let now = time::now_secs();
+    let work = core
+        .store()
+        .read(|conn| anibeam_core::metadata::airing::candidates(conn, now))
+        .unwrap();
+    assert_eq!(work.len(), 1, "{work:?}");
+    assert_eq!(work[0].series, vec![first, second]);
+    assert!(
+        matches!(
+            work[0].behind,
+            anibeam_core::metadata::airing::Behind::Tvmaze { show_id: 7 }
+        ),
+        "{work:?}"
+    );
+    core.shutdown();
+}

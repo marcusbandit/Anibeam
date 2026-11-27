@@ -676,3 +676,35 @@ fn a_refresh_of_one_folder_pushes_every_folder_on_the_show() {
 
     core.shutdown();
 }
+
+/// A MAL id is the show's: when the lowest folder on a show knows none and
+/// another folder does, the one candidate asks Jikan with it.
+#[test]
+fn a_show_takes_the_mal_id_any_of_its_folders_knows() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let first = releasing(&core, src, "Sousou no Frieren", 1, 1001);
+    fixtures::match_series(&core, first, Some(1), None);
+    let second = second_folder(&core, src, "Frieren extras", 1, 1001);
+
+    let now = time::now_secs();
+    let work = core
+        .store()
+        .read(|conn| anibeam_core::metadata::airing::candidates(conn, now))
+        .unwrap();
+    assert_eq!(work.len(), 1, "{work:?}");
+    assert_eq!(work[0].series, vec![first, second]);
+    assert!(
+        matches!(
+            work[0].behind,
+            anibeam_core::metadata::airing::Behind::Anilist {
+                anilist_id: 1,
+                mal_id: Some(1001)
+            }
+        ),
+        "{work:?}"
+    );
+
+    core.shutdown();
+}
