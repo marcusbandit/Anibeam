@@ -885,6 +885,8 @@ pub fn set_enabled(
 pub const CUSTOM: &str = "";
 
 /// An id from a name: lower case, anything but a-z, 0-9, '.', '_' and '-' becomes '-'.
+/// An id of only dots is no id: as the path segment that removes the endpoint from anirss,
+/// `.` and `..` would normalise to another route (#1329).
 fn id_of(name: &str) -> String {
     let id: String = name
         .trim()
@@ -898,7 +900,11 @@ fn id_of(name: &str) -> String {
             }
         })
         .collect();
-    id.trim_matches('-').to_string()
+    let id = id.trim_matches('-');
+    if id.chars().all(|c| c == '.') {
+        return String::new();
+    }
+    id.to_string()
 }
 
 /// Takes the secret values out of a pasted address: each `apikey=...`, `token=...` and the
@@ -2725,6 +2731,17 @@ mod tests {
         assert_eq!(id_of("proxied"), "proxied");
         assert_eq!(id_of(" My Tracker! "), "my-tracker");
         assert_eq!(id_of("!!"), "");
+        assert_eq!(id_of(".hidden"), ".hidden");
+    }
+
+    /// An id of only dots would make the path `/endpoints/..` that removes it from anirss
+    /// normalise to another route, so such a name gets no id (#1329).
+    #[test]
+    fn ids_are_never_only_dots() {
+        for name in [".", "..", "...", " .. ", "-.-", "!.!"] {
+            assert_eq!(id_of(name), "", "name {name:?}");
+        }
+        assert!(custom_definition("..", "https://t.example/rss?q={query}", None).is_err());
     }
 
     #[test]
