@@ -2458,6 +2458,7 @@ connect-step-connect-body = Your browser will open so you can sign in to { $name
 
 settings-title = Settings
 settings-search-placeholder = Search settings
+settings-needs-attention = Needs attention
 settings-section-library = Library
 settings-section-accounts = Accounts
 settings-section-appearance = Appearance

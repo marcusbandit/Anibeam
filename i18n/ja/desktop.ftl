@@ -1878,6 +1878,7 @@ connect-step-connect-body = ブラウザが開くので、{ $name }にログイ�
 
 settings-title = 設定
 settings-search-placeholder = 設定を検索
+settings-needs-attention = 要確認
 settings-section-library = ライブラリ
 settings-section-accounts = アカウント
 settings-section-appearance = 外観

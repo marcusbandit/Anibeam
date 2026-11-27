@@ -2630,6 +2630,7 @@ connect-step-connect-body = Otworzy się przeglądarka, w której zalogujesz si�
 
 settings-title = Ustawienia
 settings-search-placeholder = Szukaj ustawień
+settings-needs-attention = Wymaga uwagi
 settings-section-library = Biblioteka
 settings-section-accounts = Konta
 settings-section-appearance = Wygląd
