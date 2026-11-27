@@ -17,7 +17,21 @@ Write for people who use Anibeam, not as a commit log:
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
-## 2.6.0 · 2026-11-22
+## 2.6.0 · Series pages, Home & artwork · 2026-11-22
+
+We're happy to bring redesigned series pages, a quieter Home carousel, and episode titles, stills, and show logos to Anibeam, along with Privacy mode, an optional usage log, and cleaner Downloads.
+
+- **Redesigned series pages.** Headers now fill with the show's banner and line up the logo, facts, genres, studio, and actions, with a sharp background showing while the small banner loads. Show logos appear in your title language at one height (with a setting and a per-show switch between the logo and the title), and a new Seasons & relations tab lines up seasons on their banners and every related show on its poster.
+- **Refreshed Home & Continue watching.** Continue watching is now a looping carousel of episode cards beneath a quieter hero that cycles through it, and shows On hold leave the top.
+- **Episode titles, stills, and artwork.** ani.zip fills in episode titles, episode stills, and show artwork. Seasons ani.zip has not mapped yet take their episodes and logo from their franchise, and episodes without a still pick a frame from their own file.
+- **Cleaner Downloads & sources.** Sources are now listed once right under the search where you can switch them on and off, and Settings > Source lists shows the search helper's own sources as read-only. "Delete watched" now lives in Settings > Downloads and stands out on Downloaded, and a show followed more than once says so and keeps the subscription you pick.
+- **Privacy mode.** Turn on Privacy mode in Settings to blur personal details, handy for screenshots and streaming.
+- **Optional usage log.** Anibeam keeps a local usage log (counts of calls, pages, and errors, nothing personal) that you can choose to send once. Nothing is sent unless you choose to.
+- **Discord & tracker sign-in.** Discord presence now says it is Anibeam and includes a Get Anibeam button, and tracker sign-in pages in the browser look nicer and name the account you signed in with.
+
+### Fixes & polish
+
+Delete all on a followed show now stops following it and stops episodes or films still downloading, following a show again keeps one subscription and one card, rolling downloads handle partly failed adds, and Airing and Following posters match Downloaded's size. Also fixed Airing now keeping every Not interested mark, shows matched by two folders updating both cards, pasted links with `#fragments` still matching, an anime original's manga showing as its adaptation, a film's single file being read as the film, failed self-updates cleaning up their download, Join from Discord starting a closed Anibeam on Linux package installs, and attention dots being read aloud by screen readers as "Needs attention".
 
 ## 2.5.1 · Source list links & download fixes · 2026-11-22
 

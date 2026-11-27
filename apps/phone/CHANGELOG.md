@@ -17,7 +17,16 @@ Write for people who use Anibeam, not as a commit log:
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
-## 2.6.0 · 2026-11-22
+## 2.6.0 · Logos, usage log & download fixes · 2026-11-22
+
+We're happy to bring title-language show logos and an optional local usage log to the phone app, along with fixes for downloads and matching.
+
+- **Consistent show logos.** Show logos now match your title language and line up at one height.
+- **Optional usage log.** Anibeam keeps a local usage log (counts of calls, pages, and errors, nothing personal) that you can choose to send once. Nothing is sent unless you choose to.
+
+### Fixes & polish
+
+Delete all on a followed show now stops following it and stops episodes still downloading, following a show again keeps one subscription, Airing now keeps Not interested marks, pasted links with `#fragments` still match, and a show matched by two folders updates once.
 
 ## 2.5.1 · iPhone nightly & full show pages · 2026-11-22
 
