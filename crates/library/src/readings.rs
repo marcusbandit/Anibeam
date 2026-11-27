@@ -269,13 +269,18 @@ pub fn record_matters(conn: &Connection, series: u64) -> Result<bool, CoreError>
         .collect();
     let named: Vec<&Classified> = names.iter().collect();
 
-    // The film rule: one file its name reads past, stored as episode 1.
-    let film_would = film_rule_applies(kind, &record, &named);
-    let film_does = matches!(
-        rows.as_slice(),
-        [(_, row_kind, Some(n), season, false)]
-            if row_kind == "episode" && *n == 1.0 && season.is_none_or(|s| s <= 1)
-    ) && reads_past_film(&names[0]);
+    // The film rule: one file its name reads past, stored as episode 1. A
+    // fixed file reads as its fix whatever the record says, and a loose film
+    // file never takes the rule, so neither asks for a scan.
+    let film_would =
+        film_rule_applies(kind, &record, &named) && !matches!(rows.as_slice(), [(.., true)]);
+    let film_does = kind == SeriesKind::Show
+        && matches!(
+            rows.as_slice(),
+            [(_, row_kind, Some(n), season, false)]
+                if row_kind == "episode" && *n == 1.0 && season.is_none_or(|s| s <= 1)
+        )
+        && reads_past_film(&names[0]);
     let would = record_rule_applies(record.format.as_deref(), &named);
     // A specials record reads a lone `SP1` as episode 1 too; that is its own
     // rule's row, not the film rule's.

@@ -2680,6 +2680,70 @@ mod tests {
             .unwrap();
         assert_eq!(reading(&store).1, 63.0);
         assert!(!matters(&store));
+
+        // A film file the user fixed reads as its fix: back on the film
+        // record, nothing asks for a scan.
+        let path = film().files[0].path.clone();
+        let fix = serde_json::to_string(&FileReading::Extra {
+            kind: ExtraKind::Other,
+            index: None,
+        })
+        .unwrap();
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "UPDATE anilist_media SET format = 'MOVIE', episodes = 1 WHERE id = 21000",
+                    [],
+                )?;
+                tx.execute(
+                    "INSERT INTO file_fixes (path, reading, was, fixed_at) VALUES (?1, ?2, ?2, 35)",
+                    params![path, fix],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        store
+            .tx(|tx| reconcile_source(tx, 1, &[film()], None, 40))
+            .unwrap();
+        assert!(!matters(&store), "a fixed film file asks for no scan");
+        store.close();
+    }
+
+    /// A loose film file the walk stores as episode 1 though its name reads
+    /// as a season's episode is not the film rule's row (#1479).
+    #[test]
+    fn a_loose_film_file_never_asks_the_film_rule_for_a_scan() {
+        let name = "Some Film S2E01.mkv";
+        let mut classified = crate::classifier::classify(name);
+        assert_eq!(classified.season, Some(2));
+        classified.season = None;
+        let loose = ScannedSeries {
+            kind: SeriesKind::Movie,
+            path: format!("/lib/{name}"),
+            name: "Some Film".into(),
+            season_hint: None,
+            files: vec![walk::ScannedFile {
+                path: format!("/lib/{name}"),
+                size: 1,
+                mtime: 1,
+                episode_key: name.to_string(),
+                label: name.to_string(),
+                classified,
+                sidecars: Vec::new(),
+            }],
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let series = store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
+                Ok(reconcile_source(tx, 1, &[loose], None, 10)?.added[0])
+            })
+            .unwrap();
+        assert!(!store.read(|c| readings::record_matters(c, series)).unwrap());
         store.close();
     }
 
