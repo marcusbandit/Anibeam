@@ -13,9 +13,10 @@ anibeam/
 │   ├── phone/               #   Mobile app: Slint (Android & iOS) + companion crate
 │   └── cli/                 #   Terminal CLI over anibeam-core
 ├── crates/                  # 14 layered Rust core crates (listed below)
-├── relay/                   # Watch Together relay servers
+├── relay/                   # Watch Together relays and the dev Worker
 │   ├── server/              #   Self-hosted native Rust relay (anibeam-relay)
-│   └── worker/              #   Cloudflare Worker WASM relay (rooms.anibeam.app)
+│   ├── worker/              #   Cloudflare Worker WASM relay (rooms.anibeam.app)
+│   └── dev/                 #   Cloudflare Worker for developer endpoints (dev.anibeam.app)
 ├── i18n/                    # Fluent (.ftl) catalog for all 13 languages
 ├── assets/                  # Canonical brand logos & icon generators
 ├── site/                    # anibeam.app website, wiki, and installer scripts
@@ -36,7 +37,7 @@ anibeam/
 The Rust workspace is split into focused crates arranged in strict dependency layers so you can build and test one area (`cargo test -p anibeam-library`) without rebuilding the whole app:
 
 ```text
-  Apps & Services     apps/desktop (anibeam) · apps/phone · apps/cli · relay/server · relay/worker
+  Apps & Services     apps/desktop (anibeam) · apps/phone · apps/cli · relay/server · relay/worker · relay/dev
                              │                                           │
   Core Facade         core (anibeam-core: Core router, launch, update, changelog, stats, agent, tests/)
                              │
@@ -68,10 +69,11 @@ The Rust workspace is split into focused crates arranged in strict dependency la
 
 ## Standalone Cargo workspaces
 
-Two directories intentionally define their own `[workspace]` and `Cargo.lock` so `cargo test --workspace` at the repo root stays fast and does not require mobile NDKs or WASM toolchains:
+Three directories intentionally define their own `[workspace]` and `Cargo.lock` so `cargo test --workspace` at the repo root stays fast and does not require mobile NDKs or WASM toolchains:
 
 - `apps/phone/` (members `.` and `companion/`) builds the Android native library and iOS executable on top of `anibeam-core` with `--features phone,cast`.
 - `relay/worker/` builds the `wasm32-unknown-unknown` Cloudflare Worker on top of `anibeam-room`.
+- `relay/dev/` builds the `wasm32-unknown-unknown` Cloudflare Worker for the developer endpoints at `dev.anibeam.app` (the usage log's collection point), with no workspace crates.
 
 ## Where to make changes
 
@@ -94,6 +96,7 @@ Two directories intentionally define their own `[workspace]` and `Cargo.lock` so
 | Playback rules, skip windows, Cast, Discord, or Rooms | `crates/playback/src/` |
 | Tailscale host server or backup export/import | `crates/host/src/` |
 | Watch Together relay servers | `relay/server/` (self-hosted) and `relay/worker/` (Cloudflare Worker) |
+| Developer endpoints (`dev.anibeam.app`, usage log sends) | `relay/dev/` and [docs/agents/dev-endpoint.md](docs/agents/dev-endpoint.md) |
 | Website, wiki, or What's new pages | `site/` (`apps/desktop/CHANGELOG.md` and `apps/phone/CHANGELOG.md` feed What's new) |
 | Security and trust surface audit | [docs/safety-audit.md](docs/safety-audit.md) |
 

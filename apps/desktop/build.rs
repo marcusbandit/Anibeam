@@ -133,6 +133,7 @@ fn main() {
             .qml_file("qml/settings/SettingsAccountsTab.qml")
             .qml_file("qml/settings/SettingsKeysTab.qml")
             .qml_file("qml/settings/SettingsAboutTab.qml")
+            .qml_file("qml/settings/UsagePreview.qml")
             .qml_file("qml/settings/SettingsDownloadsTab.qml")
             .qml_file("qml/downloads/EndpointReposPanel.qml")
             .qml_file("qml/downloads/SourceAttach.qml")
@@ -284,6 +285,7 @@ fn main() {
         "assets/icons/scan-search.svg",
         "assets/icons/scan.svg",
         "assets/icons/search.svg",
+        "assets/icons/send.svg",
         "assets/icons/settings.svg",
         "assets/icons/shapes.svg",
         "assets/icons/skip-back.svg",

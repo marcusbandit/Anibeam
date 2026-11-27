@@ -1,0 +1,29 @@
+name = "anibeam-dev"
+main = "build/index.js"
+compatibility_date = "2026-11-01"
+
+# Developer endpoints, no pages. The app's DEV_ENDPOINT in crates/contract.
+routes = [{ pattern = "dev.anibeam.app", custom_domain = true }]
+
+[build]
+command = "worker-build --release"
+
+# The usage log's sends (#1532): one object, one row per send.
+[[durable_objects.bindings]]
+name = "USAGE"
+class_name = "UsageObject"
+
+# SQLite-backed, the only kind the free plan has.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["UsageObject"]
+
+# Per address, per Cloudflare location, approximate. The namespace id only has
+# to be unique within the account; the rooms Worker uses 8461 to 8464.
+[[ratelimits]]
+name = "USAGE_LIMIT"
+namespace_id = "8471"
+simple = { limit = 5, period = 60 }
+
+# The owner's routes need the DEV_READ_TOKEN secret, set with
+# `wrangler secret put DEV_READ_TOKEN`; it is never in this file.

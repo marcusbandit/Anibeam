@@ -2700,6 +2700,28 @@ settings-about-nightly = Nightly
 settings-about-check-now = Comprobar ahora
 settings-about-developer = Opciones de desarrollador
 settings-about-credits = Créditos
+settings-about-usage = Registro de uso
+settings-usage-keep = Guardar un registro de uso local
+settings-usage-summary = { $days ->
+    [one] { $days } día
+   *[other] { $days } días
+}, { $events ->
+    [one] { $events } registro
+   *[other] { $events } registros
+}
+settings-usage-empty = Nada registrado todavía
+settings-usage-download = Descargar
+settings-usage-filter = Registro de uso (*.json)
+settings-usage-send = Descargar y enviar
+settings-usage-clear = Borrar
+settings-usage-clear-confirm = ¿Borrar el registro de uso?
+settings-usage-preview-title = Lo que se enviará
+settings-usage-preview-send = Enviar una vez
+settings-usage-saved = Guardado en { $path }
+settings-usage-sent = Registro de uso enviado. Gracias.
+settings-usage-send-failed = No se pudo enviar el registro de uso: { $error }
+settings-usage-send-not-started = No se pudo empezar a enviar. El archivo está guardado en { $path }
+settings-usage-cleared = Registro de uso borrado
 settings-about-ratings = Valoraciones
 settings-about-ratings-helper = Información por cortesía de IMDb (https://www.imdb.com). Usada con permiso.
 settings-about-series = Series y episodios

@@ -2700,6 +2700,28 @@ settings-about-nightly = Nightly
 settings-about-check-now = Tjek nu
 settings-about-developer = Udviklerindstillinger
 settings-about-credits = Kreditering
+settings-about-usage = Brugslog
+settings-usage-keep = Gem en lokal brugslog
+settings-usage-summary = { $days ->
+    [one] { $days } dag
+   *[other] { $days } dage
+}, { $events ->
+    [one] { $events } registrering
+   *[other] { $events } registreringer
+}
+settings-usage-empty = Intet logget endnu
+settings-usage-download = Download
+settings-usage-filter = Brugslog (*.json)
+settings-usage-send = Download og send
+settings-usage-clear = Ryd
+settings-usage-clear-confirm = Ryd brugsloggen?
+settings-usage-preview-title = Hvad der sendes
+settings-usage-preview-send = Send én gang
+settings-usage-saved = Gemt i { $path }
+settings-usage-sent = Brugslog sendt. Tak.
+settings-usage-send-failed = Kunne ikke sende brugsloggen: { $error }
+settings-usage-send-not-started = Kunne ikke begynde at sende. Filen er gemt i { $path }
+settings-usage-cleared = Brugslog ryddet
 settings-about-ratings = Bedømmelser
 settings-about-ratings-helper = Oplysninger stillet til rådighed af IMDb (https://www.imdb.com). Brugt med tilladelse.
 settings-about-series = Serier og afsnit

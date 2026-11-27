@@ -38,6 +38,7 @@ use crate::sync::recover;
 use crate::trackers::{Trackers, accounts, cache, move_up, oauth, plan_to_watch, watching, writes};
 use crate::transfer;
 use crate::update;
+use crate::usage;
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
 /// once, and from then on sends calls and receives events.
@@ -63,6 +64,9 @@ pub struct Core {
     /// The tailnet host: the read-only API the phone app reads, served on
     /// this machine's Tailscale addresses while the preference is on.
     pub(crate) host: Arc<Host>,
+    /// The usage log (#1532): every routed call and every page the shell opened, counted
+    /// per day on this machine.
+    pub(crate) usage: Arc<usage::Log>,
     /// The launch's one-shot listener, held here so it lives as long as it
     /// is waiting and no longer: it takes itself out the moment the
     /// catch-up scan finishes, and `shutdown` takes it out if it never
@@ -189,6 +193,15 @@ impl Core {
                     crate::downloads::overlay(&downloads, cards);
                 }
             }));
+        let usage_on = services
+            .store
+            .read(crate::prefs::load_preferences)
+            .map_or(true, |p| p.usage_log);
+        let usage = Arc::new(usage::Log::open(
+            std::path::Path::new(&services.paths.data_dir),
+            crate::VERSION,
+            usage_on,
+        ));
         let core = Arc::new(Core {
             services,
             net,
@@ -200,6 +213,7 @@ impl Core {
             playback,
             rooms,
             host,
+            usage,
             launch: Arc::new(launch::Slot::default()),
             runtime: Mutex::new(Some(runtime)),
             started: AtomicBool::new(false),
@@ -618,13 +632,32 @@ impl Core {
     /// touching anything else.
     ///
     /// A router and nothing more: every arm is one call into the module that
-    /// owns it, grouped by the team the call belongs to (#773, #854).
+    /// owns it, grouped by the team the call belongs to (#773, #854). The usage
+    /// log counts each call by its name and, when it fails, its error's kind;
+    /// a page open is counted as a page, not as a call, and a clear is not counted at
+    /// all, so a cleared log stays empty.
     pub fn call(&self, call: Call) -> Result<Reply, CoreError> {
         if self.closed.load(Ordering::SeqCst) {
             return Err(CoreError::Internal {
                 message: "core is shut down".to_string(),
             });
         }
+        let name =
+            (!matches!(call, Call::NoteUsage { .. } | Call::ClearUsage)).then(|| call.name());
+        let reply = self.route(call);
+        if let Some(name) = name
+            && let Some(after) = self
+                .usage
+                .record_call(name, reply.as_ref().err().map(CoreError::kind))
+        {
+            usage::save_later(self, after);
+        }
+        reply
+    }
+}
+
+impl Core {
+    fn route(&self, call: Call) -> Result<Reply, CoreError> {
         match call {
             // The front door: the core itself, its log, jobs and settings
             Call::About => app::about(&self.services),
@@ -654,6 +687,11 @@ impl Core {
             Call::CheckPhoneUpdate { current, nightly } => {
                 update::phone_call(&self.services, &current, nightly)
             }
+            Call::NoteUsage { page } => usage::note(self, &page),
+            Call::GetUsage => usage::get(self),
+            Call::ExportUsage { path, text } => usage::export(self, &path, text),
+            Call::ClearUsage => usage::clear(self),
+            Call::SendUsage { text } => usage::send(self, text),
 
             // Library: sources, scans, the library's reads and its files
             Call::ListSources => scan::list_sources_call(&self.library),
@@ -1080,7 +1118,10 @@ impl Core {
             | Call::RoomStart { .. }) => room::call(&self.rooms, c),
         }
     }
+}
 
+#[uniffi::export]
+impl Core {
     /// Keeps the whole-library load for the rest of its state generation
     /// (at most 30 seconds), so reads in one beat share one snapshot. For a
     /// shell whose every write goes through calls; off by default.
@@ -1123,6 +1164,8 @@ impl Core {
         // A room says goodbye, so the others see this member leave at once.
         crate::room::shutdown(&self.rooms);
         self.services.jobs.cancel_all();
+        // What the usage log counted since its last save
+        self.usage.flush();
         // Taken out of the mutex and dropped by this `let` before the
         // blocking shutdown call, rather than matched straight off the
         // lock expression: `if let Some(x) = recover(&mutex).take()`

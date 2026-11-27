@@ -1290,6 +1290,11 @@ pub struct Preferences {
     /// predate it.
     #[serde(default, deserialize_with = "lenient::logo_language")]
     pub logo_language: LogoLanguage,
+    /// Whether the core keeps the usage log (#1532): counts of calls, pages and errors
+    /// per day, on this machine only. Default on; off stops counting and keeps what is
+    /// there until it is cleared. Per machine: an export never carries it.
+    #[serde(default = "default_true")]
+    pub usage_log: bool,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -1310,6 +1315,10 @@ fn default_on_hold_days() -> u32 {
 
 /// The relay the app makes rooms on unless the person picks another.
 pub const ROOM_RELAY: &str = "https://rooms.anibeam.app";
+
+/// The project's developer endpoints (`relay/dev`). A usage log the owner sends goes to
+/// `{DEV_ENDPOINT}/usage`; nothing else in the app talks to it.
+pub const DEV_ENDPOINT: &str = "https://dev.anibeam.app";
 
 fn default_room_relay() -> String {
     ROOM_RELAY.to_string()
@@ -1401,6 +1410,19 @@ pub struct JobInfo {
     pub progress: Option<Progress>,
 }
 
+/// The usage log as `GetUsage` reads it (#1532).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct UsageLog {
+    /// The JSON `SendUsage` would send, byte for byte, without the send's own random id.
+    pub text: String,
+    /// Days with anything counted.
+    pub days: u64,
+    /// Calls and page opens counted, over every day.
+    pub events: u64,
+    /// Whether the log is counting (`Preferences::usage_log`).
+    pub enabled: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct About {
     pub version: String,
@@ -1466,6 +1488,7 @@ impl Default for Preferences {
             room_relay: ROOM_RELAY.to_string(),
             series_logos: true,
             logo_language: LogoLanguage::Titles,
+            usage_log: true,
         }
     }
 }

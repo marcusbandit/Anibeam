@@ -1507,3 +1507,9 @@ core-releases-episodes-phrase =
     }
 # A run of episode numbers
 core-releases-episode-range = { $from } to { $to }
+
+## foundation/src/usage.rs, core/src/usage.rs
+core-usage-bad-page = a page id is a short lowercase name
+core-usage-unreachable = could not reach the collection point: { $error }
+core-usage-refused = the collection point did not take the log (HTTP { $status })
+core-usage-not-a-log = this is not a usage log: { $error }

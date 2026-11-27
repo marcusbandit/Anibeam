@@ -1,0 +1,78 @@
+#compdef anibeam-cli
+# zsh completion for anibeam-cli, the core from the terminal. Install it as
+# _anibeam-cli in a directory on $fpath, such as /usr/share/zsh/site-functions.
+
+_anibeam-cli() {
+  local curcontext=$curcontext state line
+  typeset -A opt_args
+  _arguments -C \
+    '--root[put every directory under this root]:directory:_files -/' \
+    '(- *)'{-h,--help}'[print help]' \
+    '(- *)'{-V,--version}'[print the version]' \
+    '1:command:->command' \
+    '*::arg:->args'
+  case $state in
+    command)
+      local -a cmds
+      cmds=(
+        'call:send any call and print the reply as JSON'
+        'events:print recent events, then the live stream with --follow'
+        'sources:the sources'
+        'scan:run a scan to its end'
+        'list:one line per card'
+        'show:one series page as JSON'
+        'jobs:the jobs running right now'
+        'import:read an anibeam-export document into this library'
+        'export:write this library out as an anibeam-export document'
+        'usage:the usage log kept on this machine'
+        'help:print help'
+      )
+      _describe command cmds
+      ;;
+    args)
+      case $line[1] in
+        call)
+          _arguments '--json[the call'"'"'s fields as JSON]:json:' '--wait[print the events of its jobs]' '1:call name:' ;;
+        events)
+          _arguments '--follow[keep printing new events]' '--level[the lowest level shown]:level:(debug info warn error)' ;;
+        scan)
+          _arguments '--source[only this source]:source id:' '--wait[print the events on the way]' ;;
+        list)
+          _arguments '--tab[the tab]:tab:' '--sort[the sort]:sort:' '--direction[the direction]:direction:(asc desc)' '--query[a search]:query:' ;;
+        show)
+          _arguments '1:series id:' ;;
+        import)
+          _arguments '--wait[print the events on the way]' '1:file:_files -g "*.json"' ;;
+        export)
+          _arguments '--private[also carry the private data]' '--wait[print the events on the way]' '1:file:_files' ;;
+        usage)
+          _anibeam-cli_usage ;;
+      esac
+      ;;
+  esac
+}
+
+_anibeam-cli_usage() {
+  local curcontext=$curcontext state line
+  _arguments -C '1:usage command:->command' '*::arg:->args'
+  case $state in
+    command)
+      local -a cmds
+      cmds=(
+        'show:print the log exactly as a send would carry it'
+        'export:write the log to a file'
+        'send:send the log once, only after the owner read it and agreed'
+        'clear:empty the log and remove its file'
+      )
+      _describe 'usage command' cmds
+      ;;
+    args)
+      case $line[1] in
+        export) _arguments '1:file:_files' ;;
+        send) _arguments '--yes[the owner read the log and agreed to send it]' ;;
+      esac
+      ;;
+  esac
+}
+
+_anibeam-cli "$@"

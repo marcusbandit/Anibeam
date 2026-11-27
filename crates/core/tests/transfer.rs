@@ -246,6 +246,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 room_relay: ROOM_RELAY.to_string(),
                 series_logos: true,
                 logo_language: LogoLanguage::Titles,
+                usage_log: true,
             }
         ),
         other => panic!("{other:?}"),
@@ -329,6 +330,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         room_relay: ROOM_RELAY.to_string(),
         series_logos: true,
         logo_language: LogoLanguage::Titles,
+        usage_log: true,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),

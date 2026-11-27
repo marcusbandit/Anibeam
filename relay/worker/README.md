@@ -124,3 +124,7 @@ On the free plan, from this directory:
 
 The first deploy creates the `RoomObject` class from the `v1` migration and the
 two rate limiters. Then set the app's `room_relay` default to that address.
+
+The `v2` and `v3` migrations are history: one deploy carried the usage log's
+`UsageObject` before it moved to the dev Worker in [`relay/dev`](../dev/), and
+`v3` deletes that class and its data.

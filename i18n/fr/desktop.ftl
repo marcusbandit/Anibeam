@@ -2700,6 +2700,28 @@ settings-about-nightly = Nightly
 settings-about-check-now = Vérifier
 settings-about-developer = Options développeur
 settings-about-credits = Crédits
+settings-about-usage = Journal d'utilisation
+settings-usage-keep = Tenir un journal d'utilisation local
+settings-usage-summary = { $days ->
+    [one] { $days } jour
+   *[other] { $days } jours
+}, { $events ->
+    [one] { $events } entrée
+   *[other] { $events } entrées
+}
+settings-usage-empty = Rien d'enregistré pour le moment
+settings-usage-download = Télécharger
+settings-usage-filter = Journal d'utilisation (*.json)
+settings-usage-send = Télécharger et envoyer
+settings-usage-clear = Effacer
+settings-usage-clear-confirm = Effacer le journal d'utilisation ?
+settings-usage-preview-title = Ce qui sera envoyé
+settings-usage-preview-send = Envoyer une fois
+settings-usage-saved = Enregistré dans { $path }
+settings-usage-sent = Journal d'utilisation envoyé. Merci.
+settings-usage-send-failed = Impossible d'envoyer le journal d'utilisation : { $error }
+settings-usage-send-not-started = Impossible de commencer l'envoi. Le fichier est enregistré dans { $path }
+settings-usage-cleared = Journal d'utilisation effacé
 settings-about-ratings = Notes
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
 settings-about-series = Séries et épisodes

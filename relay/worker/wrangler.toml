@@ -33,3 +33,13 @@ simple = { limit = 30, period = 60 }
 name = "PAGE_LIMIT"
 namespace_id = "8463"
 simple = { limit = 60, period = 60 }
+
+# The usage log's sends (#1532) lived here for one deploy as UsageObject (v2)
+# and moved to the dev Worker in relay/dev. v3 deletes the class and its data.
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["UsageObject"]
+
+[[migrations]]
+tag = "v3"
+deleted_classes = ["UsageObject"]
