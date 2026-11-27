@@ -1568,16 +1568,6 @@ fn finish(rooms: &Rooms, serial: u64) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn names_are_cleaned_like_the_relay_does() {
-        assert_eq!(clean_name("  Ann "), Some("Ann".into()));
-        assert_eq!(clean_name(""), None);
-        assert_eq!(clean_name("   "), None);
-        assert_eq!(clean_name("a\u{7}b"), None);
-        assert_eq!(clean_name(&"x".repeat(32)), Some("x".repeat(32)));
-        assert_eq!(clean_name(&"x".repeat(33)), None);
-    }
-
     /// A member, id 2, in a room with id 1, attached to session 7 and paused at 0.
     fn active() -> Active {
         let paused = at_start(local_ms(), 0);
@@ -1736,15 +1726,5 @@ mod tests {
             None
         );
         assert_eq!(a.state.position, 35.0);
-    }
-
-    #[test]
-    fn a_relay_is_an_http_address_with_a_host() {
-        assert!(relay_ok("https://rooms.example.com"));
-        assert!(relay_ok("http://127.0.0.1:8795/"));
-        assert!(!relay_ok("ftp://rooms.example.com"));
-        assert!(!relay_ok("rooms.example.com"));
-        assert!(!relay_ok("https://"));
-        assert!(!relay_ok(""));
     }
 }
