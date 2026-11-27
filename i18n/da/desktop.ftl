@@ -2320,6 +2320,7 @@ connect-step-connect-body = Din browser åbner, så du kan logge ind på { $name
 
 settings-title = Indstillinger
 settings-search-placeholder = Søg i indstillinger
+settings-needs-attention = Kræver opmærksomhed
 settings-section-library = Bibliotek
 settings-section-accounts = Konti
 settings-section-appearance = Udseende

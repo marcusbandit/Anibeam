@@ -2006,7 +2006,7 @@ async fn retire_twins(
         Ok::<_, CoreError>((qbt, rules, linker))
     };
     let one = downloads.rules.lock().await;
-    let (qbt, mut rules, linker) = match read.await {
+    let (qbt, rules, linker) = match read.await {
         Ok(read) => read,
         Err(e) => {
             tracing::debug!("no rules read to find what {} replaces: {e}", result.name);
@@ -2039,6 +2039,25 @@ async fn retire_twins(
             .await?;
         result.save_path = folder;
     }
+    remove_rules(&qbt, backend, rules, &twins, one).await?;
+    Ok(twins)
+}
+
+/// Removes the rules `names` from `rules` (all of qBittorrent's, as just read under
+/// `one`, the rules lock) and only them: their torrents and files stay, and a feed goes
+/// with its rule unless a rule not in `names` still reads it. anirss removes its own
+/// subscriptions, feed and all, as its Unsubscribe does, so a rule whose feed a kept rule
+/// reads loses only the rule there.
+async fn remove_rules(
+    qbt: &QbtClient,
+    backend: &DownloadsBackend,
+    mut rules: serde_json::Value,
+    names: &[String],
+    one: tokio::sync::MutexGuard<'_, ()>,
+) -> Result<(), CoreError> {
+    if names.is_empty() {
+        return Ok(());
+    }
     let reads = |def: &serde_json::Value| -> Vec<String> {
         def["affectedFeeds"]
             .as_array()
@@ -2050,18 +2069,16 @@ async fn retire_twins(
             .collect()
     };
     if let DownloadsBackend::Anirss(_) = backend {
-        // anirss removes its own subscriptions, feed and all, as its Unsubscribe does. A
-        // rule whose feed a kept rule reads loses only the rule, so the feed stays.
         let kept: serde_json::Value = rules
             .as_object()
             .map(|m| {
                 m.iter()
-                    .filter(|(n, _)| !twins.contains(n))
+                    .filter(|(n, _)| !names.contains(n))
                     .map(|(n, d)| (n.clone(), d.clone()))
                     .collect()
             })
             .unwrap_or_default();
-        let (shared, own): (Vec<String>, Vec<String>) = twins.iter().cloned().partition(|t| {
+        let (shared, own): (Vec<String>, Vec<String>) = names.iter().cloned().partition(|t| {
             reads(&rules[t.as_str()])
                 .iter()
                 .any(|u| rewire::feed_shared(&kept, "", u))
@@ -2073,10 +2090,10 @@ async fn retire_twins(
         if !own.is_empty() {
             backend.remove(&own, false, false, false).await?;
         }
-        return Ok(twins);
+        return Ok(());
     }
     let feeds = qbt.feeds().await?;
-    for name in &twins {
+    for name in names {
         let def = rules
             .as_object_mut()
             .and_then(|m| m.remove(name))
@@ -2091,7 +2108,89 @@ async fn retire_twins(
             }
         }
     }
-    Ok(twins)
+    drop(one);
+    Ok(())
+}
+
+/// `Call::KeepSubscription`: of the rules that follow one show, `keep` stays and the
+/// rules in `others` go, rules only (#1496). Their torrents and files stay, and a feed
+/// `keep` still reads stays with it. A rule of `others` already gone is passed over;
+/// `keep` itself must be there, or nothing is removed.
+pub fn keep_subscription(
+    downloads: &Arc<Downloads>,
+    title: String,
+    keep: String,
+    others: Vec<String>,
+) -> Result<u64, CoreError> {
+    let keep = keep.trim().to_string();
+    if keep.is_empty() {
+        return Err(CoreError::invalid(
+            "keep",
+            anibeam_contract::i18n::tr("core-downloads-rule-needs-name", &[]),
+        ));
+    }
+    let mut drop_these: Vec<String> = Vec::new();
+    for name in others {
+        let name = name.trim().to_string();
+        if !name.is_empty() && name != keep && !drop_these.contains(&name) {
+            drop_these.push(name);
+        }
+    }
+    if drop_these.is_empty() {
+        return Err(CoreError::invalid(
+            "others",
+            anibeam_contract::i18n::tr("core-downloads-nothing-to-remove", &[]),
+        ));
+    }
+    let title = match title.trim() {
+        "" => keep.clone(),
+        t => t.to_string(),
+    };
+    let owner = downloads.clone();
+    Ok(owner
+        .services
+        .jobs
+        .clone()
+        .start(JobKind::KeepSubscription, move |_| async move {
+            let backend = DownloadsBackend::open(&owner).await?;
+            // Not beside a follow of the same show, which retires rules too
+            let _follow = owner.follows.lock().await;
+            let qbt = qbt_client(&owner).await?;
+            let one = owner.rules.lock().await;
+            let rules = qbt.rules().await?;
+            if !rules.get(&keep).is_some_and(serde_json::Value::is_object) {
+                return Err(CoreError::service(
+                    qbt::SERVICE,
+                    "rule_missing",
+                    anibeam_contract::i18n::tr(
+                        "core-downloads-no-rule",
+                        &[("name", keep.as_str().into())],
+                    ),
+                ));
+            }
+            let removed: Vec<String> = drop_these
+                .into_iter()
+                .filter(|n| rules.get(n).is_some_and(serde_json::Value::is_object))
+                .collect();
+            remove_rules(&qbt, &backend, rules, &removed, one).await?;
+            Ok(Finished {
+                plain: Some(anibeam_contract::words!(
+                    "core-downloads-kept-subscription",
+                    title = &title
+                )),
+                level: Level::Info,
+                message: if removed.is_empty() {
+                    format!("{title} keeps {keep}; the others were gone already")
+                } else {
+                    format!("{title} keeps {keep}; removed {}", removed.join(", "))
+                },
+                body: EventBody::SubscriptionKept {
+                    title,
+                    kept: keep,
+                    removed,
+                },
+            })
+        }))
 }
 
 /// Points anirss's new rule at the feed the search read, narrowed by the

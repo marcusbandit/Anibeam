@@ -2582,6 +2582,7 @@ connect-step-connect-body = Откроется браузер, где можно
 
 settings-title = Настройки
 settings-search-placeholder = Поиск
+settings-needs-attention = Требует внимания
 settings-section-library = Библиотека
 settings-section-accounts = Аккаунты
 settings-section-appearance = Оформление

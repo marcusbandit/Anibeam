@@ -481,6 +481,111 @@ fn following_again_from_the_same_feed_keeps_the_rules_folder() {
     );
 }
 
+/// A show that older builds followed three times keeps the rule the person picks (#1496).
+/// The other two rules go; the feed only one of them read goes with it, the feed the kept
+/// rule also reads stays, and no torrent or file is touched.
+#[test]
+fn keeping_one_of_a_shows_rules_removes_the_others_only() {
+    let r = rig();
+    let a = "https://other.example/rss?q=Show";
+    let b = "https://feed.example/rss?q=Show";
+    r.http.push_for(
+        "rss/rules",
+        200,
+        json!({
+            "Show": {"affectedFeeds": [a], "savePath": "/srv/TV/Show"},
+            "Show @feed": {"affectedFeeds": [b], "savePath": "/srv/TV/Show @feed"},
+            "Show @feed 2": {"affectedFeeds": [b], "savePath": "/srv/TV/Show @feed 2"},
+            "Other": {"affectedFeeds": ["https://feed.example/rss?q=Other"]},
+        })
+        .to_string(),
+    );
+    r.http.push_for(
+        "rss/items",
+        200,
+        json!({
+            "Show": {"uid": "a", "url": a},
+            "Show @feed": {"uid": "b", "url": b},
+            "Other": {"uid": "c", "url": "https://feed.example/rss?q=Other"},
+        })
+        .to_string(),
+    );
+    r.http.push_for("rss/removeRule", 200, "");
+    r.http.push_for("rss/removeRule", 200, "");
+    r.http.push_for("rss/removeItem", 200, "");
+
+    let job = started(
+        &r.core,
+        Call::KeepSubscription {
+            title: "Show".to_string(),
+            keep: "Show @feed".to_string(),
+            others: vec!["Show".to_string(), "Show @feed 2".to_string()],
+        },
+    );
+    let done = common::wait_job(&r.c, job);
+    assert_eq!(
+        done.body,
+        EventBody::SubscriptionKept {
+            title: "Show".to_string(),
+            kept: "Show @feed".to_string(),
+            removed: vec!["Show".to_string(), "Show @feed 2".to_string()],
+        }
+    );
+    let calls = qbt_calls(&r.http);
+    let removed: Vec<String> = calls
+        .iter()
+        .filter(|(p, _)| p == "rss/removeRule")
+        .filter_map(|(_, req)| field(req, "ruleName"))
+        .collect();
+    assert_eq!(
+        removed,
+        vec!["Show".to_string(), "Show @feed 2".to_string()]
+    );
+    let feeds: Vec<String> = calls
+        .iter()
+        .filter(|(p, _)| p == "rss/removeItem")
+        .filter_map(|(_, req)| field(req, "path"))
+        .collect();
+    assert_eq!(feeds, vec!["Show".to_string()]);
+    assert!(
+        !paths_of(&r.http)
+            .iter()
+            .any(|p| p.starts_with("torrents/") || p == "rss/setRule"),
+        "{calls:?}"
+    );
+    no_anirss(&r.http);
+}
+
+/// The rule to keep has gone in the meantime: nothing is removed, so the show is never left
+/// with no rule at all.
+#[test]
+fn keeping_a_rule_that_is_gone_removes_nothing() {
+    let r = rig();
+    r.http.push_for(
+        "rss/rules",
+        200,
+        json!({"Show": {"affectedFeeds": ["https://other.example/rss?q=Show"]}}).to_string(),
+    );
+    let job = started(
+        &r.core,
+        Call::KeepSubscription {
+            title: "Show".to_string(),
+            keep: "Show @feed".to_string(),
+            others: vec!["Show".to_string()],
+        },
+    );
+    let done = common::wait_job(&r.c, job);
+    failed(&done);
+    assert!(writes(&r.http).is_empty(), "{:?}", writes(&r.http));
+    // Asking to keep a rule and remove nothing else is refused before any job starts
+    let none = r.core.call(Call::KeepSubscription {
+        title: "Show".to_string(),
+        keep: "Show".to_string(),
+        others: vec!["Show".to_string(), " ".to_string()],
+    });
+    assert!(matches!(none, Err(CoreError::Invalid { .. })), "{none:?}");
+}
+
 #[test]
 fn a_feed_of_that_name_on_another_address_is_refused() {
     let r = rig();
