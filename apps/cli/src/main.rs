@@ -77,7 +77,32 @@ enum Command {
         #[arg(long)]
         wait: bool,
     },
+    /// The usage log: counts of calls, pages and errors per day, kept on this machine.
+    Usage {
+        #[command(subcommand)]
+        action: UsageCommand,
+    },
 }
+
+#[derive(Subcommand)]
+enum UsageCommand {
+    /// Print the log exactly as a send would carry it.
+    Show,
+    /// Write the log to a file.
+    Export { file: String },
+    /// Send the log once to the collection point. Only after the owner has read it.
+    Send {
+        /// The owner read the log and agreed to send it.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Empty the log and remove its file.
+    Clear,
+}
+
+/// What `usage send` says without `--yes`.
+const SEND_NEEDS_YES: &str = "usage send needs --yes. The owner must first see the log \
+(anibeam-cli usage show or usage export <file>) and agree to send it.";
 
 /// Builds a Call from its variant name and an optional JSON object of fields.
 pub fn parse_call(name: &str, json: Option<&str>) -> Result<Call, String> {
@@ -329,6 +354,25 @@ fn run_events(core: &Core, follow: bool, level: &str) {
     }
 }
 
+/// The usage subcommands. A send without `--yes` sends nothing and exits 2.
+fn run_usage(core: &Core, action: UsageCommand) -> i32 {
+    match action {
+        UsageCommand::Show => {
+            if let Reply::Usage { usage } = ask(core, Call::GetUsage) {
+                println!("{}", usage.text);
+            }
+            0
+        }
+        UsageCommand::Export { file } => send(core, Call::ExportUsage { path: file }, false),
+        UsageCommand::Send { yes: false } => {
+            eprintln!("{SEND_NEEDS_YES}");
+            2
+        }
+        UsageCommand::Send { yes: true } => send(core, Call::SendUsage, false),
+        UsageCommand::Clear => send(core, Call::ClearUsage, false),
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     let core = open(cli.root);
@@ -373,6 +417,7 @@ fn main() {
             },
             wait,
         ),
+        Command::Usage { action } => run_usage(&core, action),
     };
     core.shutdown();
     std::process::exit(code);
@@ -380,10 +425,11 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{follow, parse_call};
+    use super::{Cli, follow, parse_call};
     use anibeam_core::{
         Call, CoreError, Event, EventBody, JobKind, JobPhase, JobRef, Level, Stage,
     };
+    use clap::Parser;
     use std::collections::HashSet;
 
     fn event(job: u64, phase: JobPhase, body: EventBody) -> Event {
@@ -412,6 +458,23 @@ mod tests {
             Call::Scan { source: None }
         );
         assert!(parse_call("Nope", None).is_err());
+    }
+
+    #[test]
+    fn usage_send_parses_with_and_without_yes() {
+        assert!(Cli::try_parse_from(["anibeam-cli", "usage", "send"]).is_ok());
+        assert!(Cli::try_parse_from(["anibeam-cli", "usage", "send", "--yes"]).is_ok());
+        assert!(Cli::try_parse_from(["anibeam-cli", "usage", "export", "out.json"]).is_ok());
+        assert!(Cli::try_parse_from(["anibeam-cli", "usage", "export"]).is_err());
+    }
+
+    #[test]
+    fn usage_send_without_yes_sends_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = super::open(Some(dir.path().to_path_buf()));
+        let code = super::run_usage(&core, super::UsageCommand::Send { yes: false });
+        assert_eq!(code, 2);
+        core.shutdown();
     }
 
     #[test]
