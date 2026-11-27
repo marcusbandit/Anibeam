@@ -154,9 +154,17 @@ impl Room {
         self.host.filter(|h| self.is_connected(*h))
     }
 
-    /// Whether `conn` has said hello and is a member now.
+    /// Whether `conn` has said hello and is connected now: false again once
+    /// it says bye, drops, or a rejoin moves its place to another socket.
+    /// The same answer as `targets(&To::All).contains(&conn)`, without the `Vec`.
     pub fn is_member(&self, conn: ConnId) -> bool {
         self.slot_of(conn).is_some()
+    }
+
+    /// How many members are connected now, the length of
+    /// `targets(&To::All)` without collecting it.
+    pub fn connected(&self) -> usize {
+        self.conns().count()
     }
 
     /// The members connected now, in the order they first joined.
@@ -575,10 +583,6 @@ impl Room {
 
     fn is_connected(&self, id: MemberId) -> bool {
         self.present().any(|s| s.id == id)
-    }
-
-    fn connected(&self) -> usize {
-        self.conns().count()
     }
 }
 

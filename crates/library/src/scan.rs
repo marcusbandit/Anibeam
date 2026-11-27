@@ -384,8 +384,8 @@ pub fn reconcile_source(
         // The names as the walk read them, then what the series' own record
         // and the user's fixes say they are (`readings`).
         let mut files = s.files.clone();
-        let format = readings::record_format(tx, id)?;
-        readings::apply(format.as_deref(), &mut files, &fixes);
+        let record = readings::record(tx, id)?;
+        readings::apply(s.kind, &record, &mut files, &fixes);
 
         let mut old: HashMap<String, OldRow> = HashMap::new();
         {
@@ -2588,6 +2588,162 @@ mod tests {
             .tx(|tx| reconcile_source(tx, 1, &[ova_folder()], None, 30))
             .unwrap();
         assert!(r.changed.is_empty());
+        store.close();
+    }
+
+    /// A film's folder whose one file reads as episode 63 by its name. Once
+    /// the series is matched to a one-episode film record, that file is the
+    /// film (#1479): the match asks for a scan, the scan reads it as
+    /// episode 1, and then nothing more is asked.
+    #[test]
+    fn a_film_record_reads_its_one_file_as_episode_one() {
+        fn film() -> ScannedSeries {
+            let name = "[Fansub] Some Show - Dai 63-kai Taikai - Movie [1080p][HEVC].mkv";
+            let classified = crate::classifier::classify(name);
+            ScannedSeries {
+                kind: SeriesKind::Show,
+                path: "/lib/Some Film".into(),
+                name: "Some Film".into(),
+                season_hint: None,
+                files: vec![walk::ScannedFile {
+                    path: format!("/lib/Some Film/{name}"),
+                    size: 1,
+                    mtime: 1,
+                    episode_key: crate::classifier::episode_key(&classified, name),
+                    label: name.to_string(),
+                    classified,
+                    sidecars: Vec::new(),
+                }],
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let series = store
+            .tx(|tx| {
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
+                let r = reconcile_source(tx, 1, &[film()], None, 10)?;
+                Ok(r.added[0])
+            })
+            .unwrap();
+        let reading = |store: &Store| -> (String, f64) {
+            store
+                .read(|c| {
+                    Ok(
+                        c.query_row("SELECT episode_key, number FROM files", [], |r| {
+                            Ok((r.get(0)?, r.get(1)?))
+                        })?,
+                    )
+                })
+                .unwrap()
+        };
+        assert_eq!(reading(&store).1, 63.0, "unmatched, the name decides");
+        let matters = |store: &Store| store.read(|c| readings::record_matters(c, series)).unwrap();
+        assert!(!matters(&store));
+
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO anilist_media (id, format, episodes) VALUES (21000, 'MOVIE', 1)",
+                    [],
+                )?;
+                tx.execute(
+                    "UPDATE series SET provider = 'anilist', anilist_id = 21000 WHERE id = ?1",
+                    params![series as i64],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        assert!(matters(&store), "the new match asks for a scan");
+        let r = store
+            .tx(|tx| reconcile_source(tx, 1, &[film()], None, 20))
+            .unwrap();
+        assert_eq!(r.changed, vec![series]);
+        assert_eq!(reading(&store), ("1".to_string(), 1.0));
+        assert!(!matters(&store));
+
+        // Matched to a TV record instead, the name decides again.
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "UPDATE anilist_media SET format = 'TV', episodes = 12 WHERE id = 21000",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        assert!(matters(&store));
+        store
+            .tx(|tx| reconcile_source(tx, 1, &[film()], None, 30))
+            .unwrap();
+        assert_eq!(reading(&store).1, 63.0);
+        assert!(!matters(&store));
+
+        // A film file the user fixed reads as its fix: back on the film
+        // record, nothing asks for a scan.
+        let path = film().files[0].path.clone();
+        let fix = serde_json::to_string(&FileReading::Extra {
+            kind: ExtraKind::Other,
+            index: None,
+        })
+        .unwrap();
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "UPDATE anilist_media SET format = 'MOVIE', episodes = 1 WHERE id = 21000",
+                    [],
+                )?;
+                tx.execute(
+                    "INSERT INTO file_fixes (path, reading, was, fixed_at) VALUES (?1, ?2, ?2, 35)",
+                    params![path, fix],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        store
+            .tx(|tx| reconcile_source(tx, 1, &[film()], None, 40))
+            .unwrap();
+        assert!(!matters(&store), "a fixed film file asks for no scan");
+        store.close();
+    }
+
+    /// A loose film file the walk stores as episode 1 though its name reads
+    /// as a season's episode is not the film rule's row (#1479).
+    #[test]
+    fn a_loose_film_file_never_asks_the_film_rule_for_a_scan() {
+        let name = "Some Film S2E01.mkv";
+        let mut classified = crate::classifier::classify(name);
+        assert_eq!(classified.season, Some(2));
+        classified.season = None;
+        let loose = ScannedSeries {
+            kind: SeriesKind::Movie,
+            path: format!("/lib/{name}"),
+            name: "Some Film".into(),
+            season_hint: None,
+            files: vec![walk::ScannedFile {
+                path: format!("/lib/{name}"),
+                size: 1,
+                mtime: 1,
+                episode_key: name.to_string(),
+                label: name.to_string(),
+                classified,
+                sidecars: Vec::new(),
+            }],
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let series = store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
+                Ok(reconcile_source(tx, 1, &[loose], None, 10)?.added[0])
+            })
+            .unwrap();
+        assert!(!store.read(|c| readings::record_matters(c, series)).unwrap());
         store.close();
     }
 

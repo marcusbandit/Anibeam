@@ -726,14 +726,20 @@ impl crate::rolling::RollClient for PhoneRolls<'_> {
         _: &std::sync::Arc<Downloads>,
         items: &[Release],
         roll: &crate::rolling::Roll,
-    ) -> Result<Vec<String>, CoreError> {
-        let folder = name_for(roll.name.as_deref(), items, "Downloads")?;
-        let mut hashes = Vec::new();
+    ) -> Vec<Result<String, CoreError>> {
+        let folder = match name_for(roll.name.as_deref(), items, "Downloads") {
+            Ok(f) => f,
+            Err(e) => return items.iter().map(|_| Err(e.clone())).collect(),
+        };
+        let mut out = Vec::with_capacity(items.len());
         for item in items {
-            let file = torrent_file(&self.downloads.services, &item.link).await?;
-            hashes.push(self.engine.add(item, &folder, file).await?.hash);
+            let added = match torrent_file(&self.downloads.services, &item.link).await {
+                Ok(file) => self.engine.add(item, &folder, file).await.map(|a| a.hash),
+                Err(e) => Err(e),
+            };
+            out.push(added);
         }
-        Ok(hashes)
+        out
     }
 }
 

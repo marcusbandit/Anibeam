@@ -568,3 +568,143 @@ fn a_late_untitled_episode_is_still_asked_about() {
 
     core.shutdown();
 }
+
+/// Two folders on one show (#1326): a second folder with its own file,
+/// matched to the same AniList id as `releasing`'s.
+fn second_folder(core: &Core, source: u64, name: &str, anilist_id: u64, mal_id: u64) -> u64 {
+    let series = fixtures::insert_series(
+        core,
+        source,
+        SeriesKind::Show,
+        &format!("/lib/{name}"),
+        name,
+    );
+    fixtures::insert_episode_file(core, series, &format!("/lib/{name}/02.mkv"), 2.0, 2);
+    fixtures::match_series(core, series, Some(anilist_id), Some(mal_id));
+    series
+}
+
+/// Every card id the run has pushed so far.
+fn changed_ids(c: &anibeam_core::events::Collector) -> Vec<u64> {
+    let mut ids: Vec<u64> = c
+        .events()
+        .into_iter()
+        .filter_map(|e| match e.body {
+            EventBody::SeriesChanged { series } => Some(series),
+            _ => None,
+        })
+        .flatten()
+        .map(|card| card.id)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+/// Two folders matched to one show are one candidate: the sweep asks
+/// AniList and Jikan once, and both folders' cards are pushed.
+#[test]
+fn a_show_matched_by_two_folders_is_fetched_once_and_both_cards_change() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let first = releasing(&core, src, "Sousou no Frieren", 1, 1001);
+    let second = second_folder(&core, src, "Frieren extras", 1, 1001);
+
+    let now = time::now_secs();
+    let work = core
+        .store()
+        .read(|conn| anibeam_core::metadata::airing::candidates(conn, now))
+        .unwrap();
+    assert_eq!(work.len(), 1, "{work:?}");
+    assert_eq!(work[0].series, vec![first, second]);
+
+    http.push_for(
+        "anilist",
+        200,
+        schedule_json(1, Some((9, now + 86_400)), &[]).to_string(),
+    );
+    http.push_for("jikan.moe", 200, jikan_json(&[]));
+
+    let job = anibeam_core::metadata::airing::start_refresh_library(core.metadata());
+    common::wait_job(&c, job);
+    let urls: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
+    assert_eq!(
+        urls.iter().filter(|u| u.contains("anilist")).count(),
+        1,
+        "{urls:#?}"
+    );
+    assert_eq!(
+        urls.iter().filter(|u| u.contains("jikan.moe")).count(),
+        1,
+        "{urls:#?}"
+    );
+    assert_eq!(changed_ids(&c), vec![first, second]);
+
+    core.shutdown();
+}
+
+/// A refresh asked about one folder changes the show, so the other folder
+/// matched to it is pushed too.
+#[test]
+fn a_refresh_of_one_folder_pushes_every_folder_on_the_show() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let first = releasing(&core, src, "Sousou no Frieren", 1, 1001);
+    let second = second_folder(&core, src, "Frieren extras", 1, 1001);
+
+    let now = time::now_secs();
+    http.push_for(
+        "anilist",
+        200,
+        schedule_json(1, Some((9, now + 86_400)), &[]).to_string(),
+    );
+    http.push_for("jikan.moe", 200, jikan_json(&[]));
+
+    let job = started(&core, Call::RefreshAiring { series: second });
+    let done = common::wait_job(&c, job);
+    assert_eq!(
+        done.body,
+        EventBody::AiringRefreshed {
+            series: second,
+            updated: true
+        }
+    );
+    assert_eq!(http.requests().len(), 2, "{:#?}", http.requests());
+    assert_eq!(changed_ids(&c), vec![first, second]);
+
+    core.shutdown();
+}
+
+/// A MAL id is the show's: when the lowest folder on a show knows none and
+/// another folder does, the one candidate asks Jikan with it.
+#[test]
+fn a_show_takes_the_mal_id_any_of_its_folders_knows() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let first = releasing(&core, src, "Sousou no Frieren", 1, 1001);
+    fixtures::match_series(&core, first, Some(1), None);
+    let second = second_folder(&core, src, "Frieren extras", 1, 1001);
+
+    let now = time::now_secs();
+    let work = core
+        .store()
+        .read(|conn| anibeam_core::metadata::airing::candidates(conn, now))
+        .unwrap();
+    assert_eq!(work.len(), 1, "{work:?}");
+    assert_eq!(work[0].series, vec![first, second]);
+    assert!(
+        matches!(
+            work[0].behind,
+            anibeam_core::metadata::airing::Behind::Anilist {
+                anilist_id: 1,
+                mal_id: Some(1001)
+            }
+        ),
+        "{work:?}"
+    );
+
+    core.shutdown();
+}

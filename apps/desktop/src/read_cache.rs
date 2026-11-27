@@ -216,6 +216,7 @@ mod tests {
         let paths = CorePaths::under(dir.path());
         let secrets = anibeam_core::trackers::Secrets::file_only(paths.secrets_path());
         let core: Arc<Core> = Core::open_with_secrets(paths, secrets).unwrap();
+        core.use_own_qbittorrent(None);
         let mut cache: ReadCache<serde_json::Value> = ReadCache::new(true);
         let read = |cache: &mut ReadCache<serde_json::Value>, call: Call| {
             let key = key_of(&call).unwrap();

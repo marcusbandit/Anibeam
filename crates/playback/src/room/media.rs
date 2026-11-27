@@ -1776,6 +1776,8 @@ mod tests {
             services.clone(),
             net.clone(),
         ));
+        // Never the real qbittorrent-nox on the PATH: it outlives the test (#1489)
+        downloads.use_own_qbittorrent(None);
         let playback = Arc::new(crate::Playback::new(
             services.clone(),
             net,

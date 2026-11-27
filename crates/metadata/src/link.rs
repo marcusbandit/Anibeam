@@ -69,6 +69,10 @@ pub fn parse(text: &str) -> Option<Link> {
         format!("https://{trimmed}")
     };
     let rest = full.split_once("://")?.1;
+    // A copied address keeps the section the user clicked (`#reviews`).
+    // The fragment is never part of the id, so it goes before anything
+    // else is read.
+    let rest = rest.split_once('#').map_or(rest, |(before, _)| before);
     let (host_port, path_query) = match rest.find('/') {
         Some(i) => (&rest[..i], &rest[i..]),
         None => (rest, "/"),
@@ -212,6 +216,39 @@ mod tests {
             Some(Link::Unknown)
         );
         assert_eq!(parse("https://www.imdb.com/title/tt/"), Some(Link::Unknown));
+    }
+
+    /// A browser copies the address with the section the user clicked,
+    /// `#reviews` and the like. The fragment never names the show.
+    #[test]
+    fn a_fragment_on_the_link_is_dropped_before_the_id_is_read() {
+        assert_eq!(
+            parse("https://anilist.co/anime/21#reviews"),
+            Some(Link::Anilist { id: 21 })
+        );
+        assert_eq!(
+            parse("anilist.co/anime/21/One-Piece#staff"),
+            Some(Link::Anilist { id: 21 })
+        );
+        assert_eq!(
+            parse("https://myanimelist.net/anime/21#x"),
+            Some(Link::Mal { id: 21 })
+        );
+        assert_eq!(
+            parse("https://myanimelist.net/anime.php?id=21#x"),
+            Some(Link::Mal { id: 21 })
+        );
+        assert_eq!(
+            parse("https://www.tvmaze.com/shows/83073#cast"),
+            Some(Link::Tvmaze { id: 83073 })
+        );
+        assert_eq!(
+            parse("https://www.imdb.com/title/tt35854736#storyline"),
+            Some(Link::Imdb {
+                id: "tt35854736".into()
+            })
+        );
+        assert_eq!(parse("https://anilist.co#/anime/21"), Some(Link::Unknown));
     }
 
     #[test]
