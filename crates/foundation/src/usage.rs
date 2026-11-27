@@ -32,6 +32,10 @@ pub const FORMAT: u32 = 1;
 /// Days kept, today included.
 pub const KEEP_DAYS: i64 = 90;
 
+/// Whether this build counts at all. The phone has no panel yet to show, switch off or
+/// clear the log (#1535), so a phone build never counts.
+const COUNTS: bool = !cfg!(any(target_os = "android", target_os = "ios"));
+
 /// The shortest time between two saves a change asks for.
 const SAVE_EVERY: Duration = Duration::from_secs(60);
 
@@ -213,7 +217,7 @@ impl UsageLog {
             version: version.to_string(),
             inner: Mutex::new(Inner {
                 pending: BTreeMap::new(),
-                enabled,
+                enabled: enabled && COUNTS,
                 last_save: None,
                 save_asked: false,
             }),
@@ -231,7 +235,7 @@ impl UsageLog {
 
     /// Switched off, nothing more is counted; what is counted stays until `clear`.
     pub fn set_enabled(&self, on: bool) {
-        recover(&self.inner).enabled = on;
+        recover(&self.inner).enabled = on && COUNTS;
     }
 
     /// One call by its variant name, and the kind of error it ended in, if any. Hands back
