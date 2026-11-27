@@ -187,6 +187,7 @@ Item {
         property bool checked: false
         property bool locked: false
         property string text: ""
+        property string detail: ""
         signal toggled()
         width: parent ? parent.width : 0
         height: Math.max(box.height, checkLines.implicitHeight) + theme.space(1)
