@@ -179,7 +179,7 @@ Item {
             anchors.right: parent.right
             spacing: theme.space(0.5)
             Label { width: parent.width; text: pick.text; role: "ui"; color: theme.text; wrapMode: Text.Wrap }
-            Label { width: parent.width; visible: text !== ""; text: pick.detail; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.WrapAnywhere; maximumLineCount: 2; elide: Text.ElideMiddle }
+            Label { width: parent.width; visible: text !== ""; text: pick.detail; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight }
         }
         MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pick.toggled(); Accessible.role: Accessible.RadioButton; Accessible.name: pick.text; Accessible.checkable: true; Accessible.checked: pick.checked
             Accessible.onPressAction: pick.toggled() }

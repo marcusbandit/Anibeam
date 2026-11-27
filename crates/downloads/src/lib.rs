@@ -2030,6 +2030,9 @@ async fn remove_rules(
     names: &[String],
     one: tokio::sync::MutexGuard<'_, ()>,
 ) -> Result<(), CoreError> {
+    if names.is_empty() {
+        return Ok(());
+    }
     let reads = |def: &serde_json::Value| -> Vec<String> {
         def["affectedFeeds"]
             .as_array()

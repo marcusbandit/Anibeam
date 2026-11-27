@@ -1387,8 +1387,7 @@ impl qobject::Door {
             | EventBody::DiscordJoinAsk { .. }
             | EventBody::DiscordAskGone { .. }
             | EventBody::DiscordJoin { .. }
-            | EventBody::ShowPageRead { .. }
-            | EventBody::SubscriptionKept { .. } => {}
+            | EventBody::ShowPageRead { .. } => {}
             EventBody::RoomChanged { room } => {
                 let room = match room {
                     Some(_) => obj("room"),
@@ -1470,6 +1469,8 @@ impl qobject::Door {
                 .as_mut()
                 .downloads_unavailable(s("what"), to_qjson_object(&json::error_json(error))),
             EventBody::SubscriptionRemoved { .. } => self.as_mut().subscription_removed(s("name")),
+            // Rules went, so whatever lists them reads them again (#1496)
+            EventBody::SubscriptionKept { .. } => self.as_mut().subscription_removed(s("kept")),
             EventBody::ShowRemoved { rule, .. } => self.as_mut().show_removed(
                 job_id,
                 s("title"),

@@ -768,9 +768,10 @@ Item {
     property var queue: []
     property var running: null
     property real runningJob: -1
-    // A show's rules being cut to one (#1496), and the names it removes
-    property real keepJob: -1
-    property var keepGone: []
+    // Shows' rules being cut to one (#1496), by job: the card's leading rule and the
+    // marks of the rules the job removes
+    property var keepJobs: ({})
+    function keeping(name) { for (var j in page.keepJobs) if (page.keepJobs[j].lead === name) return true; return false }
     property real nowMs: Date.now()
     Timer { interval: 30000; repeat: true; running: page.visible && !frame.removalOpen; onTriggered: page.nowMs = Date.now() }
     // A removal's marks stay until the read after it no longer lists what it took
@@ -1012,7 +1013,8 @@ Item {
         for (var i = 0; i < page.endpoints.length; i++) if (page.feedHost(page.endpoints[i].url) === host) return page.endpoints[i].name
         return ""
     }
-    function feedHost(url) { var m = String(url || "").match(/^[a-z]+:\/\/([^\/?#]+)/i); return m ? m[1] : String(url || "") }
+    // The host alone: a login in the address (user:key@host) is never shown
+    function feedHost(url) { var m = String(url || "").match(/^[a-z]+:\/\/([^\/?#]+)/i); return m ? m[1].replace(/^.*@/, "") : String(url || "") }
     function cancelSearch() {
         if (!page.searching) return
         for (var j in page.searchJobs) Door.cancelJob(Number(j))
@@ -1471,18 +1473,24 @@ Item {
         }, function(choice) { page.keepRule(page.titleOf(r), all, choice.picked) })
     }
     function keepRule(title, all, i) {
+        if (page.keeping(all[0].name)) return
         var keep = all[i].name, others = all.filter(function(x, j) { return j !== i }).map(function(x) { return x.name })
         var reply = Door.keepSubscription(title, keep, others)
         if (reply.error) { frame.fail(reply.error, function() { page.keepRule(title, all, i) }); return }
-        page.keepJob = reply.reply.job
-        page.keepGone = others.map(function(n) { return "r:" + n })
-        page.mark(page.keepGone, true)
+        var gone = others.map(function(n) { return "r:" + n }), jobs = Object.assign({}, page.keepJobs)
+        jobs[reply.reply.job] = { lead: all[0].name, gone: gone }
+        page.keepJobs = jobs
+        page.mark(gone, true)
     }
-    function keepDone() {
-        page.mark(page.keepGone, false)
-        page.keepGone = []
-        page.keepJob = -1
+    // Ends a keep job, true when it was one; the rules are read again either way, since a
+    // failure can come after some of them went
+    function keepDone(job) {
+        var k = page.keepJobs[job]
+        if (k === undefined) return false
+        var jobs = Object.assign({}, page.keepJobs); delete jobs[job]; page.keepJobs = jobs
+        page.mark(k.gone, false)
         page.loadRules()
+        return true
     }
     function hashCount(ts) { var n = 0; for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length; return n }
     function targetForGroup(g) {
@@ -1697,7 +1705,7 @@ Item {
         }
         function onJobFinished(job, kind, ok) {
             if (job === page.startJob && ok) page.startDone(true, null)
-            if (job === page.keepJob && ok) page.keepDone()
+            if (ok) page.keepDone(job)
         }
         function onReleasesEnriched(query, endpoint, entries) {
             if (!page.state && !page.searching) return
@@ -1867,7 +1875,7 @@ Item {
             else if (job === page.connectJob) { page.connecting = false; frame.fail(error, page.connect) }
             else if (job === page.previewJob) { page.previewJob = -1; frame.fail(error, page.previewSubscription) }
             else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.fail(error, page.repairRule) }
-            else if (job === page.keepJob) { page.keepDone(); frame.fail(error) }
+            else if (page.keepDone(job)) frame.fail(error)
             else if (job === page.runningJob) {
                 // The run stops here, so nothing after it is removed; no retry on a guess
                 frame.fail(error)
@@ -1881,7 +1889,7 @@ Item {
             page.takeMagnetJob(job)
             if (page.getJobs[job] !== undefined) { var cn = page.getJobs[job]; var cj = Object.assign({}, page.getJobs); delete cj[job]; page.getJobs = cj; page.setResult(cn, { state: "idle" }) }
             if (job === page.runningJob) { page.queue.forEach(function(q) { page.mark(q.keys, false) }); page.queue = []; page.finishRunning(false) }
-            if (job === page.keepJob) page.keepDone()
+            page.keepDone(job)
             if (page.searchJobs[job] !== undefined) {
                 var sn = page.searchJobs[job]
                 var sj = Object.assign({}, page.searchJobs); delete sj[job]; page.searchJobs = sj
@@ -3025,7 +3033,7 @@ Item {
                                 cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
                                 actionText: twice ? words.t("downloads-keep-one") : words.t("downloads-unsubscribe")
                                 actionIcon: "rss"
-                                busy: page.isRemoving("r:" + modelData.name)
+                                busy: page.isRemoving("r:" + modelData.name) || page.keeping(modelData.name)
                                 onOpened: page.openRule(modelData)
                                 onAction: function(anchor) { if (twice) page.askKeep(anchor, modelData); else page.askUnsubscribe(anchor, modelData) }
                             }
@@ -3055,7 +3063,7 @@ Item {
                                 cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
                                 actionText: twice ? words.t("downloads-keep-one") : words.t("downloads-unsubscribe")
                                 actionIcon: "rss"
-                                busy: page.isRemoving("r:" + modelData.name)
+                                busy: page.isRemoving("r:" + modelData.name) || page.keeping(modelData.name)
                                 onOpened: page.openRule(modelData)
                                 onAction: function(anchor) { if (twice) page.askKeep(anchor, modelData); else page.askUnsubscribe(anchor, modelData) }
                             }
