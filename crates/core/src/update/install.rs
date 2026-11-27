@@ -484,8 +484,8 @@ fn cannot_write(part: &Path, e: std::io::Error) -> String {
 }
 
 /// Removes the file at its path when dropped, so a download that fails after it is written,
-/// or is cancelled, leaves nothing beside the app. Once the file is renamed into place there
-/// is nothing left at the path and the drop removes nothing.
+/// or is stopped with Cancel, leaves nothing beside the app. Once the file is renamed into
+/// place there is nothing left at the path and the drop removes nothing.
 struct Leftover<'a>(&'a Path);
 
 impl Drop for Leftover<'_> {
@@ -1095,8 +1095,12 @@ mod tests {
             size: 3,
             digest: None,
         };
-        let result = download(&asset, &to, &AtomicBool::new(false), |_, _| {}).await;
-        assert!(result.is_err());
+        let err = download(&asset, &to, &AtomicBool::new(false), |_, _| {})
+            .await
+            .unwrap_err();
+        // It got as far as the rename, the step that used to leave the file
+        let moving = tr("core-update-cannot-move", &[("error", "".into())]);
+        assert!(err.starts_with(&moving), "{err}");
         assert_eq!(left_in(dir.path()), ["Anibeam.AppImage"]);
     }
 
@@ -1119,8 +1123,18 @@ mod tests {
         };
         let install = Install::AppImage { path: path.clone() };
         let work = dir.path().join("work");
-        let result = fetch(&install, &update, &work, &AtomicBool::new(false), |_, _| {}).await;
-        assert!(result.is_err());
+        let Err(err) = fetch(&install, &update, &work, &AtomicBool::new(false), |_, _| {}).await
+        else {
+            panic!("replaced a folder with the update");
+        };
+        let replacing = tr(
+            "core-update-cannot-replace",
+            &[
+                ("path", path.display().to_string().into()),
+                ("error", "".into()),
+            ],
+        );
+        assert!(err.starts_with(&replacing), "{err}");
         assert_eq!(left_in(dir.path()), ["Anibeam.AppImage", "work"]);
         assert!(path.join("in the way").is_dir());
     }
