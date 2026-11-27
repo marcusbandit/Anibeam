@@ -127,12 +127,12 @@ fn a_core_under_a_root_keeps_anirss_and_qbittorrent_inside_it() {
             "PATH",
             format!("{}:{}", bin.path().display(), original_path),
         );
-        std::env::set_var("ANIBEAM_QBITTORRENT_NOX", &nox);
     }
     let before = snapshot(own.path());
 
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
+    core.use_own_qbittorrent(Some(nox));
     let home = dir.path().join("state/home");
 
     // Fresh settings: qBittorrent's stock address, not the one the person's anirss names,
@@ -215,7 +215,6 @@ fn a_core_under_a_root_keeps_anirss_and_qbittorrent_inside_it() {
     core.shutdown();
     unsafe {
         std::env::set_var("PATH", original_path);
-        std::env::remove_var("ANIBEAM_QBITTORRENT_NOX");
     }
     assert_eq!(
         snapshot(own.path()),

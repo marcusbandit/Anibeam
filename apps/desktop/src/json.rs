@@ -390,6 +390,7 @@ mod tests {
         let paths = CorePaths::under(dir.path());
         let secrets = anibeam_core::trackers::Secrets::file_only(paths.secrets_path());
         let core: Arc<Core> = Core::open_with_secrets(paths, secrets).unwrap();
+        core.use_own_qbittorrent(None);
         let about = dispatch(&core, call_from("About", Value::Null).unwrap());
         assert_eq!(about["kind"], "About");
         assert_eq!(about["reply"]["about"]["version"], anibeam_core::VERSION);

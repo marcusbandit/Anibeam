@@ -413,6 +413,15 @@ impl Core {
         self.downloads.let_sandbox_find_clients();
     }
 
+    /// Pins the qbittorrent-nox Anibeam's own torrent client runs to `binary`, or to none,
+    /// in place of the one on the PATH. Anibeam's own keeps running after the app quits, so
+    /// a test must never start the real one (#1489): the tests' cores pin `None`, and a test
+    /// of the start pins a fake. Not part of the contract and not exported to any shell.
+    #[doc(hidden)]
+    pub fn use_own_qbittorrent(&self, binary: Option<std::path::PathBuf>) {
+        self.downloads.use_own_qbittorrent(binary);
+    }
+
     /// The store itself, for the integration tests' fixtures: they build
     /// library state with plain SQL rather than driving a scan. Not part of
     /// the contract and not exported to any shell.
@@ -1160,6 +1169,7 @@ mod tests {
             crate::foundation::secrets::Secrets::file_only(paths.secrets_path()),
         )
         .unwrap();
+        core.use_own_qbittorrent(None);
         let c = Arc::new(Collector::default());
         core.services.bus.subscribe(c.clone());
         let refits = |c: &Collector| {
