@@ -601,6 +601,16 @@ pub enum Call {
         files: bool,
         series: Option<u64>,
     },
+    /// Of the rules that follow one show, keeps `keep` and removes the rules
+    /// in `others`, rules only: their torrents and files stay, and a feed
+    /// `keep` still reads stays too. A rule of `others` already gone is
+    /// passed over. `title` names the show in the log. Ends in
+    /// `SubscriptionKept`.
+    KeepSubscription {
+        title: String,
+        keep: String,
+        others: Vec<String>,
+    },
     /// Stops, starts or deletes torrents by info-hash. Ends in
     /// `TorrentsControlled`.
     ControlTorrents {
