@@ -803,8 +803,10 @@ fn never_showed(roll: &Roll, p: &Part, now: i64) -> bool {
 }
 
 /// Marks gone each added part whose torrent never showed and is not listed
-/// now: one the user removed before a pass saw it, say. The rest of the roll
-/// keeps rolling past it. A roll that never saw any torrent is left for
+/// under its hash now: one the user removed before a pass saw it, say. The
+/// rest of the roll keeps rolling past it. A part `bind` never found a hash
+/// for goes too, even when its torrent is in the client under a name that
+/// does not match (#1529). A roll that never saw any torrent is left for
 /// `finished` to end.
 pub fn give_up_unlisted(roll: &mut Roll, torrents: &[Torrent], now: i64) {
     if !roll.parts.iter().any(|p| p.seen) {
@@ -1199,6 +1201,7 @@ async fn step<C: RollClient>(
         // Only the ones that went in are added; the rest stay held for the next pass
         let now = now_secs();
         let mut went = 0;
+        let mut failed: Option<(usize, String)> = None;
         for (i, &p) in m.add.iter().enumerate() {
             match answers
                 .get(i)
@@ -1211,12 +1214,18 @@ async fn step<C: RollClient>(
                     take_hashes(&mut [part], std::slice::from_ref(hash));
                     went += 1;
                 }
-                Err(e) => tracing::warn!(
-                    "{}: held episode {} not added: {e}",
-                    roll.title,
-                    roll.parts[p].release.title
-                ),
+                Err(e) => {
+                    let f = failed.get_or_insert_with(|| (0, e.to_string()));
+                    f.0 += 1;
+                }
             }
+        }
+        if let Some((n, first)) = failed {
+            tracing::warn!(
+                "{}: {} not added: {first}",
+                roll.title,
+                plural(n, "held episode", "held episodes")
+            );
         }
         if went > 0 {
             *changed = true;
