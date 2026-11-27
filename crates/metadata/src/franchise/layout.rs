@@ -30,9 +30,10 @@ const V_GAP: f64 = 500.0;
 /// nought, and the positions a caller sees are these times the two gaps.
 type Cell = (i64, i64);
 
-/// The formats that count as the printed original rather than the screen
-/// adaptation of one. AniList's own set; a media type of MANGA covers
-/// anything new it invents.
+/// The formats that count as print rather than screen. Print leads an
+/// adaptation only when the data contradicts itself about which end is the
+/// original. AniList's own set; a media type of MANGA covers anything new
+/// it invents.
 const PRINT_FORMATS: [&str; 5] = ["MANGA", "NOVEL", "LIGHT_NOVEL", "ONE_SHOT", "VISUAL_NOVEL"];
 
 /// A run of nodes joined by SEQUEL edges, in the order they are watched.
@@ -73,8 +74,45 @@ fn priority(relation: &str) -> u8 {
     }
 }
 
+/// The original of every pair joined by an adaptation, keyed by the pair
+/// smaller id first. AniList names it from either end: `X ADAPTATION Y`
+/// says X is the original, `X SOURCE Y` says Y is. When every claim on a
+/// pair agrees, the data decides, so an anime original's manga runs from
+/// the anime. Only when the claims contradict each other does the graph
+/// pick for itself: print first, then the earlier year, then the smaller id.
+fn originals(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> HashMap<(u64, u64), u64> {
+    let mut claims: HashMap<(u64, u64), (bool, bool)> = HashMap::new();
+    for x in edges {
+        let original = match x.relation.as_str() {
+            "ADAPTATION" => x.from,
+            "SOURCE" => x.to,
+            _ => continue,
+        };
+        let pair = (x.from.min(x.to), x.from.max(x.to));
+        let seen = claims.entry(pair).or_default();
+        if original == pair.0 {
+            seen.0 = true;
+        } else {
+            seen.1 = true;
+        }
+    }
+    let rank = |id: u64| (!is_print(nodes.get(&id)), year_of(nodes, id), id);
+    claims
+        .into_iter()
+        .map(|((a, b), claimed)| {
+            let original = match claimed {
+                (true, false) => a,
+                (false, true) => b,
+                _ if rank(a) <= rank(b) => a,
+                _ => b,
+            };
+            ((a, b), original)
+        })
+        .collect()
+}
+
 /// Every link drawn once, in the direction the reader expects: forwards in
-/// time, and from the printed original to what was made of it.
+/// time, and from the original to what was made of it.
 ///
 /// Two passes: the direction is fixed, which turns every PARENT, PREQUEL
 /// and SOURCE into the twin it names, and then the relations on one ordered
@@ -87,6 +125,7 @@ fn canonical_edges(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<Edge> {
         to,
         relation: relation.to_string(),
     };
+    let originals = originals(edges, nodes);
     let normalized = edges.iter().map(|x| match x.relation.as_str() {
         "PARENT" => e(x.to, x.from, "SIDE_STORY"),
         "PREQUEL" => e(x.to, x.from, "SEQUEL"),
@@ -97,23 +136,11 @@ fn canonical_edges(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<Edge> {
                 e(x.to, x.from, "ALTERNATIVE")
             }
         }
-        "ADAPTATION" => {
-            let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
-            if !fp && tp {
-                e(x.to, x.from, "ADAPTATION")
-            } else {
-                x.clone()
-            }
-        }
-        // The far end of a SOURCE is the original, so it turns round,
-        // unless that would put a screen entry ahead of print.
-        "SOURCE" => {
-            let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
-            if fp && !tp {
-                e(x.from, x.to, "ADAPTATION")
-            } else {
-                e(x.to, x.from, "ADAPTATION")
-            }
+        "ADAPTATION" | "SOURCE" => {
+            let pair = (x.from.min(x.to), x.from.max(x.to));
+            let original = originals.get(&pair).copied().unwrap_or(x.from);
+            let made = if original == x.from { x.to } else { x.from };
+            e(original, made, "ADAPTATION")
         }
         _ => x.clone(),
     });
@@ -822,27 +849,67 @@ mod tests {
     }
 
     #[test]
-    fn an_adaptation_and_a_source_both_end_up_running_from_print_to_screen() {
+    fn a_manga_made_into_an_anime_runs_from_the_manga() {
         let nodes = [anime(1, 2005), manga(5, 2000)];
         let map = by_id(&nodes);
 
         assert_eq!(
-            shown(&canonical_edges(&[e(1, 5, "ADAPTATION")], &map)),
-            vec!["5->1:ADAPTATION".to_string()]
-        );
-        assert_eq!(
             shown(&canonical_edges(&[e(1, 5, "SOURCE")], &map)),
-            vec!["5->1:ADAPTATION".to_string()]
-        );
-        assert_eq!(
-            shown(&canonical_edges(&[e(5, 1, "SOURCE")], &map)),
             vec!["5->1:ADAPTATION".to_string()],
-            "a source claim that already runs print to screen only changes its name"
+            "the anime names the manga as its source"
         );
         assert_eq!(
             shown(&canonical_edges(&[e(5, 1, "ADAPTATION")], &map)),
             vec!["5->1:ADAPTATION".to_string()],
             "the canonical direction is left alone"
+        );
+    }
+
+    /// An anime original that later got a manga: AniList lists the manga
+    /// as the anime's adaptation and the anime as the manga's source. The
+    /// data names the anime as the original, so print does not lead.
+    #[test]
+    fn an_anime_original_runs_to_its_manga() {
+        let nodes = [anime(1, 2000), manga(5, 2002)];
+        let map = by_id(&nodes);
+
+        assert_eq!(
+            shown(&canonical_edges(&[e(1, 5, "ADAPTATION")], &map)),
+            vec!["1->5:ADAPTATION".to_string()]
+        );
+        assert_eq!(
+            shown(&canonical_edges(&[e(5, 1, "SOURCE")], &map)),
+            vec!["1->5:ADAPTATION".to_string()]
+        );
+        assert_eq!(
+            shown(&canonical_edges(
+                &[e(1, 5, "ADAPTATION"), e(5, 1, "SOURCE")],
+                &map
+            )),
+            vec!["1->5:ADAPTATION".to_string()]
+        );
+    }
+
+    /// Claims that contradict each other leave the data saying nothing, so
+    /// print leads, and between two of a kind the earlier year does.
+    #[test]
+    fn contradicting_claims_fall_back_to_print_then_the_earlier_year() {
+        let nodes = [anime(1, 2000), manga(5, 2002), anime(7, 1995)];
+        let map = by_id(&nodes);
+
+        assert_eq!(
+            shown(&canonical_edges(
+                &[e(1, 5, "ADAPTATION"), e(5, 1, "ADAPTATION")],
+                &map
+            )),
+            vec!["5->1:ADAPTATION".to_string()]
+        );
+        assert_eq!(
+            shown(&canonical_edges(
+                &[e(1, 7, "ADAPTATION"), e(1, 7, "SOURCE")],
+                &map
+            )),
+            vec!["7->1:ADAPTATION".to_string()]
         );
     }
 
@@ -948,6 +1015,30 @@ mod tests {
         assert_eq!(rows, vec![vec![10, 11], vec![1, 2], vec![20, 21]]);
     }
 
+    /// An anime original's manga is what was made of it, so it goes below
+    /// the anime's row, not above it as a source would.
+    #[test]
+    fn an_anime_originals_manga_sits_below_it() {
+        let nodes = [
+            anime(1, 2000),
+            anime(2, 2001),
+            manga(10, 2002),
+            manga(11, 2003),
+        ];
+        let map = by_id(&nodes);
+        let edges = canonical_edges(
+            &[
+                e(1, 2, "SEQUEL"),
+                e(10, 11, "SEQUEL"),
+                e(1, 10, "ADAPTATION"),
+                e(10, 1, "SOURCE"),
+            ],
+            &map,
+        );
+        let rows = order_rows(chains(&nodes, &edges), &edges, &map, 1, 1);
+        assert_eq!(rows, vec![vec![1, 2], vec![10, 11]]);
+    }
+
     #[test]
     fn with_no_root_chain_the_current_series_chain_is_the_anchor() {
         let nodes = [
@@ -1011,11 +1102,19 @@ mod tests {
             "on the series' page the film is its adaptation"
         );
 
-        // Print and screen: print leads.
+        // A manga and the anime made of it.
         let raw = vec![e(1, 5, "SOURCE")];
         assert_eq!(
             pair(manga(5, 2000), anime(1, 2005), raw),
-            (adaptation, source)
+            (adaptation.clone(), source.clone())
+        );
+
+        // An anime original and the manga made of it.
+        let raw = vec![e(6, 7, "ADAPTATION"), e(7, 6, "SOURCE")];
+        assert_eq!(
+            pair(anime(6, 2000), manga(7, 2002), raw),
+            (adaptation, source),
+            "on the anime's page the manga is its adaptation"
         );
     }
 
