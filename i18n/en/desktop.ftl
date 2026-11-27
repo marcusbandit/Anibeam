@@ -1794,6 +1794,14 @@ downloads-files-torrents = what the torrents downloaded
 downloads-files-torrents-remote = what the torrents downloaded, deleted by { $client }
 downloads-files-folder-and = { $folder } and { $torrents }
 downloads-unsubscribe-heading = Unsubscribe from { $title }?
+downloads-followed-times = Followed { $count } times
+downloads-keep-one = Keep one
+downloads-keep-heading = Keep one subscription for { $title }
+downloads-keep-confirm =
+    { $count ->
+        [one] Remove the other
+       *[other] Remove the other { $count }
+    }
 downloads-unsubscribe-base = Its feed and download rule will be removed from { $client }, so no new episodes will download.
 downloads-unsubscribe-complete-heading = Unsubscribe from all { $count } complete shows?
 downloads-unsubscribe-complete-base = Their feeds and download rules will be removed from { $client }. All of their episodes are already in your library.

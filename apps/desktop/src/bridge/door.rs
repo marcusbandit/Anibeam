@@ -342,6 +342,15 @@ pub mod qobject {
             files: bool,
             series: f64,
         ) -> QJsonObject;
+        /// Keeps `keep` of a show's rules and removes `others`, rules only. The job's
+        /// end comes as `jobFinished` or `jobFailed`.
+        #[qinvokable]
+        fn keep_subscription(
+            self: &Door,
+            title: &QString,
+            keep: &QString,
+            others: &QJsonArray,
+        ) -> QJsonObject;
         /// `secrets` carries `anirss_token` and `torrent_password` only when they are to
         /// change: a key left out keeps what is stored, an empty string removes it.
         #[qinvokable]
@@ -1378,7 +1387,8 @@ impl qobject::Door {
             | EventBody::DiscordJoinAsk { .. }
             | EventBody::DiscordAskGone { .. }
             | EventBody::DiscordJoin { .. }
-            | EventBody::ShowPageRead { .. } => {}
+            | EventBody::ShowPageRead { .. }
+            | EventBody::SubscriptionKept { .. } => {}
             EventBody::RoomChanged { room } => {
                 let room = match room {
                     Some(_) => obj("room"),
@@ -2099,6 +2109,22 @@ impl qobject::Door {
             torrents,
             files,
             series: (series >= 0.0).then_some(series as u64),
+        }))
+    }
+    pub fn keep_subscription(
+        &self,
+        title: &QString,
+        keep: &QString,
+        others: &QJsonArray,
+    ) -> QJsonObject {
+        let others: Vec<String> = others
+            .iter()
+            .filter_map(|h| json::from_qjson(&h).as_str().map(String::from))
+            .collect();
+        self.dispatch(Ok(Call::KeepSubscription {
+            title: title.to_string(),
+            keep: keep.to_string(),
+            others,
         }))
     }
     pub fn set_download_settings(

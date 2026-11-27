@@ -768,6 +768,9 @@ Item {
     property var queue: []
     property var running: null
     property real runningJob: -1
+    // A show's rules being cut to one (#1496), and the names it removes
+    property real keepJob: -1
+    property var keepGone: []
     property real nowMs: Date.now()
     Timer { interval: 30000; repeat: true; running: page.visible && !frame.removalOpen; onTriggered: page.nowMs = Date.now() }
     // A removal's marks stay until the read after it no longer lists what it took
@@ -1446,6 +1449,41 @@ Item {
                      tkeys: ts.map(function(t) { return "t:" + t.hash }), size: page.sumSize(ts), folder: "" }
         }))
     }
+    // A show older builds followed more than once: its rules, the one leading the card first.
+    // The picker names each by what tells them apart: its source, its search, its torrents.
+    function rulesOf(r) { return [r].concat(r.twins || []) }
+    function ruleFacts(r) {
+        var f = [page.endpointFor(r.feed_url) || page.feedHost(r.feed_url)]
+        if (r.query) f.push(r.query)
+        f.push(words.t("downloads-torrents", { count: r.torrent_count || 0 }))
+        if (r.followable === false) f.push(words.t("downloads-sub-nofeed"))
+        else if (r.rule_enabled === false) f.push(words.t("status-paused"))
+        return f.join(", ")
+    }
+    function askKeep(anchor, r) {
+        var all = page.rulesOf(r)
+        frame.askRemoval(anchor, {
+            heading: words.t("downloads-keep-heading", { title: page.titleOf(r) }),
+            rule: true, torrentCount: 0, canFiles: false,
+            choices: all.map(function(x) { return { text: x.name, detail: page.ruleFacts(x) } }),
+            picked: 0,
+            confirmText: words.t("downloads-keep-confirm", { count: all.length - 1 })
+        }, function(choice) { page.keepRule(page.titleOf(r), all, choice.picked) })
+    }
+    function keepRule(title, all, i) {
+        var keep = all[i].name, others = all.filter(function(x, j) { return j !== i }).map(function(x) { return x.name })
+        var reply = Door.keepSubscription(title, keep, others)
+        if (reply.error) { frame.fail(reply.error, function() { page.keepRule(title, all, i) }); return }
+        page.keepJob = reply.reply.job
+        page.keepGone = others.map(function(n) { return "r:" + n })
+        page.mark(page.keepGone, true)
+    }
+    function keepDone() {
+        page.mark(page.keepGone, false)
+        page.keepGone = []
+        page.keepJob = -1
+        page.loadRules()
+    }
     function hashCount(ts) { var n = 0; for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length; return n }
     function targetForGroup(g) {
         return { title: g.title, rule: "", hashes: g.torrents.map(function(t) { return t.hash }), series: g.show ? g.show.series_id : -1,
@@ -1659,6 +1697,7 @@ Item {
         }
         function onJobFinished(job, kind, ok) {
             if (job === page.startJob && ok) page.startDone(true, null)
+            if (job === page.keepJob && ok) page.keepDone()
         }
         function onReleasesEnriched(query, endpoint, entries) {
             if (!page.state && !page.searching) return
@@ -1828,6 +1867,7 @@ Item {
             else if (job === page.connectJob) { page.connecting = false; frame.fail(error, page.connect) }
             else if (job === page.previewJob) { page.previewJob = -1; frame.fail(error, page.previewSubscription) }
             else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.fail(error, page.repairRule) }
+            else if (job === page.keepJob) { page.keepDone(); frame.fail(error) }
             else if (job === page.runningJob) {
                 // The run stops here, so nothing after it is removed; no retry on a guess
                 frame.fail(error)
@@ -1841,6 +1881,7 @@ Item {
             page.takeMagnetJob(job)
             if (page.getJobs[job] !== undefined) { var cn = page.getJobs[job]; var cj = Object.assign({}, page.getJobs); delete cj[job]; page.getJobs = cj; page.setResult(cn, { state: "idle" }) }
             if (job === page.runningJob) { page.queue.forEach(function(q) { page.mark(q.keys, false) }); page.queue = []; page.finishRunning(false) }
+            if (job === page.keepJob) page.keepDone()
             if (page.searchJobs[job] !== undefined) {
                 var sn = page.searchJobs[job]
                 var sj = Object.assign({}, page.searchJobs); delete sj[job]; page.searchJobs = sj
@@ -2975,16 +3016,18 @@ Item {
                                 height: implicitHeight
                                 poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
                                 title: page.titleOf(modelData)
-                                tag: page.ruleTag(modelData)
-                                tagDot: page.stateDot(page.subState(modelData))
+                                // A show followed more than once says so, and its action keeps one
+                                readonly property bool twice: !!modelData.twins
+                                tag: twice ? words.t("downloads-followed-times", { count: modelData.twins.length + 1 }) : page.ruleTag(modelData)
+                                tagDot: twice ? theme.yellow : page.stateDot(page.subState(modelData))
                                 ledger: page.ruleLedger(modelData)
                                 progress: page.ruleProgress(modelData)
                                 cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
-                                actionText: words.t("downloads-unsubscribe")
+                                actionText: twice ? words.t("downloads-keep-one") : words.t("downloads-unsubscribe")
                                 actionIcon: "rss"
                                 busy: page.isRemoving("r:" + modelData.name)
                                 onOpened: page.openRule(modelData)
-                                onAction: function(anchor) { page.askUnsubscribe(anchor, modelData) }
+                                onAction: function(anchor) { if (twice) page.askKeep(anchor, modelData); else page.askUnsubscribe(anchor, modelData) }
                             }
                         }
                     }
@@ -2997,8 +3040,10 @@ Item {
                                 required property var modelData
                                 poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
                                 title: page.titleOf(modelData)
+                                readonly property bool twice: !!modelData.twins
                                 chips: {
                                     var c = []
+                                    if (twice) c.push({ text: words.t("downloads-followed-times", { count: modelData.twins.length + 1 }), dot: theme.yellow })
                                     var tag = page.ruleTag(modelData)
                                     if (tag !== "") c.push({ text: tag, dot: page.stateDot(page.subState(modelData)) })
                                     if (modelData.rule_enabled === false && tag !== words.t("status-paused")) c.push({ text: words.t("status-paused"), dot: theme.textFaint })
@@ -3008,11 +3053,11 @@ Item {
                                 folder: modelData.save_path
                                 progress: page.ruleProgress(modelData)
                                 cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
-                                actionText: words.t("downloads-unsubscribe")
+                                actionText: twice ? words.t("downloads-keep-one") : words.t("downloads-unsubscribe")
                                 actionIcon: "rss"
                                 busy: page.isRemoving("r:" + modelData.name)
                                 onOpened: page.openRule(modelData)
-                                onAction: function(anchor) { page.askUnsubscribe(anchor, modelData) }
+                                onAction: function(anchor) { if (twice) page.askKeep(anchor, modelData); else page.askUnsubscribe(anchor, modelData) }
                             }
                         }
                     }
