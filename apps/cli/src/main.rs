@@ -104,6 +104,18 @@ enum UsageCommand {
 const SEND_NEEDS_YES: &str = "usage send needs --yes. The owner must first see the log \
 (anibeam-cli usage show or usage export <file>) and agree to send it.";
 
+/// What `call SendUsage` says: the generic route never sends the log, so `--yes` is the one
+/// way it leaves.
+const CALL_SEND_REFUSED: &str = "call SendUsage does not send the usage log. Use anibeam-cli \
+usage send --yes, once the owner has seen the log (usage show or usage export <file>) and \
+agreed to send it.";
+
+/// Why the generic `call` route will not run the call named `name`, if it will not.
+/// Checked on the name, before its fields are read, so no spelling of them gets past.
+fn refused(name: &str) -> Option<&'static str> {
+    (name == "SendUsage").then_some(CALL_SEND_REFUSED)
+}
+
 /// Builds a Call from its variant name and an optional JSON object of fields.
 pub fn parse_call(name: &str, json: Option<&str>) -> Result<Call, String> {
     let value = match json {
@@ -248,6 +260,10 @@ fn follow(events: impl IntoIterator<Item = Event>, mut jobs: HashSet<u64>, print
 }
 
 fn run_call(core: &Core, name: &str, json: Option<&str>, wait: bool) -> i32 {
+    if let Some(why) = refused(name) {
+        eprintln!("{why}");
+        return 2;
+    }
     let call = parse_call(name, json).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(2);
@@ -432,9 +448,9 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, follow, parse_call};
+    use super::{Cli, follow, parse_call, refused};
     use anibeam_core::{
-        Call, CoreError, Event, EventBody, JobKind, JobPhase, JobRef, Level, Stage,
+        Call, CoreError, Event, EventBody, JobKind, JobPhase, JobRef, Level, Reply, Stage,
     };
     use clap::Parser;
     use std::collections::HashSet;
@@ -473,6 +489,26 @@ mod tests {
         assert!(Cli::try_parse_from(["anibeam-cli", "usage", "send", "--yes"]).is_ok());
         assert!(Cli::try_parse_from(["anibeam-cli", "usage", "export", "out.json"]).is_ok());
         assert!(Cli::try_parse_from(["anibeam-cli", "usage", "export"]).is_err());
+    }
+
+    #[test]
+    fn call_send_usage_is_refused_and_points_at_usage_send() {
+        let why = refused("SendUsage").unwrap();
+        assert!(why.contains("usage send --yes"), "{why}");
+        for name in ["GetUsage", "ClearUsage", "ListSources"] {
+            assert_eq!(refused(name), None);
+        }
+        // Refused before anything is parsed or sent: the core sees no call at all
+        let dir = tempfile::tempdir().unwrap();
+        let core = super::open(Some(dir.path().to_path_buf()));
+        for json in [None, Some("{}"), Some(r#"{"text": null}"#)] {
+            assert_eq!(super::run_call(&core, "SendUsage", json, false), 2);
+        }
+        let Reply::Usage { usage } = core.call(Call::GetUsage).unwrap() else {
+            panic!()
+        };
+        assert!(!usage.text.contains("SendUsage"));
+        core.shutdown();
     }
 
     #[test]
