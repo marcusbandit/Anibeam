@@ -201,6 +201,7 @@ mod tests {
     fn a_relay_is_an_http_address_with_a_host() {
         assert!(relay_ok("https://rooms.example.com"));
         assert!(relay_ok("http://127.0.0.1:8795/"));
+        assert!(relay_ok("  https://rooms.example.com\n"));
         assert!(!relay_ok("ftp://rooms.example.com"));
         assert!(!relay_ok("rooms.example.com"));
         assert!(!relay_ok("https://"));

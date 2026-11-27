@@ -1120,14 +1120,14 @@ fn a_stored_room_keeps_its_episode_or_its_lack_of_one() {
 }
 
 #[test]
-fn names_are_cleaned_like_the_relay_does() {
+fn a_name_is_trimmed_and_holds_1_to_32_plain_characters() {
+    // The deployed relay and older apps refuse a name over 32 characters, so
+    // the limit is pinned here rather than read from NAME_MAX.
+    assert_eq!(NAME_MAX, 32);
     assert_eq!(clean_name("  Ann "), Some("Ann".into()));
     assert_eq!(clean_name(""), None);
     assert_eq!(clean_name("   "), None);
     assert_eq!(clean_name("a\u{7}b"), None);
-    assert_eq!(
-        clean_name(&"x".repeat(NAME_MAX)),
-        Some("x".repeat(NAME_MAX))
-    );
-    assert_eq!(clean_name(&"x".repeat(NAME_MAX + 1)), None);
+    assert_eq!(clean_name(&"x".repeat(32)), Some("x".repeat(32)));
+    assert_eq!(clean_name(&"x".repeat(33)), None);
 }
