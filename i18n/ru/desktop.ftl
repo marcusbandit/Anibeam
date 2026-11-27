@@ -2110,7 +2110,6 @@ downloads-releases-on =
         [many] { $count } релизов на { $name }
        *[other] { $count } релиза на { $name }
     }
-downloads-found-on = Найдено на
 downloads-found-searching = поиск
 downloads-found-failed = ошибка
 downloads-found-cancelled = отменено

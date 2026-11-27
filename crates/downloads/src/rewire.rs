@@ -72,8 +72,22 @@ fn contains(list: &[String], word: &str) -> bool {
     list.iter().any(|w| w.eq_ignore_ascii_case(word))
 }
 
+/// The single words of positive fields, brackets dropped as `split` drops
+/// them: a quoted phrase is its words, since `mustContain` reads space as AND.
+fn words(fields: &[String]) -> Vec<String> {
+    fields
+        .iter()
+        .flat_map(|f| f.split_whitespace())
+        .map(|w| w.trim_start_matches('[').trim_end_matches(']'))
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
 /// The words in `query` that `wire` (the query the endpoint was asked)
-/// does not carry.
+/// does not carry. A quoted phrase counts as carried only when the wire
+/// holds the same phrase: anirss's own feed searches it quoted, which the
+/// endpoint may answer otherwise than the loose words it was asked.
 pub fn local_terms(query: &str, wire: &str) -> LocalTerms {
     let (q_pos, q_not) = split(query);
     let (w_pos, w_not) = split(wire);
@@ -102,9 +116,9 @@ pub fn narrowed(def: &Value, terms: &LocalTerms, feed_url: &str) -> Value {
         .and_then(|v| v.as_str())
         .unwrap_or("");
     let mut must: Vec<String> = must_now.split_whitespace().map(str::to_string).collect();
-    for w in &terms.must {
-        if !contains(&must, w) {
-            must.push(w.clone());
+    for w in words(&terms.must) {
+        if !contains(&must, &w) {
+            must.push(w);
         }
     }
     let not_now = def
@@ -161,6 +175,47 @@ pub fn holds_all(entries: &[FeedEntry], picked: &[Release]) -> bool {
     let titles: std::collections::HashSet<String> =
         entries.iter().map(|e| norm(&e.title)).collect();
     picked.iter().all(|r| titles.contains(&norm(&r.title)))
+}
+
+/// The rules besides `keep` that follow the same show it does (#1486): one saving into
+/// `folder`, the show's own; one whose folder `fills` says fills the same library series;
+/// and the one named as the subscription asked, `asked`, or that name with the ` @endpoint`
+/// (and ` @endpoint 2`) an engine adds beside a rule on another feed, case aside, unless
+/// `fills` says its folder fills another series (a season of its own named like the
+/// first). `fills` is None when no series is known.
+pub fn twins(
+    rules: &Value,
+    keep: &str,
+    asked: Option<&str>,
+    folder: &str,
+    fills: impl Fn(&str) -> Option<bool>,
+) -> Vec<String> {
+    let folder = crate::paths::norm(folder);
+    let asked = asked.map(str::to_lowercase).filter(|a| !a.is_empty());
+    let named = |name: &str| {
+        asked.as_deref().is_some_and(|a| {
+            let name = name.to_lowercase();
+            name == a || name.starts_with(&format!("{a} @"))
+        })
+    };
+    let mut out: Vec<String> = rules
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(name, def)| {
+            if name.as_str() == keep || !def.is_object() {
+                return false;
+            }
+            let saves = crate::native::rule_save_path(def).unwrap_or("");
+            let filled = if saves.is_empty() { None } else { fills(saves) };
+            (!saves.is_empty() && crate::paths::norm(saves) == folder)
+                || filled == Some(true)
+                || (named(name) && filled != Some(false))
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    out.sort_by_key(|n| n.to_lowercase());
+    out
 }
 
 /// Whether any rule but `except` reads `feed_url`.
@@ -222,6 +277,53 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// What a new rule for a show replaces: the rule of the name it asked for and that
+    /// name's ` @endpoint` siblings, any rule filling the show's folder or its library
+    /// series, and nothing else (#1486).
+    #[test]
+    fn a_rules_twins_are_the_rules_of_its_show() {
+        let rules = json!({
+            "Show": {"affectedFeeds": ["a"], "savePath": "/srv/TV/Show"},
+            "show @other 2": {"affectedFeeds": ["b"], "savePath": "/srv/TV/show @other 2"},
+            "Show @feed": {"affectedFeeds": ["c"], "savePath": "/srv/TV/Show @feed"},
+            "By hand": {"affectedFeeds": ["d"], "torrentParams": {"save_path": "/lib/Show/"}},
+            "Other mount": {"affectedFeeds": ["e"], "savePath": "/mnt/tv/Show"},
+            "Show 2": {"affectedFeeds": ["f"], "savePath": "/srv/TV/Show 2"},
+            "Showa": {"affectedFeeds": ["g"], "savePath": "/srv/TV/Showa"},
+        });
+        let none = |_: &str| None;
+        assert_eq!(
+            twins(
+                &rules,
+                "Show @feed",
+                Some("Show"),
+                "/srv/TV/Show @feed",
+                none
+            ),
+            vec!["Show".to_string(), "show @other 2".to_string()]
+        );
+        // A library show: its folder, and a folder the library links to it
+        let linked = |p: &str| Some(p == "/mnt/tv/Show");
+        assert_eq!(
+            twins(&rules, "Show @feed", None, "/lib/Show", linked),
+            vec!["By hand".to_string(), "Other mount".to_string()]
+        );
+        assert!(twins(&rules, "Show 2", Some("Show 2"), "/srv/TV/Show 2", none).is_empty());
+        // A second season of its own, its releases named like the first: the first
+        // season's rule fills another series and stays
+        let season_two = |p: &str| Some(p == "/lib/Show 2");
+        assert!(
+            twins(
+                &rules,
+                "Show @feed",
+                Some("Show"),
+                "/lib/Show 2",
+                season_two
+            )
+            .is_empty()
+        );
+    }
+
     #[test]
     fn the_words_narrowed_past_the_wire_query_are_local() {
         let t = local_terms("Helluva.Boss. S03 1080p WEB-DL", "Helluva.Boss. S03");
@@ -259,6 +361,32 @@ mod tests {
         assert_eq!(out["savePath"], "/media/Helluva Boss");
         assert_eq!(out["torrentParams"]["tags"], json!(["TV"]));
         assert_eq!(out["enabled"], true);
+    }
+
+    #[test]
+    fn a_quoted_phrase_moves_the_feed_unless_the_wire_quoted_it() {
+        let query = "Show S03 \"AMZN WEB\" 1080p";
+        assert!(local_terms(query, "Show S03 \"amzn web\" 1080p").is_empty());
+        let t = local_terms(query, "Show S03 AMZN WEB 1080p");
+        assert_eq!(t.must, vec!["AMZN WEB"]);
+    }
+
+    #[test]
+    fn a_phrase_the_feed_already_searched_adds_no_word_twice() {
+        let def = json!({"mustContain": "", "mustNotContain": "", "affectedFeeds": []});
+        let terms = local_terms("Show S03 \"AMZN WEB\" \"S03 [TBK]\"", "Show S03 AMZN WEB");
+        let out = narrowed(&def, &terms, "http://j/x?q=Show+S03+AMZN+WEB");
+        assert_eq!(out["mustContain"], "AMZN WEB S03 TBK");
+    }
+
+    #[test]
+    fn narrowing_twice_writes_each_phrase_word_once() {
+        let def = json!({"mustContain": "", "mustNotContain": "", "affectedFeeds": []});
+        let terms = local_terms("Show S03 1080p \"AMZN WEB\"", "Show S03");
+        let once = narrowed(&def, &terms, "http://j/x?q=Show+S03");
+        assert_eq!(once["mustContain"], "1080p AMZN WEB");
+        let twice = narrowed(&once, &terms, "http://j/x?q=Show+S03");
+        assert_eq!(twice["mustContain"], "1080p AMZN WEB");
     }
 
     #[test]

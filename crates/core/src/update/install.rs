@@ -316,6 +316,7 @@ pub async fn fetch(
             let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
             let dir = path.parent().unwrap_or(Path::new("/"));
             let next = dir.join(format!(".{}.update", name.unwrap_or_default()));
+            let _leftover = Leftover(&next);
             download(asset, &next, cancel, progress).await?;
             #[cfg(unix)]
             {
@@ -408,6 +409,7 @@ async fn download(
     let mut part = to.as_os_str().to_owned();
     part.push(".part");
     let part = PathBuf::from(part);
+    let _leftover = Leftover(&part);
     let mut file = tokio::fs::File::create(&part)
         .await
         .map_err(|e| cannot_write(&part, e))?;
@@ -479,6 +481,17 @@ fn cannot_write(part: &Path, e: std::io::Error) -> String {
             ("error", e.to_string().into()),
         ],
     )
+}
+
+/// Removes the file at its path when dropped, so a download that fails after it is written,
+/// or is stopped with Cancel, leaves nothing beside the app. Once the file is renamed into
+/// place there is nothing left at the path and the drop removes nothing.
+struct Leftover<'a>(&'a Path);
+
+impl Drop for Leftover<'_> {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(self.0);
+    }
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -1037,5 +1050,92 @@ mod tests {
         assert_eq!(Manager::Pacman.source(), "aur");
         assert_eq!(Manager::Apt.source(), "apt");
         assert_eq!(Manager::Dnf.source(), "dnf");
+    }
+
+    /// Serves `body` once on a local port, the way GitHub serves a release file, and returns
+    /// its address.
+    async fn serve_once(body: &'static [u8]) -> String {
+        use tokio::io::AsyncReadExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/file", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = [0u8; 4096];
+            let _ = stream.read(&mut request).await;
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(head.as_bytes()).await.unwrap();
+            stream.write_all(body).await.unwrap();
+            let _ = stream.shutdown().await;
+        });
+        url
+    }
+
+    /// What is left in `dir`, by name, sorted.
+    fn left_in(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[tokio::test]
+    async fn a_download_that_cannot_be_moved_leaves_no_part_file() {
+        let dir = tempfile::tempdir().unwrap();
+        // A folder with something in it where the file should go, so the last rename fails
+        let to = dir.path().join("Anibeam.AppImage");
+        std::fs::create_dir_all(to.join("in the way")).unwrap();
+        let asset = Asset {
+            name: "Anibeam.AppImage".into(),
+            url: serve_once(b"new").await,
+            size: 3,
+            digest: None,
+        };
+        let err = download(&asset, &to, &AtomicBool::new(false), |_, _| {})
+            .await
+            .unwrap_err();
+        // It got as far as the rename, the step that used to leave the file
+        let moving = tr("core-update-cannot-move", &[("error", "".into())]);
+        assert!(err.starts_with(&moving), "{err}");
+        assert_eq!(left_in(dir.path()), ["Anibeam.AppImage"]);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_appimage_that_cannot_be_replaced_leaves_no_update_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("Anibeam.AppImage");
+        std::fs::create_dir_all(path.join("in the way")).unwrap();
+        let update = Update {
+            version: "9.9.9".into(),
+            title: String::new(),
+            url: String::new(),
+            assets: vec![Asset {
+                name: format!("Anibeam-{}.AppImage", std::env::consts::ARCH),
+                url: serve_once(b"new").await,
+                size: 3,
+                digest: None,
+            }],
+        };
+        let install = Install::AppImage { path: path.clone() };
+        let work = dir.path().join("work");
+        let Err(err) = fetch(&install, &update, &work, &AtomicBool::new(false), |_, _| {}).await
+        else {
+            panic!("replaced a folder with the update");
+        };
+        let replacing = tr(
+            "core-update-cannot-replace",
+            &[
+                ("path", path.display().to_string().into()),
+                ("error", "".into()),
+            ],
+        );
+        assert!(err.starts_with(&replacing), "{err}");
+        assert_eq!(left_in(dir.path()), ["Anibeam.AppImage", "work"]);
+        assert!(path.join("in the way").is_dir());
     }
 }

@@ -151,6 +151,7 @@ fn unsubscribing_with_files_leaves_a_download_got_by_hand_in_its_folder() {
 
     let secrets = Secrets::file_only(paths.secrets_path());
     let core = Core::open_with_http_and_secrets(paths, http, secrets).unwrap();
+    core.use_own_qbittorrent(None);
     let c = Arc::new(Collector::default());
     let _sub = core.subscribe(c.clone());
 

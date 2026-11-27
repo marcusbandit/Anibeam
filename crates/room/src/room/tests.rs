@@ -315,6 +315,39 @@ fn is_member_after_hello_only() {
     assert!(!r.is_member(ConnId(1)));
 }
 
+#[test]
+fn connected_and_is_member_agree_with_the_targets() {
+    let mut r = room();
+    let agree = |r: &Room| {
+        let all = r.targets(&To::All);
+        assert_eq!(r.connected(), all.len());
+        for conn in 1..=4 {
+            assert_eq!(r.is_member(ConnId(conn)), all.contains(&ConnId(conn)));
+        }
+    };
+    agree(&r);
+    assert_eq!(r.connected(), 0);
+    join(&mut r, 1, "Ann", None, 0);
+    let (_, bea_key) = join(&mut r, 2, "Bea", None, 0);
+    join(&mut r, 3, "Cid", None, 0);
+    agree(&r);
+    assert_eq!(r.connected(), 3);
+    // A drop keeps the place in grace but no longer counts.
+    r.disconnect(ConnId(1), 5);
+    agree(&r);
+    assert_eq!(r.connected(), 2);
+    // A bye frees the place.
+    r.handle(ConnId(3), ClientMsg::Bye, 10);
+    agree(&r);
+    assert_eq!(r.connected(), 1);
+    // A rejoin on a new socket replaces the old one in the same place.
+    r.handle(ConnId(4), hello("Bea", None, Some(&bea_key)), 20);
+    agree(&r);
+    assert_eq!(r.connected(), 1);
+    assert!(!r.is_member(ConnId(2)));
+    assert!(r.is_member(ConnId(4)));
+}
+
 // Commands
 
 #[test]
@@ -1117,4 +1150,17 @@ fn a_stored_room_keeps_its_episode_or_its_lack_of_one() {
     v.as_object_mut().unwrap().remove("episode");
     let back: Room = serde_json::from_value(v).unwrap();
     assert_eq!(back.episode(), None);
+}
+
+#[test]
+fn a_name_is_trimmed_and_holds_1_to_32_plain_characters() {
+    // The deployed relay and older apps refuse a name over 32 characters, so
+    // the limit is pinned here rather than read from NAME_MAX.
+    assert_eq!(NAME_MAX, 32);
+    assert_eq!(clean_name("  Ann "), Some("Ann".into()));
+    assert_eq!(clean_name(""), None);
+    assert_eq!(clean_name("   "), None);
+    assert_eq!(clean_name("a\u{7}b"), None);
+    assert_eq!(clean_name(&"x".repeat(32)), Some("x".repeat(32)));
+    assert_eq!(clean_name(&"x".repeat(33)), None);
 }

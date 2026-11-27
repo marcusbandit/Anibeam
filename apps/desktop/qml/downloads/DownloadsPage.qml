@@ -114,7 +114,46 @@ Item {
         if (on && e && e.on_demand && e.running !== true) { page.askStart(name); return }
         page.storeSource(name, on)
     }
-    function toggleSource(name) { page.setSource(name, !page.sourceOn(name)) }
+    // From the sources row under a search: switched on, a source is asked at once; switched
+    // off, what it found leaves the search, and the next source with releases goes up
+    function switchOnSource(name) {
+        var up = page.searchUp()
+        page.setSource(name, true)
+        if (page.sourceOn(name)) page.askToo(name, up)
+    }
+    // Read before the switch: switching a source on clears the all-off line (clearAllOff)
+    function searchUp() { return page.state !== null || page.searching || page.searchError !== "" }
+    // A source just switched on joins the search on screen, or starts one when only a line
+    // about it was up
+    function askToo(name, up) {
+        if (!up) return
+        if (page.state !== null || page.searching) page.searchMore(name)
+        else page.runSearch([name])
+    }
+    function switchOffSource(name) {
+        page.storeSource(name, false)
+        var jobs = Object.assign({}, page.searchJobs), stop = []
+        for (var j in jobs) if (jobs[j] === name) { stop.push(Number(j)); delete jobs[j] }
+        page.searchJobs = jobs
+        stop.forEach(function(job) { Door.cancelJob(job) })
+        var res = Object.assign({}, page.searchResults); delete res[name]; page.searchResults = res
+        if (page.adoptedFrom === name) {
+            // A Narrow still running on it goes too, or its answer lands on no state
+            if (page.searchJob >= 0) { var refining = page.searchJob; page.searchJob = -1; Door.cancelJob(refining) }
+            page.adoptedFrom = ""
+            page.state = null
+            page.history = []
+            page.selected = {}
+            page.preview = null
+            page.notice = ""
+            // Another source still out keeps the search up rather than dropping to the home
+            if (page.pendingNames().length) { page.searching = true; page.searchEndpoint = ""; page.retarget() }
+        }
+        page.settleSearch()
+        // The last source on switched off: the line says so, with the row under it to undo it
+        if (page.state === null && !page.searching && page.searchError === "" && page.enabledEndpoints.length === 0)
+            page.sayOnSearch(words.t("downloads-search-all-off"), "", "", null, true)
+    }
     readonly property var enabledEndpoints: { var m = frame.downloadsSources; return endpoints.filter(function(e) { return page.sourceOn(e.name) }) }
     property real checkJob: -1
     function checkSources() {
@@ -130,6 +169,7 @@ Item {
         var at = -1
         for (var i = 0; i < page.endpoints.length; i++) if (page.endpoints[i].name === name) at = i
         var chip = at >= 0 ? sourceChips.itemAt(at) : null
+        if (chip && !chip.visible) chip = null
         if (page.startJob < 0) startSheet.error = ""
         startSheet.openAt(chip, name)
     }
@@ -148,7 +188,9 @@ Item {
         page.startName = ""
         startSheet.busy = false
         if (ok) {
+            var up = page.searchUp()
             page.storeSource(name, true)
+            page.askToo(name, up)
             startSheet.close()
             frame.toast(words.t("downloads-start-done", { name: name }))
         } else if (startSheet.visible) { startSheet.error = page.errorWords(error); startSheet.detail = page.detailOf(error) }
@@ -163,12 +205,7 @@ Item {
     function loadLibrary() {
         var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
         if (!r.error) page.libCards = r.reply.series || []
-        var seen = {}, out = []
-        ;[r, Door.listLibrary("Watched", "", "LastViewed", "Desc", false), Door.listLibrary("Hidden", "", "LastViewed", "Desc", false)].forEach(function(t) {
-            if (t.error) return
-            ;(t.reply.series || []).forEach(function(c) { if (!seen[c.id] && (c.bytes_on_disk || 0) > 0) { seen[c.id] = true; out.push(c) } })
-        })
-        page.diskCards = out
+        page.diskCards = frame.diskCards(r)
     }
     // A delete, a scan or a rescan changes what is on disk: read again, once the burst is over
     Timer { id: libDebounce; interval: 400; onTriggered: page.loadLibrary() }
@@ -187,48 +224,14 @@ Item {
         return diskCards.filter(function(c) { return !taken[c.id] }).sort(function(a, b) { return (b.bytes_on_disk || 0) - (a.bytes_on_disk || 0) })
     }
     readonly property real diskBytes: diskCards.reduce(function(n, c) { return n + (c.bytes_on_disk || 0) }, 0)
-    readonly property real watchedBytes: diskCards.reduce(function(n, c) { return n + (c.watched_bytes || 0) }, 0)
-    readonly property int watchedEpisodes: diskCards.reduce(function(n, c) { return n + (c.watched_on_disk || 0) }, 0)
-    readonly property var finishedCards: diskCards.filter(function(c) { return c.finished_watched === true })
-    readonly property real finishedBytes: finishedCards.reduce(function(n, c) { return n + (c.bytes_on_disk || 0) }, 0)
+    readonly property var watched: frame.watchedOf(diskCards)
+    readonly property real watchedBytes: watched.bytes
     // A show's line in Downloaded: how many episodes, how big, how much of it is watched
     function diskLedger(c) {
         var parts = [c.kind === "Movie" ? words.t("downloads-disk-film") : words.t("count-episodes", { count: c.episodes_on_disk || 0 }), words.bytes(c.bytes_on_disk || 0)]
         if (c.watched_bytes > 0 && c.watched_bytes < c.bytes_on_disk) parts.push(words.t("downloads-disk-watched", { size: words.bytes(c.watched_bytes) }))
         else if (c.watched_bytes > 0) parts.push(words.t("downloads-disk-all-watched"))
         return parts.join(", ")
-    }
-
-    // ---- Delete watched (#266): every watched episode, or every show confirmed done with,
-    // picked from a menu at the button and confirmed in the removal sheet
-    function askDeleteWatched(anchor) {
-        var p = anchor.mapToItem(frame, 0, anchor.height + theme.space(1))
-        frame.openMenu(p.x, p.y, [
-            { text: words.t("downloads-delete-watched-menu", { count: page.watchedEpisodes, size: words.bytes(page.watchedBytes) }), icon: "trash-2",
-              action: function() { page.confirmDeleteWatched(anchor, false) } },
-            { text: words.t("downloads-delete-finished-menu", { count: page.finishedCards.length, size: words.bytes(page.finishedBytes) }), icon: "trash-2",
-              action: function() { page.confirmDeleteWatched(anchor, true) } }
-        ])
-    }
-    function someTitles(cards) {
-        var t = cards.slice().sort(function(a, b) { return (b.bytes_on_disk || 0) - (a.bytes_on_disk || 0) }).map(function(c) { return c.title })
-        if (t.length <= 3) return t.length === 1 ? t[0] : words.t("downloads-titles-and", { list: t.slice(0, -1).join(", "), last: t[t.length - 1] })
-        return words.t("downloads-titles-more", { list: t.slice(0, 3).join(", "), count: t.length - 3 })
-    }
-    function confirmDeleteWatched(anchor, finished) {
-        if (finished ? !page.finishedCards.length : !page.watchedEpisodes) {
-            frame.toast(finished ? words.t("downloads-delete-finished-none") : words.t("downloads-delete-watched-none"))
-            return
-        }
-        frame.askRemoval(anchor, finished ? {
-            heading: words.t("downloads-delete-finished-heading", { count: page.finishedCards.length, size: words.bytes(page.finishedBytes) }),
-            base: words.t("downloads-delete-finished-base", { titles: page.someTitles(page.finishedCards), client: page.clientName }),
-            rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("downloads-move-to-trash")
-        } : {
-            heading: words.t("downloads-delete-watched-heading", { count: page.watchedEpisodes, size: words.bytes(page.watchedBytes) }),
-            base: words.t("downloads-delete-watched-base", { client: page.clientName }),
-            rule: false, torrentCount: 0, canFiles: false, confirmText: words.t("downloads-move-to-trash")
-        }, function() { frame.deleteWatched(finished) })
     }
 
     // ---- Right-click on a torrent group (#266): the frame adds the series' deletes when
@@ -1011,9 +1014,31 @@ Item {
     }
     function feedHost(url) { var m = String(url || "").match(/^[a-z]+:\/\/([^\/?#]+)/i); return m ? m[1] : String(url || "") }
     function cancelSearch() {
-        if (!page.searching) return
+        // A source asked with results already up runs without the progress card
+        if (!page.searching && !page.pendingNames().length) return
         for (var j in page.searchJobs) Door.cancelJob(Number(j))
         if (page.searchJob >= 0) Door.cancelJob(page.searchJob)
+    }
+    // One more source asked with the search on screen: what the others found stays
+    function searchMore(name) {
+        var q = frame.downloadsQuery || search.text.trim()
+        if (q === "") return
+        var res = Object.assign({}, page.searchResults)
+        var r = Door.searchReleases(q, name)
+        if (r.error) { res[name] = { state: "error", error: page.errorWords(r.error), detail: page.detailOf(r.error) }; page.searchResults = res; return }
+        var jobs = Object.assign({}, page.searchJobs); jobs[r.reply.job] = name; page.searchJobs = jobs
+        res[name] = { state: "searching" }
+        page.searchResults = res
+        if (page.state === null && !page.searching) {
+            page.searching = true
+            page.searchStartMs = Date.now()
+            page.searchElapsed = 0
+            page.searchEndpoint = ""
+            page.searchLabel = ""
+            page.searchError = ""
+            page.searchFix = ({})
+        }
+        page.retarget()
     }
     // A source's chip, or a Try button: its result when it has one, else a search on it alone
     function searchOn(name) {
@@ -1102,8 +1127,17 @@ Item {
     function torrentKey(t) { return t.series_id !== null && t.series_id !== undefined ? "s" + t.series_id : "p" + folderOf(t.save_path) }
     function ruleKey(r) { return r.show ? "s" + r.show.series_id : "p" + folderOf(r.save_path) }
     function titleOf(r) { return r.show ? r.show.title : r.name }
-    function ruleForSeries(id) { for (var i = 0; i < rules.length; i++) if (rules[i].show && rules[i].show.series_id === id) return rules[i]; return null }
-    readonly property var ruleByKey: { var m = {}; for (var i = 0; i < rules.length; i++) m[ruleKey(rules[i])] = rules[i]; return m }
+    function ruleForSeries(id) { for (var i = 0; i < followed.length; i++) if (followed[i].show && followed[i].show.series_id === id) return followed[i]; return null }
+    // A twin's folder leads to its show's card too
+    readonly property var ruleByKey: {
+        var m = {}
+        for (var i = 0; i < followed.length; i++) {
+            var f = followed[i]
+            m[ruleKey(f)] = f
+            ;(f.twins || []).forEach(function(t) { if (!m[page.ruleKey(t)]) m[page.ruleKey(t)] = f })
+        }
+        return m
+    }
 
     // Active is what is moving or waiting to: not done, not stopped, not broken
     function rank(t) {
@@ -1180,7 +1214,25 @@ Item {
         if (s.next_airing || s.status === "Releasing" || s.status === "NotYetReleased" || s.status === "Hiatus") return "airing"
         return "incomplete"
     }
-    readonly property var completeRules: rules.filter(function(r) { return page.subState(r) === "complete" })
+    // One card per show: rules that fill one show (an older app followed a show again beside
+    // its first rule) are one subscription here, led by one that still fetches, and the rest
+    // ride along as `twins` so unsubscribing takes them all (#1486). A rule with no library
+    // show is told by its folder, or by its name without the " @endpoint" an engine adds
+    function leads(r) { return r.rule_enabled !== false && r.followable !== false }
+    function plainName(r) { return String(r.name).replace(/ @\S+( \d+)?$/, "").toLowerCase() }
+    readonly property var followed: {
+        var m = {}, order = []
+        for (var i = 0; i < rules.length; i++) {
+            var r = rules[i], k = page.ruleKey(r), n = r.show ? "" : "n" + page.plainName(r), g = m[k] || (n ? m[n] : undefined)
+            if (!g) { g = { rule: r, twins: [] }; order.push(g) }
+            else if (page.leads(r) && !page.leads(g.rule)) { g.twins.push(g.rule); g.rule = r }
+            else g.twins.push(r)
+            m[k] = g
+            if (n) m[n] = g
+        }
+        return order.map(function(g) { return g.twins.length ? Object.assign({}, g.rule, { twins: g.twins }) : g.rule })
+    }
+    readonly property var completeRules: followed.filter(function(r) { return page.subState(r) === "complete" })
     readonly property var subSections: {
         var defs = [
             { key: "nofeed", title: words.t("downloads-sub-nofeed"), dot: theme.red, line: words.t("downloads-sub-nofeed-line") },
@@ -1191,7 +1243,7 @@ Item {
         ]
         var by = {}
         for (var i = 0; i < defs.length; i++) { defs[i].items = []; by[defs[i].key] = defs[i] }
-        for (var j = 0; j < rules.length; j++) by[page.subState(rules[j])].items.push(rules[j])
+        for (var j = 0; j < followed.length; j++) by[page.subState(followed[j])].items.push(followed[j])
         by.airing.items.sort(function(a, b) {
             var an = a.show.next_airing ? a.show.next_airing.at : 1e12, bn = b.show.next_airing ? b.show.next_airing.at : 1e12
             return an - bn || page.titleOf(a).localeCompare(page.titleOf(b))
@@ -1308,7 +1360,8 @@ Item {
     }
     readonly property var detailRule: {
         if (!detail || !detail.rule) return null
-        for (var i = 0; i < rules.length; i++) if (rules[i].name === detail.rule) return rules[i]
+        for (var i = 0; i < followed.length; i++) if (followed[i].name === detail.rule) return followed[i]
+        for (var j = 0; j < rules.length; j++) if (rules[j].name === detail.rule) return rules[j]
         return null
     }
     readonly property var detailShow: detailRule && detailRule.show ? detailRule.show : (detail && detail.seriesId >= 0 ? (shows[detail.seriesId] || null) : null)
@@ -1406,6 +1459,19 @@ Item {
         return { title: page.titleOf(r), rule: r.name, hashes: ts.map(function(t) { return t.hash }), series: r.show ? r.show.series_id : -1,
                  rkey: "r:" + r.name, tkeys: ts.map(function(t) { return "t:" + t.hash }), size: page.sumSize(ts), folder: r.show ? r.show.path : "" }
     }
+    // A show's rule and the twins beside it: each twin goes on its own, with the torrents of
+    // its folder that the show's rule does not take already
+    function targetsForRule(r) {
+        var lead = page.targetForRule(r), seen = {}
+        lead.hashes.forEach(function(h) { seen[h] = true })
+        return [lead].concat((r.twins || []).map(function(twin) {
+            var ts = page.torrentsFor(page.ruleKey(twin), page.folderOf(twin.save_path)).filter(function(t) { return !seen[t.hash] })
+            ts.forEach(function(t) { seen[t.hash] = true })
+            return { title: lead.title, rule: twin.name, hashes: ts.map(function(t) { return t.hash }), series: -1, rkey: "r:" + twin.name,
+                     tkeys: ts.map(function(t) { return "t:" + t.hash }), size: page.sumSize(ts), folder: "" }
+        }))
+    }
+    function hashCount(ts) { var n = 0; for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length; return n }
     function targetForGroup(g) {
         return { title: g.title, rule: "", hashes: g.torrents.map(function(t) { return t.hash }), series: g.show ? g.show.series_id : -1,
                  rkey: "", tkeys: ["g:" + g.key].concat(g.torrents.map(function(t) { return "t:" + t.hash })), size: g.size, folder: g.show ? g.show.path : "" }
@@ -1428,20 +1494,20 @@ Item {
     // A removal's sentence, with "The subscription stays." after it when the show has one
     function subscriptionStays(base, has) { return has ? words.t("downloads-subscription-stays", { base: base }) : base }
     function askUnsubscribe(anchor, r) {
-        var t = page.targetForRule(r)
+        var ts = page.targetsForRule(r), t = ts[0]
         frame.askRemoval(anchor, {
             heading: words.t("downloads-unsubscribe-heading", { title: t.title }),
             base: words.t("downloads-unsubscribe-base", { client: page.clientName }),
-            rule: true, torrentCount: t.hashes.length,
-            canFiles: t.hashes.length > 0 || t.series >= 0,
+            rule: true, torrentCount: page.hashCount(ts),
+            canFiles: page.hashCount(ts) > 0 || t.series >= 0,
             filesWhere: page.filesWhere(t)
-        }, function(choice) { page.enqueue([t], choice) })
+        }, function(choice) { page.enqueue(ts, choice) })
     }
     function askUnsubscribeComplete(anchor) {
-        var ts = page.completeRules.map(page.targetForRule), n = 0
+        var ts = [].concat.apply([], page.completeRules.map(page.targetsForRule)), n = 0
         for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length
         frame.askRemoval(anchor, {
-            heading: words.t("downloads-unsubscribe-complete-heading", { count: ts.length }),
+            heading: words.t("downloads-unsubscribe-complete-heading", { count: page.completeRules.length }),
             base: words.t("downloads-unsubscribe-complete-base", { client: page.clientName }),
             rule: true, torrentCount: n, canFiles: true,
             filesWhere: words.t("downloads-files-folders-and-torrents"),
@@ -2235,55 +2301,6 @@ Item {
             }
         }
 
-        // ---- The sources: a chip per provider, lit when on, greyed when off; a click flips it.
-        // An on-demand one that is down says so, and switching it on asks to start it first
-        Flow {
-            objectName: "downloads-sources"
-            visible: page.endpoints.length > 0
-            width: parent.width
-            spacing: theme.space(2)
-            // Check stands as tall as the chips beside it
-            readonly property real chipHeight: sourceChips.count > 0 && sourceChips.itemAt(0) ? sourceChips.itemAt(0).height : theme.space(7)
-            Label { height: parent.chipHeight; verticalAlignment: Text.AlignVCenter; msg: "downloads-sources"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(2) }
-            Repeater {
-                id: sourceChips
-                model: page.endpoints
-                Chip {
-                    id: src
-                    required property var modelData
-                    readonly property bool on: page.sourceOn(modelData.name)
-                    readonly property bool down: !!modelData.on_demand && modelData.running !== true
-                    readonly property bool starting: page.startJob >= 0 && page.startName === modelData.name
-                    objectName: "downloads-source-" + modelData.name
-                    text: modelData.name
-                    mono: false
-                    selected: on
-                    dimmed: !on
-                    clickable: true
-                    hint: starting ? words.t("downloads-source-hint-starting") : down ? words.t("downloads-source-hint-down") : ""
-                    onClicked: page.toggleSource(modelData.name)
-                    Tooltip {
-                        text: {
-                            if (src.down) return words.t("downloads-source-tip-down", { name: modelData.name })
-                            var tip = src.on ? words.t("downloads-source-tip-on", { name: modelData.name }) : words.t("downloads-source-tip-off", { name: modelData.name })
-                            return modelData.on_demand ? tip : words.t("downloads-source-tip-url", { tip: tip, url: modelData.url })
-                        }
-                    }
-                }
-            }
-            Button {
-                visible: page.endpoints.some(function(e) { return !!e.on_demand })
-                height: parent.chipHeight
-                text: page.checkJob >= 0 ? words.t("downloads-check-busy") : words.t("downloads-check")
-                icon: "refresh-cw"
-                flat: true
-                small: true
-                enabled: page.checkJob < 0
-                onClicked: page.checkSources()
-                Tooltip { msg: "downloads-check.tip" }
-            }
-        }
-
         // ---- The search up: the query line, the groups, Narrow and Best match, then the
         // releases and the actions pane
         Column {
@@ -2331,32 +2348,72 @@ Item {
                 onCancel: page.cancelSearch()
                 onSwitchTo: function(name) { page.searchOn(name) }
             }
-            // Each source the search asked: what it found, and a click shows it
-            Row {
+            // Every source, where the search is: what each one found, and a click shows it. The
+            // check switches a source off for this search and the next; a source that is off
+            // is asked on a click, and an on-demand one that is down asks to start first
+            Flow {
                 objectName: "downloads-search-sources"
-                visible: Object.keys(page.searchResults).length > 1 && (page.state !== null || page.searching)
+                // One source on its own needs no row, unless it is off and the search said so
+                visible: page.endpoints.length > 0 && (page.state !== null || page.searching || page.searchError !== "")
+                    && (page.endpoints.length > 1 || page.enabledEndpoints.length === 0)
+                width: parent.width
                 spacing: theme.space(2)
-                Label { anchors.verticalCenter: parent.verticalCenter; msg: "downloads-found-on"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(1) }
+                // Label and Check stand as tall as the chips beside them
+                readonly property real chipHeight: sourceChips.count > 0 && sourceChips.itemAt(0) ? sourceChips.itemAt(0).height : theme.space(6)
+                Label { height: parent.chipHeight; verticalAlignment: Text.AlignVCenter; msg: "downloads-sources"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(1) }
                 Repeater {
-                    model: page.endpoints.map(function(e) { return e.name }).filter(function(n) { return page.searchResults[n] !== undefined })
+                    id: sourceChips
+                    model: page.endpoints
                     Chip {
                         id: found
-                        required property string modelData
-                        readonly property var res: page.searchResults[modelData]
-                        objectName: "downloads-found-" + modelData
-                        text: modelData
+                        required property var modelData
+                        readonly property string name: modelData.name
+                        readonly property var res: page.searchResults[name]
+                        readonly property bool on: page.sourceOn(name)
+                        readonly property bool down: !!modelData.on_demand && modelData.running !== true
+                        readonly property bool starting: page.startJob >= 0 && page.startName === name
+                        objectName: "downloads-found-" + name
+                        text: name
                         mono: false
                         small: true
-                        selected: page.adoptedFrom === modelData && page.state !== null
-                        dimmed: !res || res.state === "idle" || res.state === "error"
-                        // A failed source says so on the chip; the tip says why in plain words, and a
-                        // click asks that source again
-                        clickable: !!res && (res.state === "done" || res.state === "error")
+                        icon: on ? "check" : "plus"
+                        iconClickable: on
+                        iconTip: {
+                            var tip = words.t("downloads-source-tip-on", { name: name })
+                            return modelData.on_demand ? tip : words.t("downloads-source-tip-url", { tip: tip, url: modelData.url })
+                        }
+                        onIconClicked: page.switchOffSource(name)
+                        selected: on && page.adoptedFrom === name && page.state !== null
+                        dimmed: !on || !res || res.state === "idle" || res.state === "error"
+                        // A failed or cancelled source says so on the chip, the tip says why in
+                        // plain words, and a click asks that source again
+                        clickable: !on || !res || res.state !== "searching"
                         readonly property string why: res && res.state === "error" && res.error ? String(res.error) : ""
-                        hint: !res ? "" : res.state === "searching" ? words.t("downloads-found-searching") : res.state === "error" ? words.t("downloads-found-failed") : res.state === "idle" ? words.t("downloads-found-cancelled") : words.t("downloads-releases", { count: res.search.items.length })
-                        onClicked: if (res.state === "error") page.runSearch([modelData]); else page.adoptFrom(modelData)
-                        Tooltip { text: found.why !== "" ? words.t("downloads-found-retry-tip", { why: found.why }) : "" }
+                        hint: starting ? words.t("downloads-source-hint-starting")
+                            : !on ? (down ? words.t("downloads-source-hint-down") : "")
+                            : !res ? "" : res.state === "searching" ? words.t("downloads-found-searching") : res.state === "error" ? words.t("downloads-found-failed") : res.state === "idle" ? words.t("downloads-found-cancelled") : words.t("downloads-releases", { count: res.search.items.length })
+                        onClicked: {
+                            if (!on) page.switchOnSource(name)
+                            else if (res && res.state === "done") page.adoptFrom(name)
+                            else page.searchMore(name)
+                        }
+                        Tooltip {
+                            // The check has its own tip; one at a time
+                            text: found.iconHovered ? "" : found.why !== "" ? words.t("downloads-found-retry-tip", { why: found.why })
+                                : found.on ? "" : found.down ? words.t("downloads-source-tip-down", { name: found.name }) : words.t("downloads-source-tip-off", { name: found.name })
+                        }
                     }
+                }
+                Button {
+                    visible: page.endpoints.some(function(e) { return !!e.on_demand })
+                    height: parent.chipHeight
+                    text: page.checkJob >= 0 ? words.t("downloads-check-busy") : words.t("downloads-check")
+                    icon: "refresh-cw"
+                    flat: true
+                    small: true
+                    enabled: page.checkJob < 0
+                    onClicked: page.checkSources()
+                    Tooltip { msg: "downloads-check.tip" }
                 }
             }
             // anirss's groups as filters, by kind: a click narrows to one
@@ -2759,7 +2816,7 @@ Item {
                 options: [
                     { text: words.t("downloads-lens-gaps-count", { count: page.gapCards.length }) },
                     { text: words.t("downloads-lens-airing-count", { count: page.airingCards.length }) },
-                    { text: words.t("downloads-lens-following-count", { count: page.rules.length }) },
+                    { text: words.t("downloads-lens-following-count", { count: page.followed.length }) },
                     { text: words.t("downloads-lens-downloaded-count", { count: page.downloadedCount }) }
                 ]
                 index: ["gaps", "airing", "following", "downloaded"].indexOf(page.lens)
@@ -2883,8 +2940,8 @@ Item {
             spacing: theme.space(4)
             BandHead {
                 title: words.t("downloads-lens-following")
-                count: page.rules.length
-                line: page.rulesError !== "" ? words.t("downloads-rules-unread") : page.rulesLoaded ? (page.rules.length ? words.t("downloads-lens-following-line") : words.t("downloads-none-yet")) : (page.searchReady ? words.t("downloads-reading") : "")
+                count: page.followed.length
+                line: page.rulesError !== "" ? words.t("downloads-rules-unread") : page.rulesLoaded ? (page.followed.length ? words.t("downloads-lens-following-line") : words.t("downloads-none-yet")) : (page.searchReady ? words.t("downloads-reading") : "")
                 alarm: page.rulesError !== ""
                 view: frame.downloadsSubView
                 viewName: "downloads-sub-view"
@@ -3034,10 +3091,11 @@ Item {
                     objectName: "downloads-delete-watched"
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: frame.deleteWatchedToken >= 0 ? words.t("downloads-deleting") : words.t("downloads-delete-watched")
+                    text: frame.deleteWatchedToken >= 0 ? words.t("downloads-deleting") : page.watchedBytes > 0 ? words.t("downloads-delete-watched-frees", { size: words.bytes(page.watchedBytes) }) : words.t("downloads-delete-watched")
                     icon: "trash-2"
-                    enabled: frame.deleteWatchedToken < 0 && page.watchedBytes > 0
-                    onClicked: page.askDeleteWatched(deleteWatched)
+                    danger: page.watchedBytes > 0 || page.watched.finished.length > 0
+                    enabled: frame.deleteWatchedToken < 0 && (page.watchedBytes > 0 || page.watched.finished.length > 0)
+                    onClicked: frame.askDeleteWatched(deleteWatched, function() { return page.diskCards }, page.activeClientName)
                 }
             }
             Repeater {

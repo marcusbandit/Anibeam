@@ -1,5 +1,5 @@
 [
- {"log": "#1094: with every source off, Return says so; switching one on from the Sources row clears the line. The sources are invented and nothing is searched"},
+ {"log": "#1094: with every source off, Return says so; switching one on from the Sources row under it clears the line and asks it (#1487). The sources are invented"},
  {"click": "rail-downloads"},
  {"until": "driver.item.pageReady('downloads')", "timeout": 15000},
  {"wait": 1500},
@@ -10,13 +10,13 @@
  {"until": "frame.item.pageItem.searchError !== '' && !!driver.item.findItem('downloads-search-error')", "timeout": 5000},
  {"wait": 500},
  {"shot": "1094-01-all-off"},
- {"click": "downloads-source-beta"},
+ {"eval": "!!driver.item.findItem('downloads-search-sources') && driver.item.findItem('downloads-search-sources').visible", "expect": true},
+ {"click": "downloads-found-beta"},
  {"until": "frame.item.pageItem.sourceOn('beta')", "timeout": 5000},
- {"eval": "frame.item.pageItem.searchError", "expect": ""},
- {"eval": "frame.item.pageItem.home", "expect": true},
+ {"eval": "frame.item.pageItem.searchResults.beta !== undefined", "expect": true},
  {"wait": 500},
  {"shot": "1094-02-one-on"},
  {"log": "an error that is not about the sources stays when a source flips"},
- {"eval": "var p = frame.item.pageItem; p.sayOnSearch('Example failure', '', '', null); p.toggleSource('alpha'); p.searchError", "expect": "Example failure"},
+ {"eval": "var p = frame.item.pageItem; p.sayOnSearch('Example failure', '', '', null); p.setSource('alpha', !p.sourceOn('alpha')); p.searchError", "expect": "Example failure"},
  {"eval": "frame.item.pageItem.clearSearch(); frame.item.downloadsSources = ({}); var p = frame.item.pageItem; var st = JSON.parse(JSON.stringify(p.status)); st.endpoints = []; p.status = st; p.endpoints.length", "expect": 0}
 ]

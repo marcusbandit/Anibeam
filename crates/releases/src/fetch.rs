@@ -25,7 +25,7 @@ pub const USER_AGENT: &str =
     "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0";
 
 /// A size from bytes, in the binary units feeds write: `1.4 GiB`.
-pub(super) fn size_text(bytes: u64) -> String {
+pub fn size_text(bytes: u64) -> String {
     let units = ["B", "KiB", "MiB", "GiB", "TiB"];
     let mut v = bytes as f64;
     let mut u = 0;

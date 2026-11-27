@@ -819,9 +819,10 @@ pub(crate) fn version_key(f: &FileRow) -> (u32, u64) {
 /// the fixes that would undo it. The first of these that fits, never touching
 /// a file the user already fixed:
 ///
-/// - A one-episode record (a film in its own folder, a lone OVA) holding one
-///   file, an episode or a special, that is not read as that episode:
-///   `Dai 63-kai ... - Movie` read as episode 63.
+/// - A one-episode record (a lone OVA, a special) holding one file, an
+///   episode or a special, that is not read as that episode. A film record
+///   reads its one file as the film at the scan (`readings`), so this only
+///   speaks for a film when the count came from somewhere else.
 /// - Numbered specials where the episodes they number are missing and no
 ///   regular episode is on disk.
 /// - Every episode numbered past the record's count, two or more in one

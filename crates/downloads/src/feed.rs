@@ -112,7 +112,7 @@ fn entry(item: roxmltree::Node) -> FeedEntry {
         .filter(|n| *n > 0);
     let size = child("size")
         .filter(|s| s.parse::<u64>().is_err())
-        .or_else(|| size_bytes.map(human))
+        .or_else(|| size_bytes.map(anibeam_releases::fetch::size_text))
         .unwrap_or_default();
     let count = |name: &str| -> Option<i64> {
         child(name)
@@ -150,21 +150,6 @@ fn date(text: &str) -> Option<i64> {
     time::OffsetDateTime::parse(text, &time::format_description::well_known::Rfc2822)
         .ok()
         .map(|d| d.unix_timestamp())
-}
-
-fn human(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
-    let mut v = bytes as f64;
-    let mut unit = 0;
-    while v >= 1024.0 && unit < UNITS.len() - 1 {
-        v /= 1024.0;
-        unit += 1;
-    }
-    if unit == 0 {
-        format!("{bytes} B")
-    } else {
-        format!("{v:.1} {}", UNITS[unit])
-    }
 }
 
 #[cfg(test)]
@@ -253,6 +238,30 @@ mod tests {
             parse(xml).unwrap()[0].info_hash,
             "000102030405060708090a0b0c0d0e0f10111213"
         );
+    }
+
+    #[test]
+    fn a_size_in_bytes_reads_in_binary_units() {
+        let cases = [
+            (1, "1 B"),
+            (1023, "1023 B"),
+            (1024, "1.0 KiB"),
+            (1536, "1.5 KiB"),
+            (734_003_200, "700.0 MiB"),
+            (1_610_612_736, "1.5 GiB"),
+            (2_199_023_255_552, "2.0 TiB"),
+            (1_125_899_906_842_624, "1024.0 TiB"),
+        ];
+        for (bytes, text) in cases {
+            let feed = format!(
+                "<rss><channel><item><title>A</title>\
+                 <link>https://t.example/a.torrent</link>\
+                 <size>{bytes}</size></item></channel></rss>"
+            );
+            let entries = parse(&feed).unwrap();
+            assert_eq!(entries[0].size, text, "{bytes} bytes");
+            assert_eq!(entries[0].size_bytes, Some(bytes));
+        }
     }
 
     #[test]

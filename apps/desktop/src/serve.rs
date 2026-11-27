@@ -466,6 +466,7 @@ mod unix {
                     let paths = CorePaths::under(&root);
                     let secrets = Secrets::file_only(paths.secrets_path());
                     let core = Core::open_with_secrets(paths, secrets)?;
+                    core.use_own_qbittorrent(None);
                     core.set_host_bind(Some(addr.to_string()));
                     core.hold_host(true);
                     core.start()?;

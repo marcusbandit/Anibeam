@@ -33,6 +33,8 @@ impl Teams {
         ));
         let releases = Arc::new(Releases::new(services.clone()));
         let downloads = Arc::new(Downloads::new(services.clone(), net));
+        // Never the real qbittorrent-nox on the PATH: it outlives the test (#1489)
+        downloads.use_own_qbittorrent(None);
         releases
             .searcher
             .set(Arc::downgrade(&downloads) as Weak<dyn Searcher>);

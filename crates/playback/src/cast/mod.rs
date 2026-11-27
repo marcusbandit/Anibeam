@@ -1129,6 +1129,8 @@ mod imp {
                     services.clone(),
                     net.clone(),
                 ));
+                // Never the real qbittorrent-nox on the PATH: it outlives the test (#1489)
+                downloads.use_own_qbittorrent(None);
                 let playback = Arc::new(Playback::new(services, net, trackers, downloads));
                 Teams {
                     playback,

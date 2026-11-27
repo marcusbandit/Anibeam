@@ -95,7 +95,9 @@ fn phone_sources() -> Value {
 fn open(root: &Path) -> std::sync::Arc<Core> {
     let paths = CorePaths::under(root);
     let secrets = Secrets::file_only(paths.secrets_path());
-    Core::open_with_secrets(paths, secrets).unwrap()
+    let core = Core::open_with_secrets(paths, secrets).unwrap();
+    core.use_own_qbittorrent(None);
+    core
 }
 
 /// Every installed row as the store holds it: (install id, repo, id, version, definition,

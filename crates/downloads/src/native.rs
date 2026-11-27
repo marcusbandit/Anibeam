@@ -400,7 +400,7 @@ fn first_feed(rule: &Value) -> String {
 /// Where a rule saves. qBittorrent 4.6 and later read `torrentParams`
 /// over the flat keys, and a rule made in its own window may keep the
 /// folder only there.
-fn rule_save_path(rule: &Value) -> Option<&str> {
+pub(crate) fn rule_save_path(rule: &Value) -> Option<&str> {
     [&rule["torrentParams"]["save_path"], &rule["savePath"]]
         .into_iter()
         .filter_map(Value::as_str)

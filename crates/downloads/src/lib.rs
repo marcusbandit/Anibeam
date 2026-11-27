@@ -80,6 +80,9 @@ pub struct Downloads {
     /// One rule written or removed at a time on the core's own engine:
     /// picking a free rule name is check-then-act.
     rules: tokio::sync::Mutex<()>,
+    /// One subscription made at a time, from naming its rule to retiring the rules it
+    /// replaces, so two follows of one show never remove each other's new rule (#1486).
+    follows: tokio::sync::Mutex<()>,
     /// Set by a shell that runs against a copy of the library but the
     /// owner's real anirss (a drive script, a screenshot, a sandbox root):
     /// finished feeds are never pruned there.
@@ -87,6 +90,11 @@ pub struct Downloads {
     /// Set only by a test: a sandboxed core settles on a qBittorrent it finds
     /// answering, as an installed one does.
     sandbox_finds_clients: AtomicBool,
+    /// Set only by a test: `Some` pins the qbittorrent-nox Anibeam's own
+    /// client runs, `Some(None)` says there is none, in place of the one
+    /// `managed::binary` finds. Anibeam's own outlives the app by design, so a
+    /// test that found the real one on the PATH left it running for good (#1489).
+    own_binary: Mutex<Option<Option<std::path::PathBuf>>>,
 }
 
 #[derive(Default)]
@@ -144,8 +152,10 @@ impl Downloads {
             connecting: tokio::sync::Mutex::new(()),
             torrent_setup: tokio::sync::Mutex::new(()),
             rules: tokio::sync::Mutex::new(()),
+            follows: tokio::sync::Mutex::new(()),
             unattended_off: AtomicBool::new(false),
             sandbox_finds_clients: AtomicBool::new(false),
+            own_binary: Mutex::new(None),
         }
     }
 }
@@ -161,6 +171,21 @@ impl Downloads {
 
     pub fn let_sandbox_find_clients(&self) {
         self.sandbox_finds_clients.store(true, Ordering::Relaxed);
+    }
+
+    /// Pins the qbittorrent-nox Anibeam's own client runs to `binary`, or to
+    /// none, in place of the one on the PATH. Tests only.
+    pub fn use_own_qbittorrent(&self, binary: Option<std::path::PathBuf>) {
+        *recover(&self.own_binary) = Some(binary);
+    }
+
+    /// The qbittorrent-nox to run as Anibeam's own: the one a test pinned,
+    /// else the one `managed::binary` finds.
+    fn own_qbittorrent(&self) -> Option<std::path::PathBuf> {
+        match recover(&self.own_binary).clone() {
+            Some(pinned) => pinned,
+            None => managed::binary(),
+        }
     }
 
     pub(crate) fn unattended_allowed(&self) -> bool {
@@ -611,7 +636,7 @@ async fn ensure_torrent(downloads: &Downloads) -> Result<DownloadSettings, CoreE
         s = decide_torrent(downloads, s).await?;
     }
     if s.torrent_mode == TorrentMode::Managed {
-        start_managed(&downloads.services, &s).await?;
+        start_managed(downloads, &s).await?;
     }
     Ok(s)
 }
@@ -659,7 +684,7 @@ async fn decide_torrent(
             _ => false,
         }
     };
-    let message = if is_own && (answered || managed::binary().is_some()) {
+    let message = if is_own && (answered || downloads.own_qbittorrent().is_some()) {
         s.torrent_mode = TorrentMode::Managed;
         s.torrent_username = managed::USERNAME.to_string();
         "Downloads use Anibeam's own qBittorrent".to_string()
@@ -668,7 +693,7 @@ async fn decide_torrent(
         // The client it found becomes a saved one, the first on the list
         settings::settle_clients(&mut s, &[])?;
         format!("Downloads use the qBittorrent at {}", s.torrent_url)
-    } else if managed::binary().is_some() {
+    } else if downloads.own_qbittorrent().is_some() {
         // The port an earlier setup chose, so the profile and the address agree
         let port = match own_port {
             Some(port) => port,
@@ -716,7 +741,8 @@ fn own_address(services: &Services) -> Result<String, CoreError> {
 }
 
 /// Anibeam's own qBittorrent, started when its Web UI does not answer.
-async fn start_managed(services: &Services, s: &DownloadSettings) -> Result<(), CoreError> {
+async fn start_managed(downloads: &Downloads, s: &DownloadSettings) -> Result<(), CoreError> {
+    let services = &downloads.services;
     let client = QbtClient::new(&s.torrent_url, managed::USERNAME, "", services.http.clone());
     let answers = || async {
         matches!(
@@ -728,7 +754,7 @@ async fn start_managed(services: &Services, s: &DownloadSettings) -> Result<(), 
         return Ok(());
     }
     let failed = |message: String| CoreError::service(qbt::SERVICE, "failed", message);
-    let binary = managed::binary().ok_or_else(|| {
+    let binary = downloads.own_qbittorrent().ok_or_else(|| {
         CoreError::service(
             qbt::SERVICE,
             "missing",
@@ -1836,6 +1862,7 @@ pub fn subscribe(
         .clone()
         .start(JobKind::Subscribe, move |ctx| async move {
             let backend = DownloadsBackend::open(&owner).await?;
+            let _one = owner.follows.lock().await;
             let mut result = backend
                 .subscribe(&query, &endpoint, &items, name.as_deref(), home.as_deref())
                 .await?;
@@ -1871,6 +1898,31 @@ pub fn subscribe(
                     result.name,
                     describe_terms(&terms)
                 )
+            };
+            // Following a show again replaces what followed it before, on either engine:
+            // the engine names the new rule `Show @endpoint` beside the old one, and two
+            // rules filling one show drew it twice on Following (#1486). The subscription
+            // is made by now, so a failure here leaves both rules and says so.
+            let asked = paths::name_for(name.as_deref(), &items, &query).ok();
+            let before = result.save_path.clone();
+            let retired = retire_twins(
+                &owner,
+                &backend,
+                &mut result,
+                asked.as_deref(),
+                series,
+                home.is_none(),
+            )
+            .await;
+            // Said once, where the rule saves now
+            let message = message.replace(&before, &result.save_path);
+            let message = match retired {
+                Ok(gone) if gone.is_empty() => message,
+                Ok(gone) => format!("{message}; it replaces {}", gone.join(", ")),
+                Err(e) => {
+                    tracing::warn!("the rules {} replaces were kept: {e}", result.name);
+                    format!("{message} (a subscription it replaces could not be removed: {e})")
+                }
             };
             // An Info event goes into the stored log, and a feed's address can hold a login
             // and a key: the event names the rule, and the shell reads the feed from it (#478).
@@ -1925,6 +1977,121 @@ async fn rehome_rule(
         .await?;
     result.save_path = home.to_string();
     Ok(())
+}
+
+/// Removes the rules that followed this show before `result` did, and with `move_in` saves
+/// `result` into the folder the plain-named one filled when the engine named it beside that
+/// one and saved it elsewhere (a show's own folder, when the library gave one, stays where
+/// it is): a show followed again from another endpoint or group keeps one rule and one
+/// folder (#1486). The old rules' torrents and files stay. On the core's engine a feed goes
+/// with its rule unless another still reads it; anirss removes its own as it always does.
+/// `asked` is the name the subscription asked for, the one the engine suffixed. Returns the
+/// rules removed. A read that fails replaces nothing and says nothing: the subscription is
+/// made, and the rules stay as they were.
+async fn retire_twins(
+    downloads: &Downloads,
+    backend: &DownloadsBackend,
+    result: &mut Subscribed,
+    asked: Option<&str>,
+    series: Option<u64>,
+    move_in: bool,
+) -> Result<Vec<String>, CoreError> {
+    let read = async {
+        let qbt = qbt_client(downloads).await?;
+        let rules = qbt.rules().await?;
+        let linker = match series {
+            Some(_) => Some(downloads.services.store.read(link::Linker::load)?),
+            None => None,
+        };
+        Ok::<_, CoreError>((qbt, rules, linker))
+    };
+    let one = downloads.rules.lock().await;
+    let (qbt, mut rules, linker) = match read.await {
+        Ok(read) => read,
+        Err(e) => {
+            tracing::debug!("no rules read to find what {} replaces: {e}", result.name);
+            return Ok(Vec::new());
+        }
+    };
+    // Which series a folder fills, when the subscription named one
+    let fills = |path: &str| {
+        linker
+            .as_ref()
+            .and_then(|l| l.find(path))
+            .map(|id| Some(id) == series)
+    };
+    let twins = rewire::twins(&rules, &result.name, asked, &result.save_path, fills);
+    if twins.is_empty() {
+        return Ok(twins);
+    }
+    // The engine suffixed the new rule beside the plain-named one: the show's episodes are
+    // in that one's folder. A rule that kept the asked name kept its own folder too.
+    let plain = asked
+        .filter(|a| !result.name.eq_ignore_ascii_case(a))
+        .and_then(|a| twins.iter().find(|t| t.eq_ignore_ascii_case(a)));
+    if move_in
+        && let Some(plain) = plain
+        && let Some(folder) = native::rule_save_path(&rules[plain.as_str()]).map(str::to_string)
+        && paths::norm(&folder) != paths::norm(&result.save_path)
+        && let Some(def) = rules.get(&result.name)
+    {
+        qbt.set_rule(&result.name, &rewire::rehomed(def, &folder))
+            .await?;
+        result.save_path = folder;
+    }
+    let reads = |def: &serde_json::Value| -> Vec<String> {
+        def["affectedFeeds"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .filter(|u| !u.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+    if let DownloadsBackend::Anirss(_) = backend {
+        // anirss removes its own subscriptions, feed and all, as its Unsubscribe does. A
+        // rule whose feed a kept rule reads loses only the rule, so the feed stays.
+        let kept: serde_json::Value = rules
+            .as_object()
+            .map(|m| {
+                m.iter()
+                    .filter(|(n, _)| !twins.contains(n))
+                    .map(|(n, d)| (n.clone(), d.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let (shared, own): (Vec<String>, Vec<String>) = twins.iter().cloned().partition(|t| {
+            reads(&rules[t.as_str()])
+                .iter()
+                .any(|u| rewire::feed_shared(&kept, "", u))
+        });
+        for name in &shared {
+            qbt.remove_rule(name).await?;
+        }
+        drop(one);
+        if !own.is_empty() {
+            backend.remove(&own, false, false, false).await?;
+        }
+        return Ok(twins);
+    }
+    let feeds = qbt.feeds().await?;
+    for name in &twins {
+        let def = rules
+            .as_object_mut()
+            .and_then(|m| m.remove(name))
+            .unwrap_or_default();
+        qbt.remove_rule(name).await?;
+        for url in reads(&def) {
+            if rewire::feed_shared(&rules, "", &url) {
+                continue;
+            }
+            for (path, _) in feeds.iter().filter(|(_, u)| *u == url) {
+                qbt.remove_item(path).await?;
+            }
+        }
+    }
+    Ok(twins)
 }
 
 /// Points anirss's new rule at the feed the search read, narrowed by the
