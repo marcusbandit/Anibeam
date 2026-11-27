@@ -1913,8 +1913,9 @@ Item {
     readonly property real tileGap: theme.grout
     readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + tileGap) / (theme.posterWidth + tileGap)))
     readonly property real cardWidth: (scroll.innerWidth - tileGap * (cols - 1)) / cols
-    // The lens grids (Gaps, Airing, Following) are four columns across the whole width, fewer
-    // only when a window is too narrow to give each at least a poster's width (#686)
+    // Gaps cards are short rows, poster at the side, so they share the width four across, fewer
+    // only when a window is too narrow (#686). Airing and Following are poster cards and take
+    // Downloaded's cardWidth (#1485)
     readonly property int lensCols: Math.max(1, Math.min(4, Math.floor((scroll.innerWidth + tileGap) / (theme.space(80) + tileGap))))
     readonly property real lensCardWidth: (scroll.innerWidth - tileGap * (lensCols - 1)) / lensCols
     readonly property bool home: page.detail === null && page.getShow === null && page.state === null && !page.searching && page.searchError === ""
@@ -2914,7 +2915,7 @@ Item {
                     model: page.airingCards
                     ShowCard {
                         required property var modelData
-                        width: page.lensCardWidth
+                        width: page.cardWidth
                         height: implicitHeight
                         poster: modelData.poster || ""
                         title: modelData.title
@@ -2986,7 +2987,7 @@ Item {
                             model: frame.downloadsSubView === "grid" ? subSection.modelData.items : []
                             ShowCard {
                                 required property var modelData
-                                width: page.lensCardWidth
+                                width: page.cardWidth
                                 // a feed with no library show is a full card too, so rows stay even
                                 height: implicitHeight
                                 poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
