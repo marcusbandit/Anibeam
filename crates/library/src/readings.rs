@@ -6,6 +6,9 @@
 //!   (AniList format SPECIAL or OVA) that holds no regular episode reads its
 //!   numbered specials as its episodes: `OVA 3` of the Girls und Panzer OVA
 //!   Series is that record's episode 3, not a special of some other show.
+//!   A film record (format MOVIE, one episode) over a folder holding one
+//!   file reads that file as its episode 1, whatever number its name
+//!   carries (#1479).
 //! - The user's quick fixes, stored by path in `file_fixes`, which win over
 //!   both the name and the record.
 
@@ -19,6 +22,15 @@ use crate::labels;
 use crate::walk::ScannedFile;
 use anibeam_contract::*;
 
+/// What the readings need of the series' AniList record.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct Record {
+    /// `SPECIAL`, `TV`, `MOVIE`.
+    pub format: Option<String>,
+    /// The episode count, None while airing with no count.
+    pub episodes: Option<u32>,
+}
+
 /// The record formats whose numbered specials are the series' own episodes.
 fn specials_are_episodes(format: Option<&str>) -> bool {
     matches!(format, Some("SPECIAL" | "OVA"))
@@ -31,20 +43,49 @@ fn numbered_special(c: &Classified) -> bool {
 /// Whether the record turns this series' numbered specials into its
 /// episodes: the record is a run of specials or OVAs, a file reads as a
 /// numbered special, and none reads as a regular episode.
-fn record_rule_applies(format: Option<&str>, files: &[ScannedFile]) -> bool {
+fn record_rule_applies(format: Option<&str>, files: &[&Classified]) -> bool {
     specials_are_episodes(format)
-        && files.iter().all(|f| f.classified.extra.is_some())
-        && files.iter().any(|f| numbered_special(&f.classified))
+        && files.iter().all(|c| c.extra.is_some())
+        && files.iter().any(|c| numbered_special(c))
 }
 
-/// One series' walked files, read past their names: the record rule first,
+/// A name the film rule reads past: an episode or a special, other than the
+/// first episode. An opening or a preview stays what its name says.
+fn reads_past_film(c: &Classified) -> bool {
+    let first = c.extra.is_none() && c.number == 1.0 && c.season.is_none_or(|s| s <= 1);
+    !first && matches!(c.extra, None | Some(ExtraKind::Sp))
+}
+
+/// Whether the record makes this series' one file its film: a folder (a
+/// loose film file keeps its name as its key), a record of format MOVIE with
+/// one episode, one file, and that file read as some other episode or a
+/// special. `Dai 63-kai ... - Movie` is the film, not episode 63 (#1479).
+fn film_rule_applies(kind: SeriesKind, record: &Record, files: &[&Classified]) -> bool {
+    kind == SeriesKind::Show
+        && record.format.as_deref() == Some("MOVIE")
+        && record.episodes == Some(1)
+        && matches!(files, [only] if reads_past_film(only))
+}
+
+/// One series' walked files, read past their names: the record rules first,
 /// then the fixes, keyed by path.
 pub(crate) fn apply(
-    format: Option<&str>,
+    kind: SeriesKind,
+    record: &Record,
     files: &mut [ScannedFile],
     fixes: &HashMap<String, FileReading>,
 ) {
-    if record_rule_applies(format, files) {
+    let named: Vec<&Classified> = files.iter().map(|f| &f.classified).collect();
+    let film = film_rule_applies(kind, record, &named);
+    if film {
+        set(
+            &mut files[0],
+            &FileReading::Episode {
+                number: 1.0,
+                season: None,
+            },
+        );
+    } else if record_rule_applies(record.format.as_deref(), &named) {
         for f in files.iter_mut().filter(|f| numbered_special(&f.classified)) {
             let number = f64::from(f.classified.extra_index.unwrap_or(0));
             set(
@@ -168,26 +209,47 @@ pub(crate) fn load_fixes(conn: &Connection) -> Result<HashMap<String, FileReadin
     Ok(out)
 }
 
-/// The series' AniList record format, `SPECIAL` or `TV`, when it has one.
-pub(crate) fn record_format(conn: &Connection, series: u64) -> Result<Option<String>, CoreError> {
+/// The series' AniList record, its format and episode count, when it has
+/// one.
+pub(crate) fn record(conn: &Connection, series: u64) -> Result<Record, CoreError> {
     Ok(conn
         .query_row(
-            "SELECT m.format FROM series s JOIN anilist_media m ON m.id = s.anilist_id WHERE s.id = ?1",
+            "SELECT m.format, m.episodes FROM series s JOIN anilist_media m ON m.id = s.anilist_id WHERE s.id = ?1",
             params![series as i64],
-            |r| r.get::<_, Option<String>>(0),
+            |r| {
+                Ok(Record {
+                    format: r.get(0)?,
+                    episodes: r.get::<_, Option<i64>>(1)?.and_then(|n| u32::try_from(n).ok()),
+                })
+            },
         )
         .optional()?
-        .flatten())
+        .unwrap_or_default())
 }
 
-/// Whether the series' rows disagree with what its record now says: the
-/// record rule would read its numbered specials as episodes and the rows do
-/// not, or the other way round. A match that changed is worth a scan only
-/// then, so a TV series with an `SP1` beside its episodes never queues one.
+/// The series' kind, Show when the row is gone.
+fn series_kind(conn: &Connection, series: u64) -> Result<SeriesKind, CoreError> {
+    Ok(conn
+        .query_row(
+            "SELECT kind FROM series WHERE id = ?1",
+            params![series as i64],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+        .and_then(|k| SeriesKind::from_column(&k))
+        .unwrap_or(SeriesKind::Show))
+}
+
+/// Whether the series' rows disagree with what its record now says: a
+/// record rule would read a file past its name and the rows do not, or the
+/// other way round. A match that changed is worth a scan only then, so a TV
+/// series with an `SP1` beside its episodes never queues one.
 pub fn record_matters(conn: &Connection, series: u64) -> Result<bool, CoreError> {
-    let format = record_format(conn, series)?;
+    let record = record(conn, series)?;
+    let kind = series_kind(conn, series)?;
     let mut stmt = conn.prepare(
-        "SELECT f.path, f.kind, EXISTS (SELECT 1 FROM file_fixes x WHERE x.path = f.path)
+        "SELECT f.path, f.kind, f.number, f.season,
+                EXISTS (SELECT 1 FROM file_fixes x WHERE x.path = f.path)
          FROM files f WHERE f.series_id = ?1",
     )?;
     let rows = stmt
@@ -195,26 +257,36 @@ pub fn record_matters(conn: &Connection, series: u64) -> Result<bool, CoreError>
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
-                r.get::<_, bool>(2)?,
+                r.get::<_, Option<f64>>(2)?,
+                r.get::<_, Option<i64>>(3)?,
+                r.get::<_, bool>(4)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
-    let named: Vec<(Classified, &str, bool)> = rows
+    let names: Vec<Classified> = rows
         .iter()
-        .map(|(path, kind, fixed)| {
-            (
-                classifier::classify(&file_name(path)),
-                kind.as_str(),
-                *fixed,
-            )
-        })
+        .map(|(path, ..)| classifier::classify(&file_name(path)))
         .collect();
-    let would = specials_are_episodes(format.as_deref())
-        && named.iter().all(|(c, _, _)| c.extra.is_some())
-        && named.iter().any(|(c, _, _)| numbered_special(c));
-    let does = named
+    let named: Vec<&Classified> = names.iter().collect();
+
+    // The film rule: one file its name reads past, stored as episode 1.
+    let film_would = film_rule_applies(kind, &record, &named);
+    let film_does = matches!(
+        rows.as_slice(),
+        [(_, row_kind, Some(n), season, false)]
+            if row_kind == "episode" && *n == 1.0 && season.is_none_or(|s| s <= 1)
+    ) && reads_past_film(&names[0]);
+    let would = record_rule_applies(record.format.as_deref(), &named);
+    // A specials record reads a lone `SP1` as episode 1 too; that is its own
+    // rule's row, not the film rule's.
+    if film_would || (film_does && !would) {
+        return Ok(film_would != film_does);
+    }
+
+    let does = rows
         .iter()
-        .any(|(c, kind, fixed)| !fixed && numbered_special(c) && *kind == "episode");
+        .zip(&names)
+        .any(|((_, kind, _, _, fixed), c)| !fixed && numbered_special(c) && kind == "episode");
     Ok(would != does)
 }
 
@@ -251,6 +323,115 @@ mod tests {
         }
     }
 
+    fn rec(format: Option<&str>, episodes: Option<u32>) -> Record {
+        Record {
+            format: format.map(str::to_string),
+            episodes,
+        }
+    }
+
+    /// A film in its own folder whose name carries a number that is not
+    /// its episode: an ordinal in the title, then the type.
+    const FILM: &str =
+        "/lib/Some Film/[Fansub] Some Show - Dai 63-kai Taikai - Movie [1080p][HEVC].mkv";
+
+    #[test]
+    fn a_film_record_reads_its_one_file_as_the_film() {
+        let mut files = vec![walked(FILM)];
+        assert_eq!(files[0].classified.number, 63.0, "the name alone reads 63");
+        apply(
+            SeriesKind::Show,
+            &rec(Some("MOVIE"), Some(1)),
+            &mut files,
+            &HashMap::new(),
+        );
+        let f = &files[0];
+        assert_eq!(
+            (f.classified.extra, f.classified.number, f.classified.season),
+            (None, 1.0, None)
+        );
+        assert_eq!(f.episode_key, classifier::number_key(None, 1.0));
+        // A lone special in a film's folder is the film too.
+        let mut files = vec![walked("/lib/Some Film/Some Show - SP.mkv")];
+        assert_eq!(files[0].classified.extra, Some(ExtraKind::Sp));
+        apply(
+            SeriesKind::Show,
+            &rec(Some("MOVIE"), Some(1)),
+            &mut files,
+            &HashMap::new(),
+        );
+        assert_eq!(
+            (files[0].classified.extra, files[0].classified.number),
+            (None, 1.0)
+        );
+    }
+
+    #[test]
+    fn the_film_rule_needs_a_one_episode_film_record_over_one_file_in_a_folder() {
+        let unchanged = |kind: SeriesKind, record: Record, mut files: Vec<ScannedFile>| {
+            let before: Vec<f64> = files.iter().map(|f| f.classified.number).collect();
+            apply(kind, &record, &mut files, &HashMap::new());
+            let after: Vec<f64> = files.iter().map(|f| f.classified.number).collect();
+            assert_eq!(before, after, "{kind:?} {record:?}");
+        };
+        unchanged(
+            SeriesKind::Show,
+            rec(Some("TV"), Some(1)),
+            vec![walked(FILM)],
+        );
+        unchanged(
+            SeriesKind::Show,
+            rec(Some("MOVIE"), Some(3)),
+            vec![walked(FILM)],
+        );
+        unchanged(
+            SeriesKind::Show,
+            rec(Some("MOVIE"), None),
+            vec![walked(FILM)],
+        );
+        unchanged(SeriesKind::Show, rec(None, None), vec![walked(FILM)]);
+        // A loose film file keeps its name as its key.
+        unchanged(
+            SeriesKind::Movie,
+            rec(Some("MOVIE"), Some(1)),
+            vec![walked(FILM)],
+        );
+        unchanged(
+            SeriesKind::Show,
+            rec(Some("MOVIE"), Some(1)),
+            vec![walked(FILM), walked("/lib/Some Film/Some Show - 02.mkv")],
+        );
+        // An opening stays an opening.
+        let mut files = vec![walked("/lib/Some Film/Some Show - NCOP1.mkv")];
+        apply(
+            SeriesKind::Show,
+            &rec(Some("MOVIE"), Some(1)),
+            &mut files,
+            &HashMap::new(),
+        );
+        assert_eq!(files[0].classified.extra, Some(ExtraKind::Op));
+    }
+
+    #[test]
+    fn a_fix_wins_over_the_film_rule() {
+        let mut files = vec![walked(FILM)];
+        let mut fixes = HashMap::new();
+        fixes.insert(
+            FILM.to_string(),
+            FileReading::Extra {
+                kind: ExtraKind::Other,
+                index: None,
+            },
+        );
+        apply(
+            SeriesKind::Show,
+            &rec(Some("MOVIE"), Some(1)),
+            &mut files,
+            &fixes,
+        );
+        assert_eq!(files[0].classified.extra, Some(ExtraKind::Other));
+    }
+
     fn gup() -> Vec<ScannedFile> {
         (1..=6)
             .map(|n| {
@@ -264,7 +445,12 @@ mod tests {
     #[test]
     fn a_specials_record_reads_its_numbered_specials_as_episodes() {
         let mut files = gup();
-        apply(Some("SPECIAL"), &mut files, &HashMap::new());
+        apply(
+            SeriesKind::Show,
+            &rec(Some("SPECIAL"), None),
+            &mut files,
+            &HashMap::new(),
+        );
         for (i, f) in files.iter().enumerate() {
             let n = (i + 1) as f64;
             assert_eq!(
@@ -274,7 +460,12 @@ mod tests {
             assert_eq!(f.episode_key, classifier::format_number(n));
         }
         let mut files = gup();
-        apply(Some("OVA"), &mut files, &HashMap::new());
+        apply(
+            SeriesKind::Show,
+            &rec(Some("OVA"), None),
+            &mut files,
+            &HashMap::new(),
+        );
         assert!(files.iter().all(|f| f.classified.extra.is_none()));
     }
 
@@ -289,7 +480,12 @@ mod tests {
                 ))
             })
             .collect();
-        apply(Some("OVA"), &mut files, &HashMap::new());
+        apply(
+            SeriesKind::Show,
+            &rec(Some("OVA"), None),
+            &mut files,
+            &HashMap::new(),
+        );
         let numbers: Vec<f64> = files.iter().map(|f| f.classified.number).collect();
         assert!(files.iter().all(|f| f.classified.extra.is_none()));
         assert_eq!(numbers, (1..=8).map(f64::from).collect::<Vec<_>>());
@@ -299,7 +495,12 @@ mod tests {
     fn any_other_record_or_a_regular_episode_leaves_them_specials() {
         for format in [None, Some("TV"), Some("MOVIE")] {
             let mut files = gup();
-            apply(format, &mut files, &HashMap::new());
+            apply(
+                SeriesKind::Show,
+                &rec(format, None),
+                &mut files,
+                &HashMap::new(),
+            );
             assert!(
                 files
                     .iter()
@@ -309,7 +510,12 @@ mod tests {
         }
         let mut files = gup();
         files.push(walked("/lib/GuP Specials/Girls und Panzer - 01.mkv"));
-        apply(Some("SPECIAL"), &mut files, &HashMap::new());
+        apply(
+            SeriesKind::Show,
+            &rec(Some("SPECIAL"), None),
+            &mut files,
+            &HashMap::new(),
+        );
         assert_eq!(
             files
                 .iter()
@@ -337,7 +543,12 @@ mod tests {
                 season: Some(2),
             },
         );
-        apply(Some("SPECIAL"), &mut files, &fixes);
+        apply(
+            SeriesKind::Show,
+            &rec(Some("SPECIAL"), None),
+            &mut files,
+            &fixes,
+        );
         assert_eq!(
             (files[2].classified.extra, files[2].label.as_str()),
             (Some(ExtraKind::Op), "Opening 1")
