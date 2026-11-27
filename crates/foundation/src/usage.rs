@@ -38,6 +38,9 @@ const SAVE_EVERY: Duration = Duration::from_secs(60);
 /// The longest page id the log takes.
 const PAGE_MAX: usize = 40;
 
+/// The longest call name or error kind a checked log may carry.
+const NAME_MAX: usize = 64;
+
 /// The file's name in the data folder.
 pub const FILE_NAME: &str = "usage.json";
 
@@ -141,6 +144,41 @@ pub fn page_ok(page: &str) -> bool {
     page.len() <= PAGE_MAX
         && chars.next().is_some_and(|c| c.is_ascii_lowercase())
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// Whether `name` reads as a call name or an error kind: ASCII letters, digits and `_`,
+/// short. A path, a title or an address never does.
+fn name_ok(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= NAME_MAX
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+/// Whether `key` is a real date written the way `date_of` writes one.
+fn date_ok(key: &str) -> bool {
+    let b = key.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return false;
+    }
+    let num = |r: std::ops::Range<usize>| {
+        b[r].iter().try_fold(0i64, |n, d| {
+            d.is_ascii_digit().then(|| n * 10 + i64::from(d - b'0'))
+        })
+    };
+    let (Some(y), Some(m), Some(d)) = (num(0..4), num(5..7), num(8..10)) else {
+        return false;
+    };
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return false;
+    }
+    // Round trip through the day number, so 2026-02-30 is refused
+    let shifted_y = if m <= 2 { y - 1 } else { y };
+    let era = shifted_y.div_euclid(400);
+    let yoe = shifted_y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    date_of(era * 146_097 + doe - 719_468) == key
 }
 
 /// Days since the Unix epoch on this machine's clock, in UTC.
@@ -325,12 +363,36 @@ impl UsageLog {
         serde_json::to_string_pretty(&file).unwrap_or_default()
     }
 
-    /// `text` read back as a usage log and written out again, so only the log's own
-    /// fields can leave: anything else, or another format, is refused.
-    pub fn checked(text: &str) -> Result<String, String> {
+    /// `text` read back as this log and written out again, so only the log's own fields
+    /// can leave. Refused: anything else, another format, a header that is not this
+    /// build's, a day that is not a date, a page that is not a page id (`page_ok`), and a
+    /// call or error kind that does not read as a name.
+    pub fn checked(&self, text: &str) -> Result<String, String> {
         let file: File = serde_json::from_str(text).map_err(|e| e.to_string())?;
         if file.format != FORMAT {
             return Err(format!("format {}", file.format));
+        }
+        if file.app_version != self.version
+            || file.platform != platform()
+            || file.os != std::env::consts::OS
+        {
+            return Err("the header is not this build's".to_string());
+        }
+        for (date, day) in &file.days {
+            if !date_ok(date) {
+                return Err("a day that is not a date".to_string());
+            }
+            if !day.pages.keys().all(|p| page_ok(p)) {
+                return Err("a page that is not a page id".to_string());
+            }
+            let names_ok = day.calls.keys().all(|c| name_ok(c))
+                && day
+                    .errors
+                    .iter()
+                    .all(|(call, kinds)| name_ok(call) && kinds.keys().all(|k| name_ok(k)));
+            if !names_ok {
+                return Err("a call or error that is not a name".to_string());
+            }
         }
         serde_json::to_string_pretty(&file).map_err(|e| e.to_string())
     }
@@ -527,6 +589,78 @@ mod tests {
             assert!(log.record_page(bad).is_err(), "{bad}");
         }
         assert!(log.record_page("settings-about").is_ok());
+    }
+
+    #[test]
+    fn dates_are_checked_as_real_dates() {
+        for day in [0, 19_723, 19_782, 20_784, 20_784 + 400] {
+            assert!(date_ok(&date_of(day)), "{}", date_of(day));
+        }
+        for bad in [
+            "",
+            "today",
+            "2026-1-27",
+            "2026/11/27",
+            "2026-13-01",
+            "2026-00-10",
+            "2026-02-30",
+            "2025-02-29",
+            "2026-11-32",
+            "2026-11-2a",
+            " 2026-11-2",
+        ] {
+            assert!(!date_ok(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_checked_log_is_this_builds_log_and_nothing_more() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = log(dir.path());
+        log.record_call("Scan", Some("Io"));
+        log.record_page("settings-about").unwrap();
+        let text = log.text();
+        assert_eq!(log.checked(&text).unwrap(), text);
+
+        let file: File = serde_json::from_str(&text).unwrap();
+        let date = date_of(today());
+        let refused = |change: &dyn Fn(&mut File)| {
+            let mut f = file.clone();
+            change(&mut f);
+            log.checked(&serde_json::to_string(&f).unwrap()).is_err()
+        };
+        let refused_day =
+            |change: &dyn Fn(&mut Day)| refused(&|f| change(f.days.get_mut(&date).unwrap()));
+        assert!(refused(&|f| f.app_version = "1.0.0".into()));
+        assert!(refused(&|f| f.platform = "phone-or-not".into()));
+        assert!(refused(&|f| f.os = "/srv/someone".into()));
+        assert!(refused(&|f| f.format = FORMAT + 1));
+        assert!(refused(&|f| {
+            let d = f.days.remove(&date).unwrap();
+            f.days.insert("/srv/media".into(), d);
+        }));
+        assert!(refused_day(&|d| {
+            d.pages.insert("/srv/media/Some Show".into(), 1);
+        }));
+        assert!(refused_day(&|d| {
+            d.pages.insert("Some Show Title".into(), 1);
+        }));
+        assert!(refused_day(&|d| {
+            d.calls.insert("someone@example.com".into(), 1);
+        }));
+        assert!(refused_day(&|d| {
+            d.calls.insert("a".repeat(NAME_MAX + 1), 1);
+        }));
+        assert!(refused_day(&|d| {
+            d.errors
+                .entry("Scan".into())
+                .or_default()
+                .insert("C:\\Users".into(), 1);
+        }));
+        assert!(refused_day(&|d| {
+            d.errors
+                .insert("Some Call".into(), BTreeMap::from([("Io".into(), 1)]));
+        }));
     }
 
     /// Whatever is counted, the text carries no path, address or mail-like string: only

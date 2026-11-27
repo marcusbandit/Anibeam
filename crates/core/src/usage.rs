@@ -60,7 +60,7 @@ pub(crate) fn get(core: &Core) -> Result<Reply, CoreError> {
 /// The text a preview showed, checked to be a usage log, or the log as it is now.
 fn text_or_now(core: &Core, text: Option<String>) -> Result<String, CoreError> {
     match text {
-        Some(text) => Log::checked(&text).map_err(|e| {
+        Some(text) => core.usage.checked(&text).map_err(|e| {
             CoreError::invalid(
                 "text",
                 crate::i18n::tr("core-usage-not-a-log", &[("error", e.into())]),
