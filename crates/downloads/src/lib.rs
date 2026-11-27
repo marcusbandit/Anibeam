@@ -3228,6 +3228,114 @@ pub fn stop_following(downloads: &Arc<Downloads>, series: u64, title: String) {
     });
 }
 
+/// Delete all on a show (#1495): each torrent of the series that carries one of `episodes`,
+/// the ones its sheet named as downloading, leaves the client, so it cannot finish and bring
+/// the show back. One that finished since the sheet opened goes too: its file was left out of
+/// the trash while it was downloading. A torrent of one episode goes with its file. A batch
+/// goes without its data, and only the named episodes' files are deleted, so its extras and
+/// anything else the sheet did not name stay; those are deleted only when the client's files
+/// are this machine's. A torrent on an episode the sheet did not name stays. Linked as the
+/// Downloads page links a torrent, with the series kept even once its folder reads empty.
+pub fn stop_downloading(
+    downloads: &Arc<Downloads>,
+    series: u64,
+    episodes: Vec<u32>,
+    title: String,
+) {
+    let owner = downloads.clone();
+    downloads.services.handle.spawn(async move {
+        let outcome = async {
+            let here = settings::files_here(&load_settings(&owner.services).await?);
+            let client = qbt_client(&owner).await?;
+            let linker = owner
+                .services
+                .store
+                .read(move |c| link::Linker::load_keeping(c, series))?;
+            // Linked by path first, so only this series' torrents have their files read
+            let mut torrents: Vec<Torrent> = client
+                .torrents()
+                .await?
+                .into_iter()
+                .filter(|t| linker.find_torrent(t) == Some(series))
+                .collect();
+            for t in torrents.iter_mut() {
+                match client.files(&t.hash).await {
+                    Ok(files) if files.len() > 1 => t.files = files,
+                    Ok(_) => {}
+                    Err(e) => tracing::debug!("files of {} not read: {e}", t.name),
+                }
+                read_episodes(t);
+            }
+            let named = |n: Option<f64>| {
+                n.is_some_and(|n| n.fract() == 0.0 && n >= 1.0 && episodes.contains(&(n as u32)))
+            };
+            let (mut whole, mut batches, mut files) = (Vec::new(), Vec::new(), Vec::new());
+            for t in &torrents {
+                if t.files.is_empty() {
+                    if named(t.episode) {
+                        whole.push(t.hash.to_ascii_lowercase());
+                    }
+                    continue;
+                }
+                let mine: Vec<&TorrentFile> = t
+                    .files
+                    .iter()
+                    .filter(|f| f.priority != 0 && named(f.episode))
+                    .collect();
+                if mine.is_empty() {
+                    continue;
+                }
+                batches.push(t.hash.to_ascii_lowercase());
+                let save = std::path::Path::new(&t.save_path);
+                files.extend(mine.iter().map(|f| save.join(&f.name)));
+            }
+            if !whole.is_empty() {
+                client.delete(&whole, true).await?;
+            }
+            if !batches.is_empty() {
+                client.delete(&batches, false).await?;
+            }
+            if here {
+                for f in &files {
+                    match std::fs::remove_file(f) {
+                        Ok(()) => {}
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(e) => tracing::warn!("{} not deleted: {e}", f.display()),
+                    }
+                }
+            }
+            Ok::<_, CoreError>(whole.len() + batches.len())
+        }
+        .await;
+        match outcome {
+            Ok(0) => {}
+            Ok(n) => {
+                owner.services.bus.info(
+                    Stage::Downloads,
+                    format!(
+                        "{} of {title} stopped and removed",
+                        plural(n as u64, "download", "downloads")
+                    ),
+                    EventBody::Notice,
+                );
+                let _ = list_torrents(&owner);
+            }
+            Err(e) => {
+                owner.services.bus.say(
+                    Level::Warn,
+                    Stage::Downloads,
+                    anibeam_contract::words!("core-downloads-not-stopped", title = &title),
+                    format!("The download of {title} was not stopped: {}", plain(&e)),
+                    EventBody::DownloadsUnavailable {
+                        what: "torrents".to_string(),
+                        error: e,
+                    },
+                );
+            }
+        }
+    });
+}
+
 /// The client's rules that `fills` takes, removed with neither torrents nor files: the
 /// delete before took what was on disk. Their names.
 #[cfg(not(feature = "phone"))]
@@ -3394,6 +3502,10 @@ impl anibeam_library::Incoming for Downloads {
 
     fn stop_following(self: Arc<Self>, series: u64, title: String) {
         stop_following(&self, series, title);
+    }
+
+    fn stop_downloading(self: Arc<Self>, series: u64, episodes: Vec<u32>, title: String) {
+        stop_downloading(&self, series, episodes, title);
     }
 
     fn files_arrived(self: Arc<Self>) {
@@ -3863,12 +3975,7 @@ fn link_torrents(services: &Services, torrents: &mut [Torrent]) -> Vec<ShowLink>
         Ok((ids, shows)) => {
             for (t, id) in torrents.iter_mut().zip(ids) {
                 t.series_id = id;
-                let f = facts::read_name(&t.name);
-                t.batch = f.batch || !t.files.is_empty();
-                t.episode = if t.batch { None } else { f.episode };
-                for file in t.files.iter_mut() {
-                    file.episode = facts::read_name(&file.name).episode;
-                }
+                read_episodes(t);
             }
             let mut out: Vec<ShowLink> = shows.into_values().collect();
             out.sort_by_key(|s| s.series_id);
@@ -3878,6 +3985,16 @@ fn link_torrents(services: &Services, torrents: &mut [Torrent]) -> Vec<ShowLink>
             tracing::warn!("torrents not linked to the library: {e}");
             Vec::new()
         }
+    }
+}
+
+/// Reads from a torrent's name, and its files' names, which episodes it carries.
+fn read_episodes(t: &mut Torrent) {
+    let f = facts::read_name(&t.name);
+    t.batch = f.batch || !t.files.is_empty();
+    t.episode = if t.batch { None } else { f.episode };
+    for file in t.files.iter_mut() {
+        file.episode = facts::read_name(&file.name).episode;
     }
 }
 

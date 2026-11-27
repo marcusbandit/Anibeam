@@ -1818,6 +1818,7 @@ impl App {
                     series,
                     files,
                     stop_following: false,
+                    stop_downloading: Vec::new(),
                 });
                 let _ = slint::invoke_from_event_loop(move || {
                     with_app(|app| {

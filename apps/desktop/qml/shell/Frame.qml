@@ -1265,25 +1265,40 @@ FocusScope {
             .filter(function(e) { return (e.downloading === undefined || e.downloading === null) && (!watchedOnly || e.watched) })
             .map(function(e) { return e.file })
         var extras = whole ? (r.reply.detail.extras || []).map(function(x) { return x.file }) : []
-        if (!files.length && !extras.length) { frame.toast(watchedOnly ? words.t("frame-delete-none-watched", { title: c.title }) : words.t("frame-delete-none", { title: c.title })); return }
+        // Delete all stops those downloads too, so none finishes and brings the show back
+        // (#1495); Delete watched never touches one. Only the episodes the sheet names
+        var downloading = watchedOnly ? [] : ((r.reply.detail.card || {}).downloading || []).map(function(d) { return d.number })
+        if (!files.length && !extras.length && !downloading.length) { frame.toast(watchedOnly ? words.t("frame-delete-none-watched", { title: c.title }) : words.t("frame-delete-none", { title: c.title })); return }
         var noun = seriesNoun(c)
-        var named = files.length ? words.t("frame-delete-files", { count: files.length, kind: noun, watched: watchedOnly ? "yes" : "no" }) : ""
+        // Episodes, not files: two releases of one episode, or a downloading episode with an
+        // older whole copy here, are one episode
+        var trashed = [], eps = r.reply.detail.episodes || []
+        for (var i = 0; i < eps.length; i++)
+            if (files.indexOf(eps[i].file) >= 0 && trashed.indexOf(eps[i].number) < 0) trashed.push(eps[i].number)
+        var counted = trashed.slice()
+        downloading.forEach(function(n) { if (counted.indexOf(n) < 0) counted.push(n) })
         var extrasNamed = extras.length ? words.t("frame-delete-extras", { count: extras.length }) : ""
-        var what = named && extrasNamed ? words.t("frame-delete-and", { first: named, second: extrasNamed }) : named || extrasNamed
+        function phrase(n) {
+            var named = n ? words.t("frame-delete-files", { count: n, kind: noun, watched: watchedOnly ? "yes" : "no" }) : ""
+            return named && extrasNamed ? words.t("frame-delete-and", { first: named, second: extrasNamed }) : named || extrasNamed
+        }
+        // The heading names everything that goes; the done toast only what went to the trash
+        var what = phrase(counted.length), done = phrase(trashed.length)
         files = files.concat(extras)
         // Delete all stops following the show too (#1483); Delete watched never does. Only
         // when the sheet names the rules, so nothing goes that it did not say
         var rules = watchedOnly ? [] : frame.rulesOf(c.id), unfollow = rules.length > 0
         var base = words.t("frame-delete-base")
         if (rules.length) base += " " + words.t("frame-delete-unfollow-base", { count: rules.length, names: rules.join(", ") })   // i18n: none
+        if (downloading.length) base += " " + words.t("frame-delete-downloading", { count: downloading.length, episodes: downloading.join(", ") })   // i18n: none
         removeSheet.openAt(anchor, {
             heading: words.t("frame-delete-heading", { what: what, title: c.title }),
             base: base,
             rule: false, torrentCount: 0, canFiles: false,
             confirmText: words.t(rules.length ? "frame-delete-unfollow-confirm" : "frame-delete-confirm")
         }, function() {
-            var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files, stop_following: unfollow })
-            var m = Object.assign({}, frame.deleteCalls); m[t] = { what: what, title: c.title }; frame.deleteCalls = m
+            var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files, stop_following: unfollow, stop_downloading: downloading })
+            var m = Object.assign({}, frame.deleteCalls); m[t] = { what: done, title: c.title }; frame.deleteCalls = m
         })
     }
     // Delete watched across the library (#266): the frame keeps the reply, so its toast still
@@ -1372,7 +1387,9 @@ FocusScope {
             var call = frame.deleteCalls[token]
             if (call === undefined) return
             var m = Object.assign({}, frame.deleteCalls); delete m[token]; frame.deleteCalls = m
-            reply.error ? frame.fail(reply.error) : frame.toast(words.t("frame-delete-done", call))
+            // A Delete all of only downloading episodes put nothing in the trash, so no toast
+            if (reply.error) frame.fail(reply.error)
+            else if (call.what) frame.toast(words.t("frame-delete-done", call))
         }
     }
 

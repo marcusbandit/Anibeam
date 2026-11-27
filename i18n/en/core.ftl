@@ -1366,6 +1366,7 @@ core-downloads-pruned = Unsubscribed from { $title } (finished airing).
 core-downloads-prune-failed = Could not unsubscribe from { $title }. Check Downloads in Settings.
 core-downloads-unfollowed = Stopped following { $title }.
 core-downloads-unfollow-failed = Could not stop following { $title }. Check Downloads in Settings.
+core-downloads-not-stopped = Could not stop the download of { $title }. Check Downloads in Settings.
 
 ## library/src/trash.rs
 

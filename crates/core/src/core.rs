@@ -667,7 +667,14 @@ impl Core {
                 series,
                 files,
                 stop_following,
-            } => delete::delete_episodes(&self.library, series, files, stop_following),
+                stop_downloading,
+            } => delete::delete_episodes(
+                &self.library,
+                series,
+                files,
+                stop_following,
+                stop_downloading,
+            ),
             Call::DeleteWatched { finished_shows } => {
                 delete::delete_watched(&self.library, finished_shows)
             }
