@@ -217,6 +217,33 @@ fn settled(timeout: u64) -> [Value; 2] {
     ]
 }
 
+/// Where `shot` writes: the asked file with `.png` added to its whole name unless it already
+/// ends in `.png`, or a fresh `anibeam-shot-<ms>.png` inside the asked folder, or in temp when
+/// nothing was asked. A folder is one that exists, or a path ending in a separator or `.`/`..`.
+fn shot_file(asked: Option<&str>, now_ms: u128) -> PathBuf {
+    let fresh = format!("anibeam-shot-{now_ms}.png");
+    let Some(asked) = asked else {
+        return std::env::temp_dir().join(fresh);
+    };
+    let raw = PathBuf::from(asked);
+    let folder = asked.ends_with(std::path::is_separator)
+        || raw.is_dir()
+        || matches!(
+            raw.components().next_back(),
+            Some(std::path::Component::CurDir | std::path::Component::ParentDir)
+        );
+    let file = std::path::absolute(&raw).unwrap_or(raw);
+    if folder {
+        return file.join(fresh);
+    }
+    if file.extension().is_some_and(|e| e == "png") {
+        return file;
+    }
+    let mut name = file.into_os_string();
+    name.push(".png");
+    PathBuf::from(name)
+}
+
 fn plan(cmd: &str, args: &[String], o: &Opts, now_ms: u128) -> Result<Plan, String> {
     let timeout = o.timeout.unwrap_or(DEFAULT_TIMEOUT.as_millis() as u64);
     let one = |steps: Value| Plan {
@@ -322,16 +349,7 @@ fn plan(cmd: &str, args: &[String], o: &Opts, now_ms: u128) -> Result<Plan, Stri
             one(json!([step]))
         }
         "shot" => {
-            let file = match args.first() {
-                Some(f) => PathBuf::from(f),
-                None => std::env::temp_dir().join(format!("anibeam-shot-{now_ms}.png")),
-            };
-            let file = std::path::absolute(&file).unwrap_or(file);
-            let file = if file.extension().is_some_and(|e| e == "png") {
-                file
-            } else {
-                file.with_extension("png")
-            };
+            let file = shot_file(args.first().map(String::as_str), now_ms);
             let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
             let name = file
                 .file_stem()
@@ -906,6 +924,33 @@ mod tests {
             p.print,
             Print::Shot(std::env::temp_dir().join("anibeam-shot-42.png"))
         );
+
+        let shot = |asked: &str| plan("shot", &[asked.to_string()], &Opts::default(), 42).unwrap();
+        let asked = |p: &Path| p.to_string_lossy().into_owned();
+
+        // A dotted name keeps every part of it.
+        let p = shot(&asked(&dir.join("episode.1")));
+        assert_eq!(p.steps, json!([{"shot": "episode.1"}]));
+        assert_eq!(p.out.as_deref(), Some(dir.as_path()));
+        assert_eq!(p.print, Print::Shot(dir.join("episode.1.png")));
+        let p = shot(&asked(&dir.join("episode.2.png")));
+        assert_eq!(p.print, Print::Shot(dir.join("episode.2.png")));
+
+        // A folder gets a fresh shot inside it, whether it exists or ends in a separator.
+        let real = tempfile::tempdir().unwrap();
+        let inside = real.path().join("anibeam-shot-42.png");
+        let p = shot(&asked(real.path()));
+        assert_eq!(p.steps, json!([{"shot": "anibeam-shot-42"}]));
+        assert_eq!(p.out.as_deref(), Some(real.path()));
+        assert_eq!(p.print, Print::Shot(inside.clone()));
+        let missing = dir.join("not-made-yet");
+        let p = shot(&format!("{}{}", asked(&missing), std::path::MAIN_SEPARATOR));
+        assert_eq!(p.out.as_deref(), Some(missing.as_path()));
+        assert_eq!(p.print, Print::Shot(missing.join("anibeam-shot-42.png")));
+        let cwd = std::path::absolute(".").unwrap();
+        let p = shot(".");
+        assert_eq!(p.out.as_deref(), Some(cwd.as_path()));
+        assert_eq!(p.print, Print::Shot(cwd.join("anibeam-shot-42.png")));
     }
 
     #[test]
