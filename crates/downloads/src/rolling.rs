@@ -105,14 +105,15 @@ pub trait RollClient: Sync {
     /// Whether the client's files are on this machine, so a batch file can
     /// be deleted from the disk here.
     fn files_here(&self, services: &Services) -> bool;
-    /// Adds held singles the window reached, answering a hash for each
-    /// release it took, in order, when it can.
+    /// Adds held singles the window reached, one answer per release, in
+    /// order: the hash it went in under (empty when not known), or why it did
+    /// not go in. One that fails leaves the others to go in on their own.
     fn add(
         &self,
         downloads: &Arc<Downloads>,
         items: &[Release],
         roll: &Roll,
-    ) -> impl Future<Output = Result<Vec<String>, CoreError>> + Send;
+    ) -> impl Future<Output = Vec<Result<String, CoreError>>> + Send;
 }
 
 impl RollClient for QbtClient {
@@ -157,17 +158,34 @@ impl RollClient for QbtClient {
         downloads: &Arc<Downloads>,
         items: &[Release],
         roll: &Roll,
-    ) -> Result<Vec<String>, CoreError> {
-        let backend = super::backend::DownloadsBackend::open(downloads).await?;
-        let added = backend
-            .download(
-                items,
-                roll.name.as_deref(),
-                super::still_there(roll.home.as_deref()),
-            )
-            .await?;
-        super::move_home(downloads, items, &added, roll.home.as_deref());
-        Ok(added.hashes)
+    ) -> Vec<Result<String, CoreError>> {
+        let backend = match super::backend::DownloadsBackend::open(downloads).await {
+            Ok(b) => b,
+            Err(e) => return items.iter().map(|_| Err(e.clone())).collect(),
+        };
+        // One at a time, so a failed add cannot hide the ones that went in. The
+        // folder is the one the whole lot would have been named for.
+        let name = roll.name.clone().or_else(|| {
+            items
+                .first()
+                .map(|i| anibeam_releases::titles::folder_name(&i.title))
+                .filter(|n| !n.is_empty())
+        });
+        let save_path = super::still_there(roll.home.as_deref());
+        let mut out = Vec::with_capacity(items.len());
+        for item in items {
+            let one = std::slice::from_ref(item);
+            out.push(
+                backend
+                    .download(one, name.as_deref(), save_path)
+                    .await
+                    .map(|added| {
+                        super::move_home(downloads, one, &added, roll.home.as_deref());
+                        added.hashes.into_iter().next().unwrap_or_default()
+                    }),
+            );
+        }
+        out
     }
 }
 
@@ -740,19 +758,38 @@ pub fn take_hashes(parts: &mut [&mut Part], hashes: &[String]) {
     }
 }
 
-/// A roll with nothing left to do: every torrent it added gone, one whose
-/// torrent never showed, or one whose every episode was watched (and,
-/// when it deletes them, deleted all but the last).
+/// A part handed over long enough ago that the client would have listed its
+/// torrent by now, and it never did.
+fn never_showed(roll: &Roll, p: &Part, now: i64) -> bool {
+    p.added && !p.seen && now - p.added_at.max(roll.created_at) > UNBOUND_AGE_SECS
+}
+
+/// Marks gone each added part whose torrent never showed and is not listed
+/// now: one the user removed before a pass saw it, say. The rest of the roll
+/// keeps rolling past it. A roll that never saw any torrent is left for
+/// `finished` to end.
+pub fn give_up_unlisted(roll: &mut Roll, torrents: &[Torrent], now: i64) {
+    if !roll.parts.iter().any(|p| p.seen) {
+        return;
+    }
+    for i in 0..roll.parts.len() {
+        let p = &roll.parts[i];
+        let listed = !p.hash.is_empty()
+            && torrents
+                .iter()
+                .any(|t| t.hash.eq_ignore_ascii_case(&p.hash));
+        if !p.gone && !listed && never_showed(roll, p, now) {
+            roll.parts[i].gone = true;
+        }
+    }
+}
+
+/// A roll with nothing left to do: every torrent it added gone or never
+/// shown, or every episode watched (and, when it deletes them, deleted all
+/// but the last).
 pub fn finished(roll: &Roll, now: i64) -> bool {
     let added: Vec<&Part> = roll.parts.iter().filter(|p| p.added).collect();
-    if !added.is_empty() && added.iter().all(|p| p.gone) {
-        return true;
-    }
-    if roll
-        .parts
-        .iter()
-        .any(|p| p.added && !p.seen && now - p.added_at.max(roll.created_at) > UNBOUND_AGE_SECS)
-    {
+    if !added.is_empty() && added.iter().all(|p| p.gone || never_showed(roll, p, now)) {
         return true;
     }
     let keys = order(roll);
@@ -954,6 +991,7 @@ pub async fn tick<C: RollClient>(
     let mut drop = HashSet::new();
     let mut changed = false;
     for roll in rolls.iter_mut() {
+        give_up_unlisted(roll, torrents, now);
         if step(downloads, client, roll, torrents, here, &mut changed).await == Step::Drop {
             drop.insert(roll.id);
         }
@@ -1119,26 +1157,29 @@ async fn step<C: RollClient>(
             .iter()
             .map(|&p| roll.parts[p].release.clone())
             .collect();
-        match client.add(downloads, &items, roll).await {
-            Ok(hashes) => {
-                *changed = true;
-                for &p in &m.add {
-                    roll.parts[p].added = true;
+        let answers = client.add(downloads, &items, roll).await;
+        // Only the ones that went in are added; the rest stay held for the next pass
+        let now = now_secs();
+        let mut went = 0;
+        for (&p, answer) in m.add.iter().zip(&answers) {
+            match answer {
+                Ok(hash) => {
+                    let part = &mut roll.parts[p];
+                    part.added = true;
+                    part.added_at = now;
+                    take_hashes(&mut [part], std::slice::from_ref(hash));
+                    went += 1;
                 }
-                let mut parts: Vec<&mut Part> = roll
-                    .parts
-                    .iter_mut()
-                    .enumerate()
-                    .filter(|(i, _)| m.add.contains(i))
-                    .map(|(_, p)| p)
-                    .collect();
-                take_hashes(&mut parts, &hashes);
-                acted.push(format!(
-                    "added {}",
-                    plural(m.add.len(), "episode", "episodes")
-                ));
+                Err(e) => tracing::warn!(
+                    "{}: held episode {} not added: {e}",
+                    roll.title,
+                    roll.parts[p].release.title
+                ),
             }
-            Err(e) => tracing::warn!("{}: held episodes not added: {e}", roll.title),
+        }
+        if went > 0 {
+            *changed = true;
+            acted.push(format!("added {}", plural(went, "episode", "episodes")));
         }
     }
     // Watched episodes off the disk
@@ -1841,7 +1882,11 @@ mod tests {
         r.parts[12].added = true;
         r.parts[12].added_at = 10 * day;
         assert!(!finished(&r, 10 * day + 60));
-        assert!(finished(&r, 14 * day));
+        // Never listed: it goes, and the rest of the roll keeps rolling
+        assert!(!finished(&r, 14 * day));
+        give_up_unlisted(&mut r, &[], 14 * day);
+        assert!(r.parts[12].gone);
+        assert!(r.parts.iter().take(12).all(|p| !p.gone));
     }
 
     #[test]
@@ -1931,5 +1976,143 @@ mod tests {
         watch(&mut r, 3);
         let v = view(&r);
         assert_eq!((v.next, v.through, v.total, v.watched), (4, 15, 170, 3));
+    }
+
+    /// Forty singles picked at `at`, the first twelve handed over, each with its own
+    /// link and hash.
+    fn picked_singles(at: i64) -> Roll {
+        let titles: Vec<String> = (1..=40).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
+        let items = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
+        let mut r = plan(
+            &items,
+            &DownloadOptions::default(),
+            &RollingSettings::default(),
+            None,
+            at,
+        )
+        .rolls
+        .remove(0);
+        for (i, p) in r.parts.iter_mut().enumerate() {
+            p.release.link = format!("https://example.org/{i}.torrent");
+            if p.added {
+                p.hash = format!("{:040x}", i + 1);
+            }
+        }
+        r
+    }
+
+    fn listed(p: &Part) -> Torrent {
+        Torrent {
+            hash: p.hash.clone(),
+            name: p.release.title.clone(),
+            ..crate::qbt::tests_torrent()
+        }
+    }
+
+    #[test]
+    fn one_single_never_listed_does_not_end_the_roll() {
+        let day = 86_400;
+        let mut r = picked_singles(0);
+        // The sixth was removed before any pass saw it; the others were listed
+        for (i, p) in r.parts.iter_mut().enumerate().take(12) {
+            p.seen = i != 5;
+        }
+        let torrents: Vec<Torrent> = r.parts.iter().filter(|p| p.seen).map(listed).collect();
+        assert!(!finished(&r, 4 * day));
+        give_up_unlisted(&mut r, &torrents, day);
+        assert!(!r.parts[5].gone, "still has time to show");
+        give_up_unlisted(&mut r, &torrents, 4 * day);
+        assert!(r.parts[5].gone);
+        assert_eq!(r.parts.iter().filter(|p| p.gone).count(), 1);
+        assert!(!finished(&r, 4 * day));
+        // One listed now but not seen yet is left for the pass to see
+        let mut r = picked_singles(0);
+        r.parts[0].seen = true;
+        let second = listed(&r.parts[1]);
+        give_up_unlisted(&mut r, &[second], 4 * day);
+        assert!(!r.parts[1].gone);
+        assert!(r.parts[2].gone);
+    }
+
+    #[test]
+    fn a_roll_that_never_saw_a_torrent_still_ends() {
+        let day = 86_400;
+        let mut r = picked_singles(0);
+        assert!(!finished(&r, day));
+        assert!(finished(&r, 4 * day));
+        give_up_unlisted(&mut r, &[], 4 * day);
+        assert!(r.parts.iter().all(|p| !p.gone), "left for finished");
+    }
+
+    /// A client whose add takes every item but the ones named, listing nothing.
+    struct Refuses(Vec<String>);
+
+    impl RollClient for Refuses {
+        async fn files(&self, _: &str) -> Result<Vec<TorrentFile>, CoreError> {
+            Ok(Vec::new())
+        }
+        async fn set_file_priority(&self, _: &str, _: &[usize], _: i64) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn set_sequential(&self, _: &[String], _: bool) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn delete(&self, _: &[String], _: bool) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn recheck(&self, _: &[String]) -> Result<(), CoreError> {
+            Ok(())
+        }
+        fn files_here(&self, _: &Services) -> bool {
+            false
+        }
+        async fn add(
+            &self,
+            _: &Arc<Downloads>,
+            items: &[Release],
+            _: &Roll,
+        ) -> Vec<Result<String, CoreError>> {
+            items
+                .iter()
+                .map(|r| {
+                    if self.0.contains(&r.title) {
+                        Err(CoreError::invalid("link", "refused"))
+                    } else {
+                        Ok(format!("{:0>40}", r.title.len()))
+                    }
+                })
+                .collect()
+        }
+    }
+
+    #[test]
+    fn a_partly_failed_add_marks_only_the_singles_that_went_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let teams = crate::testing::Teams::open(dir.path(), anibeam_net::FakeHttp::new());
+        let mut r = picked_singles(now_secs());
+        for p in r.parts.iter_mut().filter(|p| p.added) {
+            p.seen = true;
+        }
+        let torrents: Vec<Torrent> = r.parts.iter().filter(|p| p.added).map(listed).collect();
+        // The window reaches two more; the client refuses the second
+        r.ahead = 14;
+        let client = Refuses(vec![r.parts[13].release.title.clone()]);
+        teams.services.handle.block_on(async {
+            add_rolls(&teams.services, vec![r]).await.unwrap();
+            tick(&teams.downloads, &client, &torrents).await;
+        });
+        let r = &load(&teams.services).unwrap()[0];
+        assert!(r.parts[12].added);
+        assert_eq!(
+            r.parts[12].hash,
+            format!("{:0>40}", r.parts[12].release.title.len())
+        );
+        assert!(
+            r.parts[12].added_at >= now_secs() - 60,
+            "stamped at the handover"
+        );
+        assert!(!r.parts[13].added, "held for the next pass");
+        assert!(r.parts[13].hash.is_empty());
+        teams.shutdown();
     }
 }
