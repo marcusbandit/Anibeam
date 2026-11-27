@@ -634,14 +634,16 @@ impl Core {
     /// A router and nothing more: every arm is one call into the module that
     /// owns it, grouped by the team the call belongs to (#773, #854). The usage
     /// log counts each call by its name and, when it fails, its error's kind;
-    /// a page open is counted as a page, not as a call.
+    /// a page open is counted as a page, not as a call, and a clear is not counted at
+    /// all, so a cleared log stays empty.
     pub fn call(&self, call: Call) -> Result<Reply, CoreError> {
         if self.closed.load(Ordering::SeqCst) {
             return Err(CoreError::Internal {
                 message: "core is shut down".to_string(),
             });
         }
-        let name = (!matches!(call, Call::NoteUsage { .. })).then(|| call.name());
+        let name =
+            (!matches!(call, Call::NoteUsage { .. } | Call::ClearUsage)).then(|| call.name());
         let reply = self.route(call);
         if let Some(name) = name {
             self.usage

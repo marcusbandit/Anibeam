@@ -121,6 +121,22 @@ fn switched_off_it_stops_counting_and_clear_empties_it() {
 }
 
 #[test]
+fn a_clear_with_the_log_on_leaves_it_empty() {
+    let (dir, core, _c) = common::open_core();
+    core.call(Call::ListSources).unwrap();
+    let file = dir.path().join("data").join("usage.json");
+    assert!(usage(&core).events > 0);
+    assert!(file.exists());
+    core.call(Call::ClearUsage).unwrap();
+    let after = usage(&core);
+    assert!(after.enabled);
+    assert_eq!(after.events, 0);
+    assert_eq!(after.days, 0);
+    assert!(!file.exists());
+    core.shutdown();
+}
+
+#[test]
 fn the_log_survives_a_restart() {
     let dir = tempfile::tempdir().unwrap();
     let paths = CorePaths::under(dir.path());
