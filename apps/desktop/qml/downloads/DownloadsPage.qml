@@ -1467,7 +1467,7 @@ Item {
         frame.askRemoval(anchor, {
             heading: words.t("downloads-keep-heading", { title: page.titleOf(r) }),
             rule: true, torrentCount: 0, canFiles: false,
-            choices: all.map(function(x) { return { text: x.name, detail: page.ruleFacts(x) } }),
+            choices: all.map(function(x) { return { text: page.ruleFacts(x) } }),
             picked: 0,
             confirmText: words.t("downloads-keep-confirm", { count: all.length - 1 })
         }, function(choice) { page.keepRule(page.titleOf(r), all, choice.picked) })

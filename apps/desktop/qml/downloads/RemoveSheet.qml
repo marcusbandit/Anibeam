@@ -8,7 +8,7 @@
 //
 // Opened through frame.askRemoval(anchor, spec, done). `spec`: { heading, base, rule (bool),
 // torrentCount, canFiles, filesWhere, note, choices, picked }; `done` gets { torrents,
-// files, picked }. `choices` ({ text, detail } each) is a list to pick one from, such as
+// files, picked }. `choices` ({ text } each) is a list to pick one from, such as
 // the subscription of a show that stays while the others go (#1496); `picked` is the one
 // picked first, and Up and Down move it. A click outside, Escape or Cancel closes it
 // without a word; Return confirms.
@@ -118,7 +118,6 @@ Item {
                     required property int index
                     objectName: "remove-sheet-choice-" + index
                     text: modelData.text || ""
-                    detail: modelData.detail || ""
                     checked: root.picked === index
                     onToggled: root.picked = index
                 }
@@ -158,10 +157,9 @@ Item {
         id: pick
         property bool checked: false
         property string text: ""
-        property string detail: ""
         signal toggled()
         width: parent ? parent.width : 0
-        height: Math.max(ring.height, pickLines.implicitHeight) + theme.space(1)
+        height: Math.max(ring.height, pickLine.implicitHeight) + theme.space(1)
         Rectangle {
             id: ring
             y: theme.space(0.25)
@@ -172,14 +170,12 @@ Item {
             border.width: 1.5
             Rectangle { visible: pick.checked; anchors.centerIn: parent; width: parent.width * 0.5; height: width; radius: width / 2; color: theme.accent }
         }
-        Column {
-            id: pickLines
+        Label {
+            id: pickLine
             anchors.left: ring.right
             anchors.leftMargin: theme.space(2.5)
             anchors.right: parent.right
-            spacing: theme.space(0.5)
-            Label { width: parent.width; text: pick.text; role: "ui"; color: theme.text; wrapMode: Text.Wrap }
-            Label { width: parent.width; visible: text !== ""; text: pick.detail; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight }
+            text: pick.text; role: "ui"; color: theme.text; wrapMode: Text.Wrap
         }
         MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pick.toggled(); Accessible.role: Accessible.RadioButton; Accessible.name: pick.text; Accessible.checkable: true; Accessible.checked: pick.checked
             Accessible.onPressAction: pick.toggled() }
@@ -191,7 +187,6 @@ Item {
         property bool checked: false
         property bool locked: false
         property string text: ""
-        property string detail: ""
         signal toggled()
         width: parent ? parent.width : 0
         height: Math.max(box.height, checkLines.implicitHeight) + theme.space(1)
