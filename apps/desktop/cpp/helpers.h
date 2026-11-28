@@ -62,3 +62,6 @@ QString system_locale_name();
 // that file exists there, and anything else (the C++ types, a file not in `dir`) loads as
 // before. The interceptor lives as long as the process.
 void install_qml_dir(QQmlApplicationEngine &engine, const QString &dir);
+// Dev only: collects JS garbage and clears the engine's QML component cache so the next
+// Loader.setSource re-reads edited .qml/.js files from disk without restarting the process.
+void clear_qml_cache();
