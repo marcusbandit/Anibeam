@@ -1,7 +1,9 @@
 // About episode (#1562): the file behind an episode or extra row, from the right-click menu.
 // Its name and folder, its size, the season and number the library read it as (or the extra
 // it read), and the torrent it came from when the torrent client listed it. Copy path and
-// Open folder at the foot. Over a shield of its own, on the frame's escape stack.
+// Open folder at the foot. Over a shield of its own, on the frame's escape stack. It holds
+// the keyboard while open, so Return never plays the row behind it and Tab walks only its
+// own buttons, and gives it back to what had it on close.
 import QtQuick
 import com.marcusrosado.Anibeam
 
@@ -17,6 +19,10 @@ Item {
     readonly property real pad: theme.space(6)
     readonly property string path: String(file.path || "")
     readonly property string folder: path.replace(/[\\/][^\\/]*$/, "")
+    property Item prevFocus: null
+    // The value a press is on, while it is held: a drag there selects words, so the
+    // panel's Flickable must not take it as a flick
+    property Item pressedValue: null
 
     // `ep` is the row's record: an episode's, or an extra's with its code
     function openFor(ep, title, isExtra) {
@@ -24,13 +30,27 @@ Item {
         root.rowTitle = title || ""
         root.extra = !!isExtra
         root.heading = words.t(isExtra ? "frame-about-file" : "frame-about-episode")
+        root.prevFocus = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
         root.visible = true
         frame.escapeStack.push("sheet", root)
+        panel.forceActiveFocus()
     }
     function close() {
         if (!root.visible) return
         root.visible = false
+        root.pressedValue = null
         frame.escapeStack.pop(root)
+        frame.focusPage(root, root.prevFocus)
+        root.prevFocus = null
+    }
+    // Tab and Shift+Tab walk the sheet's own buttons round, never out to the page behind
+    function step(dir) {
+        var stops = [closeButton, openFolderButton, copyPathButton].filter(function(b) { return b.visible && b.enabled })
+        if (!stops.length) return
+        var at = -1
+        for (var i = 0; i < stops.length; i++) if (stops[i].activeFocus) at = i
+        var next = at < 0 ? (dir > 0 ? 0 : stops.length - 1) : (at + dir + stops.length) % stops.length
+        stops[next].forceActiveFocus(dir > 0 ? Qt.TabFocusReason : Qt.BacktabFocusReason)
     }
     Component.onDestruction: if (visible) frame.escapeStack.pop(root)
 
@@ -65,6 +85,13 @@ Item {
         borderWidth: 1
         highlight: theme.glassHighlight
         clip: true
+        // Every key the sheet does not use stops here, so none reaches the page behind. Tab is
+        // caught on each button and value too: the focus chain moves on from the item that
+        // has the keyboard before the key would reach this panel.
+        Keys.onTabPressed: function(e) { root.step(1); e.accepted = true }
+        Keys.onBacktabPressed: function(e) { root.step(-1); e.accepted = true }
+        Keys.onEscapePressed: root.close()
+        Keys.onPressed: function(e) { e.accepted = true }
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; hoverEnabled: true; onWheel: function(w) { w.accepted = true } }
 
         Flickable {
@@ -72,7 +99,7 @@ Item {
             anchors.fill: parent
             contentWidth: width
             contentHeight: body.implicitHeight + root.pad * 2
-            interactive: contentHeight > height
+            interactive: contentHeight > height && !root.pressedValue
             boundsBehavior: Flickable.StopAtBounds
             WheelStep { flick: flick }
 
@@ -106,6 +133,8 @@ Item {
                         text: ""
                         accessibleName: words.t("action-close")
                         onClicked: root.close()
+                        Keys.onTabPressed: function(e) { root.step(1); e.accepted = true }
+                        Keys.onBacktabPressed: function(e) { root.step(-1); e.accepted = true }
                     }
                 }
 
@@ -134,6 +163,8 @@ Item {
                                 text: modelData.value
                                 readOnly: true
                                 selectByMouse: true
+                                Keys.onTabPressed: function(e) { root.step(1); e.accepted = true }
+                                Keys.onBacktabPressed: function(e) { root.step(-1); e.accepted = true }
                                 wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
                                 textFormat: TextEdit.PlainText
                                 color: theme.text
@@ -143,6 +174,14 @@ Item {
                                 font.pointSize: theme.roleSize("ui")
                                 font.weight: theme.roleWeight("ui")
                                 font.variableAxes: theme.roleAxes("ui")
+                                PointHandler {
+                                    id: valuePress
+                                    acceptedButtons: Qt.LeftButton
+                                    onActiveChanged: {
+                                        if (active) root.pressedValue = value
+                                        else if (root.pressedValue === value) root.pressedValue = null
+                                    }
+                                }
                             }
                         }
                     }
@@ -156,20 +195,26 @@ Item {
                         anchors.right: parent.right
                         spacing: theme.space(2)
                         Button {
+                            id: openFolderButton
                             objectName: "about-episode-open-folder"
                             flat: true
                             icon: "folder-open"
                             msg: "frame-open-folder"
                             enabled: root.folder !== ""
                             onClicked: frame.openLink(Fmt.fileUrl(root.folder))
+                            Keys.onTabPressed: function(e) { root.step(1); e.accepted = true }
+                            Keys.onBacktabPressed: function(e) { root.step(-1); e.accepted = true }
                         }
                         Button {
+                            id: copyPathButton
                             objectName: "about-episode-copy-path"
                             primary: true
                             icon: "copy"
                             msg: "frame-copy-path"
                             enabled: root.path !== ""
                             onClicked: frame.copyText(root.path, words.t("frame-path-copied"))
+                            Keys.onTabPressed: function(e) { root.step(1); e.accepted = true }
+                            Keys.onBacktabPressed: function(e) { root.step(-1); e.accepted = true }
                         }
                     }
                 }

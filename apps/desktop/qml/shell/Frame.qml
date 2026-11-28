@@ -939,8 +939,11 @@ FocusScope {
     readonly property real islandReach: updateNotice.visible ? updateNotice.width + updateNotice.anchors.rightMargin : 0
 
     // The right-click menu at a point: Back and Forward, then what is under the pointer (an
-    // episode, a card), the page's own rows, deleting a card's files, and About episode last
-    function openContextMenu(p) {
+    // episode, a card), the page's own rows, deleting a card's files, and About episode last.
+    // `row` is the episode row the menu is for, when the keys opened it; else the one under
+    // the pointer.
+    function openContextMenu(p, row) {
+        if (!row) row = hoverEpisodeRow
         var items = [{ split: [{ text: words.t("action-back"), icon: "arrow-left", action: frame.back, enabled: nav.canBack },
                                { text: words.t("frame-forward"), icon: "arrow-right", action: frame.forward, enabled: nav.canForward, trailing: true }] }]
         // Each kind of row is its own group, with a line between groups
@@ -950,18 +953,18 @@ FocusScope {
             items = items.concat(list)
         }
         group(frame.releaseItems())
-        group(frame.episodeItems())
+        group(frame.episodeItems(row))
         group(frame.seriesCardItems())
         if (page.item && page.item.contextItems) group(page.item.contextItems())
         group(frame.seriesDeleteItems())
-        group(frame.aboutEpisodeItems())
+        group(frame.aboutEpisodeItems(row))
         frame.openMenu(p.x, p.y, items)
     }
     // From the keys: at the focused item, or the middle of the page when nothing has focus
     function openContextMenuAtFocus() {
         var f = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
         var p = f && f !== frame ? f.mapToItem(frame, theme.space(4), Math.min(f.height, theme.space(10))) : Qt.point(frame.width / 2, frame.height / 3)
-        openContextMenu(p)
+        openContextMenu(p, frame.episodeRowOf(f))
     }
     // `above`: (x, y) is the menu's bottom right corner, for an opener at the window's foot.
     function openMenu(x, y, items, above) { menu.openAt(x, y, items, above) }
@@ -1092,8 +1095,12 @@ FocusScope {
         if (r.page) out.push({ text: words.t("frame-open-release-page"), icon: "external-link", action: function() { frame.openLink(r.page) } })
         return out
     }
-    function episodeItems() {
-        var row = hoverEpisodeRow
+    // The episode row that holds `item` (the row itself or anything in it), or null
+    function episodeRowOf(item) {
+        for (var a = item; a; a = a.parent) if (a.isEpisodeRow === true) return a
+        return null
+    }
+    function episodeItems(row) {
         if (!row || !row.episode || !row.episode.path) return []
         var path = row.episode.path
         var out = []
@@ -1104,8 +1111,7 @@ FocusScope {
         return out
     }
     // About episode (#1562), the menu's last row: the file behind the row under the pointer
-    function aboutEpisodeItems() {
-        var row = hoverEpisodeRow
+    function aboutEpisodeItems(row) {
         if (!row || !row.episode || !row.episode.path) return []
         var ep = row.episode, title = row.title, isExtra = ep.kind !== undefined
         return [{ text: words.t(isExtra ? "frame-about-file" : "frame-about-episode"), icon: "info",

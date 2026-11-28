@@ -20,6 +20,8 @@ import com.marcusrosado.Anibeam
 Corner {
     id: root
     property var episode: ({})
+    // How the frame tells an episode row from what is in it, for a menu opened from the keys
+    readonly property bool isEpisodeRow: true
     property bool extra: false
     property bool hasTracker: false
     property string title: episode.title || ""
