@@ -125,26 +125,15 @@ fn tvdb_logo(conn: &Connection, anilist_id: u64) -> Result<Option<String>, CoreE
 }
 
 /// The torrent each of these files came from, by name, keyed by path: the
-/// origins the downloads team records once the torrent client lists a file
-/// (`file_origins`, #241). A file it never listed is absent.
+/// current origins the downloads team records once the torrent client lists
+/// a file (`file_origins`, #241). A file it never listed, or one replaced
+/// since, is absent.
 fn torrents_of(conn: &Connection, files: &[FileRow]) -> Result<HashMap<String, String>, CoreError> {
     let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
-    let mut out = HashMap::new();
-    for chunk in paths.chunks(500) {
-        let sql = format!(
-            "SELECT path, torrent_name FROM file_origins WHERE path IN ({})",
-            placeholders(chunk.len())
-        );
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(params_from_iter(chunk.iter()), |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        })?;
-        for row in rows {
-            let (path, name) = row?;
-            out.insert(path, name);
-        }
-    }
-    Ok(out)
+    Ok(anibeam_foundation::store::origins::of(conn, &paths)?
+        .into_iter()
+        .map(|(path, origin)| (path, origin.name))
+        .collect())
 }
 
 impl Snapshot {
@@ -1442,7 +1431,8 @@ mod tests {
 
     #[test]
     fn an_episode_carries_its_size_and_the_torrent_it_came_from() {
-        // About episode (#1562) reads both off the page's own record.
+        // About episode (#1562) reads both off the page's own record. Episode 1
+        // was written after its origin was recorded, so that origin is not its.
         let dir = tempfile::tempdir().unwrap();
         let store = anibeam_foundation::store::Store::open(&dir.path().join("anibeam.db")).unwrap();
         store
@@ -1456,6 +1446,7 @@ mod tests {
                          (3, 1, '/tv/Show/NCOP.mkv', 99, 0, 'extra', NULL, 'NCOP', 'NCOP.mkv', 0);
                      UPDATE files SET extra_kind = 'op' WHERE id = 3;
                      INSERT INTO file_origins (path, info_hash, torrent_name, recorded_at) VALUES
+                         ('/tv/Show/Show - 01.mkv', 'old', '[Other] Show - 01', -1),
                          ('/tv/Show/Show - 02.mkv', 'abc', '[Group] Show - 02 [1080p]', 0),
                          ('/tv/Show/NCOP.mkv', 'def', '[Group] Show Batch', 0);",
                 )?;

@@ -1,4 +1,5 @@
 pub mod migrations;
+pub mod origins;
 pub mod settings;
 pub mod sql;
 #[doc(hidden)]
