@@ -92,3 +92,46 @@
   if ("ResizeObserver" in window) new ResizeObserver(aim).observe(stage);
   document.fonts && document.fonts.ready.then(aim);
 })();
+
+// Art marks: a poster is AI-made until img/posters/credits.json names the person who drew it.
+(() => {
+  const posters = [...document.querySelectorAll(".lanes .poster img, .sp img, .bl-stop img, .pickup-poster")];
+  const slug = (img) => (img.getAttribute("src").match(/posters\/([a-z0-9-]+)\.webp/) || [])[1];
+  const marks = posters.filter(slug).map((img) => {
+    let box = img.parentElement;
+    if (!box.matches(".poster")) {
+      box = document.createElement("span");
+      box.className = img.closest(".bl-stop") ? "bl-art" : "sp-art";
+      if (img.classList.contains("pickup-poster")) { box.className = "pk-art"; box.style.position = "relative"; box.style.alignSelf = "start"; }
+      img.before(box);
+      box.append(img);
+    }
+    const m = document.createElement("i");
+    m.className = "art-mark";
+    m.textContent = "AI";
+    box.append(m);
+    return [slug(img), m];
+  });
+  fetch(AB.ROOT + "img/posters/credits.json").then((r) => (r.ok ? r.json() : null)).then((c) => {
+    const by = (c && c.artists) || {};
+    for (const [s, m] of marks) if (by[s] && by[s].by) { m.textContent = by[s].by; m.classList.add("by"); }
+  }).catch(() => {});
+
+  // The note about the art opens on hover as well as on click.
+  const btn = document.querySelector(".art-note-btn");
+  const note = document.getElementById("art-note");
+  if (btn && note && note.showPopover && matchMedia("(hover: hover)").matches) {
+    let pinned = false, timer = 0;
+    const open = () => { clearTimeout(timer); if (!note.matches(":popover-open")) note.showPopover(); };
+    const close = () => { timer = setTimeout(() => { if (!pinned && note.matches(":popover-open")) note.hidePopover(); }, 250); };
+    btn.addEventListener("pointerenter", open);
+    btn.addEventListener("pointerleave", close);
+    note.addEventListener("pointerenter", open);
+    note.addEventListener("pointerleave", close);
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (pinned && note.matches(":popover-open")) { pinned = false; note.hidePopover(); } else { pinned = true; open(); }
+    });
+    note.addEventListener("toggle", (e) => { if (e.newState === "closed") pinned = false; });
+  }
+})();

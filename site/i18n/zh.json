@@ -100,5 +100,9 @@
  "Support": "支持",
  "Small print": "细则",
  "Privacy": "隐私",
- "Terms": "条款"
+ "Terms": "条款",
+ "About the art": "关于海报",
+ "AI posters, for now": "暂时还是 AI 海报",
+ "These posters are made with AI because nobody on the project can draw, and we'd love to have real art here. If you want to draw one for a made-up anime, it will replace an AI poster and have your name on it.": "这些海报是用 AI 生成的，因为项目里没人会画画，但我们很希望能换成真正的画作。如果你愿意为一部虚构的动画画一张海报，它会替换掉一张 AI 海报，并署上你的名字。",
+ "How to contribute": "如何参与"
 }
