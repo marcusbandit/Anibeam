@@ -150,6 +150,7 @@ fn main() {
             .qml_file("qml/downloads/RollControls.qml")
             .qml_file("qml/dev/DevRecorder.qml")
             .qml_file("qml/dev/DevHud.qml")
+            .qml_file("qml/dev/HitboxOverlay.qml")
             .qml_file("qml/settings/SettingsDeveloperTab.qml")
             .qml_file("qml/ui/LazyTile.qml"),
     )

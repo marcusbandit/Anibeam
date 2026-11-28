@@ -70,6 +70,8 @@ SettingsTab {
                 Switch { objectName: "dev-images"; checked: tab.kept.images; onToggled: function(on) { frame.devSetImages(on); frame.loadPage() } } }
             SettingRow { label: words.t("settings-developer-overlay")
                 Switch { objectName: "dev-hud"; checked: tab.kept.hud; onToggled: function(on) { tab.kept.hud = on } } }
+            SettingRow { label: words.t("settings-developer-hitboxes")
+                Switch { objectName: "dev-hitboxes"; checked: tab.kept.hitboxes; onToggled: function(on) { tab.kept.hitboxes = on } } }
             SettingRow { label: words.t("settings-developer-read-cache")
                 Switch { checked: tab.kept.readCache; onToggled: function(on) { tab.kept.readCache = on; frame.devApply() } } }
             SettingRow { label: words.t("settings-developer-poster-pool")

@@ -2722,6 +2722,7 @@ settings-developer-seconds = { $seconds } s
 settings-developer-switches = Switches
 settings-developer-load-images = Load images
 settings-developer-overlay = Page load overlay
+settings-developer-hitboxes = Hitbox overlay (Ctrl+Shift+H)
 settings-developer-read-cache = Keep library reads
 settings-developer-poster-pool = Warm posters in the background
 settings-developer-options = Developer options
