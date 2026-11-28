@@ -77,6 +77,19 @@ void set_render_loop_env()
 #endif
     if (qgetenv("QT_XCB_GL_INTEGRATION").isEmpty())
         qputenv("QT_XCB_GL_INTEGRATION", QByteArrayLiteral("xcb_egl"));
+#ifdef Q_OS_LINUX
+    // QtQuick.Dialogs falls back to its built-in Fusion QML picker when
+    // QT_QPA_PLATFORMTHEME is unset (common on tiling WMs like Hyprland/Sway)
+    // or set to qt6ct/qt5ct, neither of which implements a native dialog helper
+    // for Qt Quick. Anibeam renders its own QML theme, so steering those cases
+    // to xdgdesktopportal (falling back to gtk3) opens the native OS file/folder
+    // picker everywhere without touching KDE, GNOME, or offscreen runs.
+    if (qgetenv("QT_QPA_PLATFORM").trimmed() != "offscreen") {
+        const QByteArray theme = qgetenv("QT_QPA_PLATFORMTHEME").trimmed();
+        if (theme.isEmpty() || theme == "qt6ct" || theme == "qt5ct")
+            qputenv("QT_QPA_PLATFORMTHEME", QByteArrayLiteral("xdgdesktopportal,gtk3"));
+    }
+#endif
 }
 
 void raise_window(QObject *window, const QString &token)
