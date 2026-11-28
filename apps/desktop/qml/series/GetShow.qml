@@ -184,6 +184,49 @@ Item {
         var t = titleWords(title)
         return ownWords.some(function(ws) { return ws.every(function(w) { return t.indexOf(" " + w) >= 0 }) })
     }
+    // A sequel's roman numeral as a word of its own, upper case (Clevatess II), else null. A
+    // lone I, V or X is as often a word and never counts. grid.rs `numeral` is the same
+    function numeral(word) {
+        var n = { II: 2, III: 3, IV: 4, VI: 6, VII: 7, VIII: 8, IX: 9, XI: 11, XII: 12 }[word]
+        return n === undefined ? null : n
+    }
+    function rawWords(name) { return String(name || "").split(/[^A-Za-z0-9]+/).filter(function(w) { return w.length > 0 }) }
+    // The season a name's numeral states (Clevatess II: Majuu no Ou to ... is the second) and
+    // the words before it, which name the show itself; a name with none gives all its words
+    function numeralOf(name) {
+        var ws = rawWords(name)
+        for (var i = 1; i < ws.length; i++) if (numeral(ws[i]) !== null) return { words: ws.slice(0, i), season: numeral(ws[i]) }
+        return { words: ws, season: null }
+    }
+    // The season the show's own names state, in words or by a numeral
+    readonly property var ownSeason: {
+        if (statedSeason !== null) return statedSeason
+        for (var i = 0; i < ownNames.length; i++) { var s = numeralOf(ownNames[i]).season; if (s !== null) return s }
+        return null
+    }
+    // The season a release states by a numeral right after one of the show's names, outside
+    // its leading [group]: "[Grp] Clevatess II - 01" is the second season of the show
+    // named Clevatess, and of the one named "Clevatess II: Majuu no Ou to ..."
+    function releaseNumeral(title) {
+        var ws = rawWords(String(title || "").replace(/^\s*\[[^\]]*\]/, ""))
+        for (var i = 0; i < ownNames.length; i++) {
+            var name = numeralOf(ownNames[i]).words
+            if (!name.length || name.length >= ws.length) continue
+            for (var at = 0; at + name.length < ws.length; at++) {
+                var same = true
+                for (var k = 0; k < name.length && same; k++) same = ws[at + k].toLowerCase() === name[k].toLowerCase()
+                if (same && numeral(ws[at + name.length]) !== null) return numeral(ws[at + name.length])
+            }
+        }
+        return null
+    }
+    // A numeral right after the show's name is AniList's own way of naming a sequel, which
+    // keeps it an entry of its own: the first season, naming none, is season 1
+    function numberedOther(title) {
+        if (!show || !(show.anilistId > 0)) return false
+        var n = releaseNumeral(title)
+        return n !== null && n !== (ownSeason !== null ? ownSeason : 1)
+    }
     function namesShow(title) {
         if (!showWords.length) return true
         var t = titleWords(title)
@@ -195,7 +238,7 @@ Item {
     function ofShow(r) {
         if (!r || !r.items) return r
         var items = [], facts = []
-        for (var i = 0; i < r.items.length; i++) if (namesShow(r.items[i].title) && !anotherSeason(r.items[i].title, r.facts[i])) { items.push(r.items[i]); facts.push(r.facts[i]) }
+        for (var i = 0; i < r.items.length; i++) if (namesShow(r.items[i].title) && !numberedOther(r.items[i].title) && !anotherSeason(r.items[i].title, r.facts[i])) { items.push(r.items[i]); facts.push(r.facts[i]) }
         if (items.length === r.items.length) return r
         var out = {}
         for (var k in r) out[k] = r[k]

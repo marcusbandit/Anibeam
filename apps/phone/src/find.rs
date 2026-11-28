@@ -586,7 +586,7 @@ impl Find {
         Offer {
             show: grid::Show {
                 title: card.title.clone(),
-                queries: names_of(card),
+                queries: grid::search_names(names_of(card)),
                 total: card.total_episodes.unwrap_or(0),
                 airing: card.next_airing.is_some()
                     || matches!(card.status, Some(anibeam_core::AiringStatus::Releasing)),
@@ -2748,7 +2748,7 @@ fn fresh_show(
     grid::Show {
         folder: folder_name(&title),
         title,
-        queries,
+        queries: grid::search_names(queries),
         total,
         airing,
         cubes: "g".repeat(total.min(400) as usize),
