@@ -85,6 +85,13 @@ pub mod qobject {
         /// MPRIS Quit. The window closes itself; nothing here ends the process.
         #[qsignal]
         fn quit_requested(self: Pin<&mut Self>);
+        /// Dev QML watcher saw a `.qml` or `.js` edit under `ANIBEAM_QML_DIR`: clear the
+        /// component cache and reload `Frame.qml` in place.
+        #[qsignal]
+        fn qml_changed(self: Pin<&mut Self>);
+        /// Dev only: collects JS garbage and clears the engine's QML component cache.
+        #[qinvokable]
+        fn clear_qml_cache(self: &Self);
         /// `anibeam ctl` sent request `id` over the control socket (#1205): a JSON object
         /// whose steps Control.qml runs, answering through controlReply.
         #[qsignal]
@@ -699,6 +706,7 @@ impl cxx_qt::Initialize for qobject::Shell {
         // `anibeam ctl` reaches this window from here on (#1205)
         #[cfg(unix)]
         crate::control::start(&crate::runtime::paths().control_socket(), self.qt_thread());
+        crate::qml_watch::start(self.qt_thread());
         let shell = self.qt_thread();
         #[cfg(not(target_os = "macos"))]
         crate::runtime::runtime().spawn(async move {
@@ -781,6 +789,9 @@ impl qobject::Shell {
     }
     pub fn control_reply(&self, id: i32, reply: &QString) {
         crate::control::reply(id, reply.to_string());
+    }
+    pub fn clear_qml_cache(&self) {
+        crate::bridge::helpers::ffi::clear_qml_cache();
     }
     pub fn set_cursor_hidden(&self, hidden: bool) {
         crate::bridge::helpers::ffi::set_cursor_hidden(hidden);

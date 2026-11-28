@@ -67,6 +67,8 @@ pub mod ffi {
         fn set_cursor_hidden(hidden: bool);
         /// Dev only: loads the shell's QML files from `dir` instead of the compiled resources.
         fn install_qml_dir(engine: Pin<&mut QQmlApplicationEngine>, dir: &QString);
+        /// Dev only: collects JS garbage and clears the engine's QML component cache.
+        fn clear_qml_cache();
         /// A URL opened with the desktop's handler through xdg-open, detached.
         fn open_url(url: &QString) -> bool;
         /// QLocale::setDefault: the language Qt names months, days and numbers in.
