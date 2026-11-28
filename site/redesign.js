@@ -35,9 +35,9 @@
   const cone = document.getElementById("cone");
   const railIcons = [...stage.querySelectorAll(".tw-rail i[data-for]")];
   const alts = {
-    home: "Anibeam's Home: shows to continue and shows not started yet, as poster cards",
+    home: "Anibeam's Home: the show to pick up and the shows to continue",
     library: "The Library grid with every show as a poster",
-    series: "A show's page with its banner, episodes and characters",
+    series: "A show's page with its banner, details and episodes",
   };
   const wide = matchMedia("(min-width: 900px)").matches;
   const src = (k) => `${AB.ROOT}img/tour/${k}${wide ? "" : "-1134"}.webp`;
@@ -112,6 +112,14 @@
     box.append(m);
     return [slug(img), m];
   });
+  // The tour's screenshots are of a library of the same AI posters, so the window carries one mark too.
+  const screen = document.querySelector(".tw-screen");
+  if (screen) {
+    const m = document.createElement("i");
+    m.className = "art-mark tour-mark";
+    m.textContent = "AI";
+    screen.append(m);
+  }
   fetch(AB.ROOT + "img/posters/credits.json").then((r) => (r.ok ? r.json() : null)).then((c) => {
     const by = (c && c.artists) || {};
     for (const [s, m] of marks) if (by[s] && by[s].by) { m.textContent = by[s].by; m.classList.add("by"); }
