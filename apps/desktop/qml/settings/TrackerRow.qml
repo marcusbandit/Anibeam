@@ -21,6 +21,7 @@ Item {
     signal disconnect()
 
     readonly property string name: frame.trackerName(tracker)
+    readonly property string brandIcon: tracker === "Anilist" ? "anilist" : "myanimelist" // i18n: none
     readonly property bool connected: account.connected === true
     // A confirm left up must not greet the next connection: any way the row stops being
     // connected (the confirm's own Disconnect, a revoked token) puts the question away
@@ -53,30 +54,36 @@ Item {
             id: avatar
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            // One width for both services, so the two rows' connection lines start level
-            width: Math.max(theme.space(30), badge.implicitWidth + theme.space(3) * 2)
-            height: theme.controlHeight
-            radius: height / 2
+            width: theme.space(10)
+            height: theme.space(10)
+            radius: theme.radiusTile
             smoothing: theme.cornerSmoothing
             color: root.connected ? theme.accentSoft : theme.tileSunken
-            borderColor: root.connected ? "transparent" : theme.line
-            borderWidth: root.connected ? 0 : 1
-            Label {
-                id: badge
+            borderColor: root.connected ? theme.accentEdge : theme.line
+            borderWidth: 1
+            Icon {
                 anchors.centerIn: parent
-                text: root.name
-                role: "ledger"
-                color: root.connected ? theme.accent : theme.textDim
+                glyph: root.brandIcon
+                size: theme.space(5.5)
+                color: root.connected ? theme.accent : theme.text
             }
         }
         Column {
             id: lineColumn
             anchors.left: avatar.right
-            anchors.leftMargin: theme.space(3)
+            anchors.leftMargin: theme.space(3.5)
             anchors.right: slot.left
             anchors.rightMargin: theme.space(6)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
+            Text {
+                width: lineColumn.width
+                text: root.name
+                color: theme.text
+                font.family: theme.fontSans
+                font.pointSize: theme.typeNormal
+                elide: Text.ElideRight
+            }
             PrivacyBlur {
                 id: trackerBlur
                 active: root.connected
@@ -140,7 +147,7 @@ Item {
     }
     Component {
         id: connectButton
-        ConnectButton { objectName: "tracker-" + root.tracker + "-connect"; tracker: root.tracker; text: words.t("action-connect"); icon: "log-in"; primary: !root.needsSecret; onClicked: frame.openConnect(root.tracker) }
+        ConnectButton { objectName: "tracker-" + root.tracker + "-connect"; tracker: root.tracker; text: words.t("tracker-row-link"); icon: "link"; primary: !root.needsSecret; onClicked: frame.openConnect(root.tracker) }
     }
 
     Row {
@@ -193,7 +200,7 @@ Item {
             spacing: theme.space(2)
             ConnectButton {
                 tracker: root.tracker
-                text: words.t("tracker-row-save-connect"); icon: "log-in"; primary: true
+                text: words.t("tracker-row-save-connect"); icon: "link"; primary: true
                 enabled: secret.text.trim() !== ""
                 onClicked: {
                     var r = Door.setTrackerCredentials(root.tracker, root.account.client_id || "", secret.text.trim())

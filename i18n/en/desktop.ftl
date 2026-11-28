@@ -3487,22 +3487,23 @@ stats-recap-save-failed = Could not save the recap
 
 ## TrackerRow
 
-tracker-row-connected = Connected as { $user }, synced { $when }
+tracker-row-connected = Linked as { $user }, synced { $when }
 tracker-row-unknown-user = ?
 tracker-row-never = never
 tracker-row-waiting = Waiting for you to approve in the browser
-tracker-row-not-connected = Not connected
+tracker-row-not-connected = Not linked
+tracker-row-link = Link
 tracker-row-open-again = Open again
 tracker-row-open-again-tip = Open the sign-in page again
-tracker-row-disconnect = Disconnect
-tracker-row-disconnect-question = Disconnect { $name }? Your sign-in will be removed.
+tracker-row-disconnect = Unlink
+tracker-row-disconnect-question = Unlink { $name }? Your sign-in will be removed.
 tracker-row-secret-saved = A client secret is saved for this app.
 tracker-row-remove-secret = Remove it
 tracker-row-secret-removed = Client secret removed
 tracker-row-add-secret = Add client secret
 tracker-row-secret-where = It is the long string under "Client Secret" on the app's page at myanimelist.net/apiconfig.
 tracker-row-secret-placeholder = Client secret
-tracker-row-save-connect = Save and connect
+tracker-row-save-connect = Save and link
 
 ## RemoveSheet
 
