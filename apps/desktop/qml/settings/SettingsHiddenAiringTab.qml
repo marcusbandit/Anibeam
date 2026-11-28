@@ -44,10 +44,10 @@ Item {
         spacing: theme.space(4)
         Button {
             objectName: "settings-hidden-back"
-            msg: "settings-library-title"
+            msg: "settings-browse-title"
             icon: "arrow-left"
             flat: true; small: true
-            onClicked: page.open("library")
+            onClicked: page.open("browse")
         }
         Row {
             spacing: theme.space(3)

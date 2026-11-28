@@ -39,11 +39,7 @@ SettingsTab {
                  : [s.added ? words.t("settings-library-scan-added", { count: s.added }) : "", s.changed ? words.t("settings-library-scan-changed", { count: s.changed }) : "", s.removed ? words.t("settings-library-scan-removed", { count: s.removed }) : ""].filter(Boolean).join(", ")
         return s.source !== null && s.source !== undefined && sourcePath(s.source) !== "" ? words.t("settings-library-scan-in-folder", { folder: Fmt.baseName(sourcePath(s.source)), what: what }) : what
     }
-    // How many shows Airing now's not interested marks hide (#202); the list and the way back
-    // for each are on their own page, SettingsHiddenAiringTab.qml
-    property int notInterestedCount: 0
-    function reloadNotInterested() { var r = Door.listNotInterested(); if (!r.error) notInterestedCount = r.reply.shows.length }
-    Component.onCompleted: { reload(); reloadNotInterested() }
+    Component.onCompleted: reload()
     // The match providers, first tried first; the core keeps the order and says what it is
     readonly property var providerOrder: Door.settings && Door.settings.provider_order && Door.settings.provider_order.length ? Door.settings.provider_order : ["Anilist", "Tvmaze"]
     function ordinal(i) {
@@ -131,19 +127,6 @@ SettingsTab {
         SettingRow {
             label: words.t("settings-library-show-hidden")
             Switch { objectName: "settings-reveal-hidden"; checked: Door.revealHidden; onToggled: function(on) { Door.revealHidden = on } }
-        }
-        // The marks themselves are a page of their own (#1012): a list of a hundred and more
-        // rows here made the whole section slow to open
-        SettingRow {
-            objectName: "settings-hidden-from-airing"
-            label: words.t("settings-library-hidden-from-airing")
-            Button {
-                objectName: "settings-open-hidden-from-airing"
-                text: tab.notInterestedCount > 0 ? words.t("count-shows", { count: tab.notInterestedCount }) : words.t("settings-library-hidden-from-airing-empty")
-                icon: "eye-off"; flat: true; small: true
-                enabled: tab.notInterestedCount > 0
-                onClicked: page.open("hidden")
-            }
         }
     }
     // The calendar feed (#217): the core keeps the file current while the switch is on

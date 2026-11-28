@@ -898,7 +898,7 @@ FocusScope {
         // The auto-next pill names the next episode; off, it says only its number
         property bool nextNamesEpisode: true
         // The Settings section open last, by id; an older number reads as no section
-        property string settingsTab: "library"
+        property string settingsTab: "appearance"
         // Downloads comes back with its last search
         property bool keepDownloadsQuery: true
         // Privacy mode: blurs accounts, emails, tailnet devices, addresses, and local paths

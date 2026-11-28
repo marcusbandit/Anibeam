@@ -21,10 +21,6 @@ SettingsTab {
     readonly property var lightThemes: Theme.themes.filter(function(t) { return t.mode === "light" })
     function indexOf(list, stem) { for (var i = 0; i < list.length; i++) if (list[i].stem === stem) return i; return 0 }
     readonly property bool fromTheme: Theme.source === "theme"
-    // Out now on Airing: cards or a list, and the cards' grid, columns by rows; AiringPage
-    // reads the same keys
-    Settings { id: airingKept; location: Shell.settingsUrl; category: "airing"; property string outLayout: "4x2"; property string outStyle: "cards" }
-    readonly property var outLayouts: ["3x2", "4x2", "5x2", "4x3"]
     // Which title a series shows, as the core names the choice; a stored value it does not
     // know reads as Romaji, the default
     readonly property var titleLanguages: ["Romaji", "English", "Native"] // i18n: none
@@ -167,20 +163,7 @@ SettingsTab {
             Seg { options: [words.t("settings-appearance-density-compact"), words.t("settings-appearance-density-normal"), words.t("settings-appearance-density-comfortable")]; index: ["compact", "normal", "comfortable"].indexOf(Theme.density); onPicked: function(i) { Theme.pickDensity(["compact", "normal", "comfortable"][i]) } } }
         SettingRow { label: words.t("settings-appearance-poster-size")
             Seg { options: [words.t("settings-appearance-poster-small"), words.t("settings-appearance-poster-medium"), words.t("settings-appearance-poster-large")]; index: ["s", "m", "l"].indexOf(Theme.poster); onPicked: function(i) { Theme.pickPoster(["s", "m", "l"][i]) } } }
-        SettingRow { label: words.t("settings-appearance-out-now")
-            Seg { objectName: "out-now-style"; options: [words.t("settings-appearance-out-now-cards"), words.t("settings-appearance-out-now-list")]; index: airingKept.outStyle === "list" ? 1 : 0; onPicked: function(i) { airingKept.outStyle = i === 1 ? "list" : "cards" } } }
-        SettingRow { visible: airingKept.outStyle !== "list"; label: words.t("settings-appearance-out-now-grid")
-            Seg { objectName: "out-now-layout"; options: tab.outLayouts.map(function(l) { var cr = l.split("x"); return words.t("settings-appearance-grid", { columns: Number(cr[0]), rows: Number(cr[1]) }) }); index: Math.max(0, tab.outLayouts.indexOf(airingKept.outLayout)); onPicked: function(i) { airingKept.outLayout = tab.outLayouts[i] } } }
         SettingRow { label: words.t("settings-appearance-reduce-motion")
             Switch { objectName: "reduce-motion"; checked: Theme.reducedMotion; onToggled: function(on) { Theme.pickReducedMotion(on) } } }
-    }
-    Panel {
-        objectName: "settings-privacy"
-        title: words.t("settings-privacy-title")
-        SettingRow {
-            label: words.t("settings-privacy-mode")
-            line: words.t("settings-privacy-mode-line")
-            Switch { objectName: "privacy-mode"; checked: frame.prefs.privacyMode; onToggled: function(on) { frame.prefs.privacyMode = on } }
-        }
     }
 }

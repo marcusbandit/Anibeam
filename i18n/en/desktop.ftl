@@ -2484,14 +2484,23 @@ connect-step-connect-body = Your browser will open so you can sign in to { $name
 settings-title = Settings
 settings-search-placeholder = Search settings
 settings-needs-attention = Needs attention
-settings-section-library = Library
-settings-section-accounts = Accounts
 settings-section-appearance = Appearance
-settings-section-playback = Playback
+settings-section-library = Library
+settings-section-player = Player
 settings-section-keys = Keyboard
 settings-section-downloads = Downloads
+settings-section-tracking = Tracking
+settings-section-connections = Connections
+settings-section-plugins = Plugins
+settings-section-browse = Browse
+settings-section-storage = Data and storage
+settings-section-security = Security and privacy
+settings-section-advanced = Advanced
 settings-section-about = About
+settings-section-supporters = Supporters
 settings-section-developer = Developer
+settings-section-accounts = Accounts
+settings-section-playback = Playback
 settings-results =
     { $count ->
         [one] { $count } setting matches
@@ -2635,6 +2644,14 @@ settings-find-developer-options =
     .words = debug timing
 settings-find-ratings =
     .words = imdb credit
+settings-find-usage =
+    .words = usage log telemetry analytics stats send export
+settings-find-licenses =
+    .words = open source licenses gpl legal
+settings-find-privacy-policy =
+    .words = privacy policy legal
+settings-find-supporters =
+    .words = support donate patreon ko-fi kofi sponsor discord
 
 ## SettingsDownloadsTab
 
@@ -2903,6 +2920,40 @@ settings-about-ratings = Ratings
 settings-about-ratings-helper = Information courtesy of IMDb (https://www.imdb.com). Used with permission.
 settings-about-series = Series and episodes
 settings-about-series-helper = AniList and TVmaze. Episode details and artwork from ani.zip, with data from AniDB and TheTVDB. Skip times from AniSkip.
+settings-about-contribute = Contribute
+settings-about-help-contribute = Help contribute
+settings-about-help-translate = Help translate
+settings-about-legal = Legal and credits
+settings-about-licenses = Open source licenses
+settings-about-privacy-policy = Privacy policy
+settings-about-link-website = Website
+settings-about-link-discord = Discord
+settings-about-link-github = GitHub
+
+## SettingsPlayerTab / SettingsTrackingTab / SettingsConnectionsTab / SettingsBrowseTab / SettingsStorageTab / SettingsSecurityTab / SettingsAdvancedTab / SettingsSupportersTab
+
+settings-player-title = Player
+settings-tracking-title = Tracking
+settings-connections-title = Connections
+settings-connections-tailnet-details = Tailnet addresses and devices
+settings-connections-open-advanced = Open in Advanced
+settings-plugins-title = Plugins
+settings-plugins-empty = No plugins installed
+settings-plugins-empty-line = Plugin settings will appear here once plugins are available.
+settings-browse-title = Browse
+settings-browse-airing = Airing now
+settings-storage-title = Data and storage
+settings-security-title = Security and privacy
+settings-advanced-title = Advanced
+settings-advanced-tailnet = Tailnet
+settings-supporters-title = Supporters
+settings-supporters-ways = Support Anibeam
+settings-supporters-patreon-line = Monthly support on Patreon
+settings-supporters-kofi-line = Buy me a coffee on Ko-fi
+settings-supporters-coming-soon = Coming soon
+settings-supporters-contact = Community
+settings-supporters-discord-line = For other types of support or to get in touch, join the Discord.
+settings-supporters-join-discord = Join Discord
 
 ## SettingsPlaybackTab
 
