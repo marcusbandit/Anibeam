@@ -287,7 +287,7 @@ FocusScope {
             readonly property string doing: job ? (frame.devOn ? (job.label || wordsOf(job.kind)) : (job.doing || wordsOf(job.kind))) : ""
             message: job ? (job.total > 0 ? words.t("frame-strip-progress", { doing: doing, done: job.done, total: job.total }) : doing)
                          : (line ? (frame.devOn ? line.message : plainOf(line)) || words.t("frame-strip-idle") : words.t("frame-strip-idle"))
-            time: job || !line || !line.at ? "" : Qt.formatTime(new Date(line.at * 1000), words.t("frame-strip-time-format"))
+            time: job || !line || !line.at ? "" : frame.formatTime(new Date(line.at * 1000))
             running: job !== null
             fraction: job && job.total > 0 ? job.done / job.total : 0
             unseenErrors: Door.unseenErrors
@@ -903,6 +903,25 @@ FocusScope {
         property bool keepDownloadsQuery: true
         // Privacy mode: blurs accounts, emails, tailnet devices, addresses, and local paths
         property bool privacyMode: false
+        // Date and time display format: "system", "24h", "12h" and "system", "ymd", "dmy", "mdy"
+        property string timeFormat: "system"
+        property string dateFormat: "system"
+    }
+    function formatTime(d) {
+        if (shellPrefs.timeFormat === "24h") return Qt.formatTime(d, "HH:mm") // i18n: none
+        if (shellPrefs.timeFormat === "12h") return Qt.formatTime(d, "h:mm AP") // i18n: none
+        return Qt.formatTime(d, words.t("frame-strip-time-format"))
+    }
+    function formatDate(d) {
+        if (shellPrefs.dateFormat === "ymd") return Qt.formatDate(d, "yyyy-MM-dd") // i18n: none
+        if (shellPrefs.dateFormat === "dmy") return Qt.formatDate(d, "dd/MM/yyyy") // i18n: none
+        if (shellPrefs.dateFormat === "mdy") return Qt.formatDate(d, "MM/dd/yyyy") // i18n: none
+        return Qt.formatDate(d, Qt.DefaultLocaleShortDate)
+    }
+    function formatDateTime(d) {
+        if (shellPrefs.dateFormat === "system" && shellPrefs.timeFormat === "system")
+            return Qt.formatDateTime(d, words.t("activity-drawer-stamp-format"))
+        return formatDate(d) + " " + formatTime(d)
     }
     function askPrivacyReveal(item, confirmFn) { privacyPopover.open(item, confirmFn) }
     function closePrivacyReveal(item) { if (!item || privacyPopover.target === item) privacyPopover.close() }

@@ -31,6 +31,10 @@ fn preferences_and_settings_round_trip_with_events() {
         series_logos: false,
         logo_language: LogoLanguage::Japanese,
         usage_log: false,
+        track_update_after_watching: false,
+        track_open_menu_on_add: false,
+        track_show_airing_time: false,
+        browse_show_recommended: false,
     };
     assert!(matches!(
         core.call(Call::SetPreferences {

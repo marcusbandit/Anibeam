@@ -1295,6 +1295,22 @@ pub struct Preferences {
     /// there until it is cleared. Per machine: an export never carries it.
     #[serde(default = "default_true")]
     pub usage_log: bool,
+    /// Whether crossing the mark threshold reports the watched episode to connected trackers.
+    /// Default on. `serde(default)` because older blobs predate it.
+    #[serde(default = "default_true")]
+    pub track_update_after_watching: bool,
+    /// Whether adding a show to the library offers the tracking menu.
+    /// Default on. `serde(default)` because older blobs predate it.
+    #[serde(default = "default_true")]
+    pub track_open_menu_on_add: bool,
+    /// Whether series and episode views display the next episode airing countdown.
+    /// Default on. `serde(default)` because older blobs predate it.
+    #[serde(default = "default_true")]
+    pub track_show_airing_time: bool,
+    /// Whether Home displays the Recommended for you row.
+    /// Default on. `serde(default)` because older blobs predate it.
+    #[serde(default = "default_true")]
+    pub browse_show_recommended: bool,
 }
 
 /// The default for `Preferences::on_hold_days`: two months untouched.
@@ -1489,6 +1505,10 @@ impl Default for Preferences {
             series_logos: true,
             logo_language: LogoLanguage::Titles,
             usage_log: true,
+            track_update_after_watching: true,
+            track_open_menu_on_add: true,
+            track_show_airing_time: true,
+            browse_show_recommended: true,
         }
     }
 }

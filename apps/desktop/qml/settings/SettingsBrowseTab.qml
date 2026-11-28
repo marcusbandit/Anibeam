@@ -16,7 +16,20 @@ SettingsTab {
     // for each are on their own page, SettingsHiddenAiringTab.qml
     property int notInterestedCount: 0
     function reloadNotInterested() { var r = Door.listNotInterested(); if (!r.error) notInterestedCount = r.reply.shows.length }
+    function setShowRecommended(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.browse_show_recommended = on
+        var r = Door.setPreferences(p)
+        if (r.error) frame.fail(r.error, function() { tab.setShowRecommended(on) })
+    }
     Component.onCompleted: reloadNotInterested()
+
+    Panel {
+        objectName: "settings-browse-discovery"
+        title: words.t("settings-browse-discovery")
+        SettingRow { label: words.t("settings-browse-show-recommended")
+            Switch { objectName: "settings-browse-recommended"; checked: Door.preferences.browse_show_recommended !== false; onToggled: function(on) { tab.setShowRecommended(on) } } }
+    }
 
     Panel {
         objectName: "settings-browse-airing"

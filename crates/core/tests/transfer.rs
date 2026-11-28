@@ -247,6 +247,10 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 series_logos: true,
                 logo_language: LogoLanguage::Titles,
                 usage_log: true,
+                track_update_after_watching: true,
+                track_open_menu_on_add: true,
+                track_show_airing_time: true,
+                browse_show_recommended: true,
             }
         ),
         other => panic!("{other:?}"),
@@ -331,6 +335,10 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         series_logos: true,
         logo_language: LogoLanguage::Titles,
         usage_log: true,
+        track_update_after_watching: true,
+        track_open_menu_on_add: true,
+        track_show_airing_time: true,
+        browse_show_recommended: true,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),

@@ -110,7 +110,7 @@ Item {
 
     // ---- Today's Downloads lines from the log
     property var lines: []
-    function toLine(e) { return { at: e.at, time: Qt.formatTime(new Date(e.at * 1000), words.t("activity-column-time-format")), level: e.level, msg: e.message, plain: e.plain || "", plainWords: e.plain_words || null } }
+    function toLine(e) { return { at: e.at, time: frame.formatTime(new Date(e.at * 1000)), level: e.level, msg: e.message, plain: e.plain || "", plainWords: e.plain_words || null } }
     // A line in a person's words, rendered when it is drawn so a language switch reaches
     // lines already shown (#792): the message ID and its arguments, else the plain line as
     // the core said it, else the developer's line for one the core never worded
