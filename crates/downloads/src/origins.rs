@@ -11,51 +11,20 @@
 //! name the way it always has.
 
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::{Arc, LazyLock, Mutex};
 
-use rusqlite::{Connection, params, params_from_iter};
+use rusqlite::params;
 
 use crate::Downloads;
 use crate::qbt::QbtClient;
 use anibeam_contract::*;
 use anibeam_foundation::services::Services;
-use anibeam_foundation::store::sql::placeholders;
 use anibeam_foundation::sync::recover;
 
-/// One recorded origin: the torrent's info hash, lower case, and its name.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Origin {
-    pub hash: String,
-    pub name: String,
-}
-
-/// The origins of these paths, by path, in one read. A path with none is
-/// absent.
-pub fn of(conn: &Connection, paths: &[&str]) -> Result<HashMap<String, Origin>, CoreError> {
-    let mut out = HashMap::new();
-    for chunk in paths.chunks(500) {
-        let sql = format!(
-            "SELECT path, info_hash, torrent_name FROM file_origins WHERE path IN ({})",
-            placeholders(chunk.len())
-        );
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(params_from_iter(chunk.iter()), |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                Origin {
-                    hash: r.get(1)?,
-                    name: r.get(2)?,
-                },
-            ))
-        })?;
-        for row in rows {
-            let (path, origin) = row?;
-            out.insert(path, origin);
-        }
-    }
-    Ok(out)
-}
+/// The reader lives with the store, so the series page reads origins by the
+/// same rule: one older than its file is not current.
+pub use anibeam_foundation::store::origins::{Origin, of};
 
 /// Whether a search's release is the torrent a file came from: its magnet
 /// names the same info hash, or, for a `.torrent` link, which names none,
@@ -416,21 +385,30 @@ mod tests {
         assert_eq!(http.requests().len(), asked);
 
         // Downloaded over by another torrent: the file is newer than its
-        // record, so the new torrent is the origin. A file the library no
-        // longer holds loses its origin.
+        // record, so that record is not its origin any more, and the new
+        // torrent is once the client is read. A file the library no longer
+        // holds loses its origin. The record goes back in time rather than
+        // the file forward, so the new record, made now, is not older than
+        // the file.
         running
             .services
             .store
             .write(|c| {
                 c.execute(
-                    "UPDATE files SET mtime = (SELECT recorded_at FROM file_origins LIMIT 1) + 10
-                     WHERE number = 1",
+                    "UPDATE file_origins SET recorded_at = (SELECT mtime FROM files WHERE number = 1) - 10
+                     WHERE path = '/lib/Show/[Grp] Show - 01 [1080p].mkv'",
                     [],
                 )?;
                 c.execute("DELETE FROM files WHERE number = 2", [])?;
                 Ok(())
             })
             .unwrap();
+        let stale = running
+            .services
+            .store
+            .read(|c| of(c, &["/lib/Show/[Grp] Show - 01 [1080p].mkv"]))
+            .unwrap();
+        assert!(stale.is_empty(), "{stale:?}");
         seen().clear();
         let over = vec![torrent(
             "R1DDD",

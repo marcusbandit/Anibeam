@@ -124,6 +124,18 @@ fn tvdb_logo(conn: &Connection, anilist_id: u64) -> Result<Option<String>, CoreE
     Ok(crate::logo::pick(&langs, want).map(|at| logos[at].1.clone()))
 }
 
+/// The torrent each of these files came from, by name, keyed by path: the
+/// current origins the downloads team records once the torrent client lists
+/// a file (`file_origins`, #241). A file it never listed, or one replaced
+/// since, is absent.
+fn torrents_of(conn: &Connection, files: &[FileRow]) -> Result<HashMap<String, String>, CoreError> {
+    let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    Ok(anibeam_foundation::store::origins::of(conn, &paths)?
+        .into_iter()
+        .map(|(path, origin)| (path, origin.name))
+        .collect())
+}
+
 impl Snapshot {
     /// The series page. Takes the connection because the character images
     /// and the recommendations are one query each, and neither belongs in a
@@ -184,6 +196,13 @@ impl Snapshot {
             .unwrap_or_default();
         let versions = episode_versions(&episodes);
         let zip = self.anizip_of(conn, row)?;
+        // The torrent's name is a nicety: a read that fails leaves it out
+        // rather than failing the page.
+        let torrents = torrents_of(conn, files).unwrap_or_else(|e| {
+            tracing::debug!("series {id}: file origins not read: {e}");
+            HashMap::new()
+        });
+        let torrent = |f: &FileRow| torrents.get(&f.path).cloned();
         let episode = |f: &FileRow| {
             let air = self.episode_airing(row, f);
             let detail = zip.episode(f.number);
@@ -228,6 +247,8 @@ impl Snapshot {
                 still: detail.and_then(|d| d.still.clone()),
                 frame: None,
                 synopsis: detail.and_then(|d| d.synopsis.clone()),
+                size: f.size,
+                torrent: torrent(f),
             }
         };
 
@@ -392,6 +413,8 @@ impl Snapshot {
                             .get(&extra_version_key(f))
                             .cloned()
                             .unwrap_or_default(),
+                        size: f.size,
+                        torrent: torrent(f),
                     }
                 })
                 .collect(),
@@ -1409,5 +1432,57 @@ mod tests {
              INSERT INTO local_entries (series_id, status, updated_at) VALUES (2, 'planning', 0);");
         assert_eq!(status(owner, Tracker::Anilist), Some(ListStatus::Planning));
         assert_eq!(status(2, Tracker::Anilist), None);
+    }
+
+    #[test]
+    fn an_episode_carries_its_size_and_the_torrent_it_came_from() {
+        // About episode (#1562) reads both off the page's own record. Episode 1
+        // was written after its origin was recorded, so that origin is not its.
+        let dir = tempfile::tempdir().unwrap();
+        let store = anibeam_foundation::store::Store::open(&dir.path().join("anibeam.db")).unwrap();
+        store
+            .write(|c| {
+                c.execute_batch(
+                    "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+                     INSERT INTO series (id, source_id, kind, path, folder_name, added_at) VALUES (1, 1, 'show', '/tv/Show', 'Show', 0);
+                     INSERT INTO files (id, series_id, path, size, mtime, kind, number, label, episode_key, seen_at) VALUES
+                         (1, 1, '/tv/Show/Show - 01.mkv', 1234, 0, 'episode', 1, 'Show - 01', '1', 0),
+                         (2, 1, '/tv/Show/Show - 02.mkv', 5678, 0, 'episode', 2, 'Show - 02', '2', 0),
+                         (3, 1, '/tv/Show/NCOP.mkv', 99, 0, 'extra', NULL, 'NCOP', 'NCOP.mkv', 0);
+                     UPDATE files SET extra_kind = 'op' WHERE id = 3;
+                     INSERT INTO file_origins (path, info_hash, torrent_name, recorded_at) VALUES
+                         ('/tv/Show/Show - 01.mkv', 'old', '[Other] Show - 01', -1),
+                         ('/tv/Show/Show - 02.mkv', 'abc', '[Group] Show - 02 [1080p]', 0),
+                         ('/tv/Show/NCOP.mkv', 'def', '[Group] Show Batch', 0);",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let detail = store
+            .read(|c| {
+                let snap = Snapshot::load_for(
+                    c,
+                    anibeam_foundation::trust::OWNER,
+                    Path::new("/images"),
+                    std::time::SystemTime::now(),
+                    Some(&[1]),
+                )?;
+                Ok(snap.detail(c, 1)?.unwrap())
+            })
+            .unwrap();
+        let eps: Vec<(u64, Option<&str>)> = detail
+            .episodes
+            .iter()
+            .map(|e| (e.size, e.torrent.as_deref()))
+            .collect();
+        assert_eq!(
+            eps,
+            [(1234, None), (5678, Some("[Group] Show - 02 [1080p]"))]
+        );
+        assert_eq!(detail.extras[0].size, 99);
+        assert_eq!(
+            detail.extras[0].torrent.as_deref(),
+            Some("[Group] Show Batch")
+        );
     }
 }

@@ -81,6 +81,7 @@ fn main() {
             .qml_file("qml/series/MatchPanel.qml")
             .qml_file("qml/series/ScheduleSheet.qml")
             .qml_file("qml/series/NotesSheet.qml")
+            .qml_file("qml/series/AboutEpisodeSheet.qml")
             .qml_file("qml/series/FixSheet.qml")
             .qml_file("qml/series/EpisodesPane.qml")
             .qml_file("qml/ui/ConnectSheet.qml")

@@ -192,7 +192,7 @@ FocusScope {
     // reclaimFrameOwned() keeps their entries, in this same handler, so Escape still
     // reaches them; a second Connections on nav.changed would race this one with no
     // ordering guarantee between them.
-    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); whatsNew.close(); scanSummary.close(); frame.reclaimFrameOwned() } }
+    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); aboutSheet.close(); whatsNew.close(); scanSummary.close(); frame.reclaimFrameOwned() } }
 
     Rail {
         id: rail
@@ -636,6 +636,7 @@ FocusScope {
         RoomPanel { id: roomSheet }
         RemoveSheet { id: removeSheet }
         MoveListsSheet { id: moveListsSheet }
+        AboutEpisodeSheet { id: aboutSheet }
         WhatsNew { id: whatsNew }
         ScanSummary { id: scanSummary }
         DiscordAsk {
@@ -646,6 +647,7 @@ FocusScope {
         UpdateNotice {
             id: updateNotice
             covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible || onboarding.visible || scanSummary.visible
+                     || aboutSheet.visible || moveListsSheet.visible
             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
             anchors.bottom: parent.bottom; anchors.bottomMargin: rail.footHeight + theme.space(4)
         }
@@ -938,8 +940,11 @@ FocusScope {
     readonly property real islandReach: updateNotice.visible ? updateNotice.width + updateNotice.anchors.rightMargin : 0
 
     // The right-click menu at a point: Back and Forward, then what is under the pointer (an
-    // episode, a card), the page's own rows, and deleting a card's files last
-    function openContextMenu(p) {
+    // episode, a card), the page's own rows, deleting a card's files, and About episode last.
+    // `row` is the episode row the menu is for, when the keys opened it; else the one under
+    // the pointer.
+    function openContextMenu(p, row) {
+        if (!row) row = hoverEpisodeRow
         var items = [{ split: [{ text: words.t("action-back"), icon: "arrow-left", action: frame.back, enabled: nav.canBack },
                                { text: words.t("frame-forward"), icon: "arrow-right", action: frame.forward, enabled: nav.canForward, trailing: true }] }]
         // Each kind of row is its own group, with a line between groups
@@ -949,17 +954,18 @@ FocusScope {
             items = items.concat(list)
         }
         group(frame.releaseItems())
-        group(frame.episodeItems())
+        group(frame.episodeItems(row))
         group(frame.seriesCardItems())
         if (page.item && page.item.contextItems) group(page.item.contextItems())
         group(frame.seriesDeleteItems())
+        group(frame.aboutEpisodeItems(row))
         frame.openMenu(p.x, p.y, items)
     }
     // From the keys: at the focused item, or the middle of the page when nothing has focus
     function openContextMenuAtFocus() {
         var f = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
         var p = f && f !== frame ? f.mapToItem(frame, theme.space(4), Math.min(f.height, theme.space(10))) : Qt.point(frame.width / 2, frame.height / 3)
-        openContextMenu(p)
+        openContextMenu(p, frame.episodeRowOf(f))
     }
     // `above`: (x, y) is the menu's bottom right corner, for an opener at the window's foot.
     function openMenu(x, y, items, above) { menu.openAt(x, y, items, above) }
@@ -1090,8 +1096,12 @@ FocusScope {
         if (r.page) out.push({ text: words.t("frame-open-release-page"), icon: "external-link", action: function() { frame.openLink(r.page) } })
         return out
     }
-    function episodeItems() {
-        var row = hoverEpisodeRow
+    // The episode row that holds `item` (the row itself or anything in it), or null
+    function episodeRowOf(item) {
+        for (var a = item; a; a = a.parent) if (a.isEpisodeRow === true) return a
+        return null
+    }
+    function episodeItems(row) {
         if (!row || !row.episode || !row.episode.path) return []
         var path = row.episode.path
         var out = []
@@ -1100,6 +1110,14 @@ FocusScope {
         out.push({ text: words.t("frame-copy-path"), icon: "copy", action: function() { frame.copyText(path, words.t("frame-path-copied")) } })
         if (row.trackable && !row.picking) out.push({ text: row.watched ? words.t("frame-mark-unwatched") : words.t("frame-mark-watched"), icon: "check-check", action: function() { row.marker() } })
         return out
+    }
+    // About episode (#1562), the menu's last row: the file behind the row under the pointer
+    function aboutEpisodeItems(row) {
+        if (!row || !row.episode || !row.episode.path) return []
+        var ep = row.episode, title = row.title, isExtra = ep.kind !== undefined
+        var isFilm = !isExtra && !!page.item && page.item.isMovie === true
+        return [{ text: words.t(isExtra ? "frame-about-file" : isFilm ? "frame-about-film" : "frame-about-episode"), icon: "info",
+                  action: function() { aboutSheet.openFor(ep, title, isExtra, isFilm) } }]
     }
     // A card's own rows, above the delete ones: open it, its folder, its title, its page
     function seriesCardItems() {
