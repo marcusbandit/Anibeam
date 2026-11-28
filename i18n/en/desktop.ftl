@@ -2652,6 +2652,18 @@ settings-find-privacy-policy =
     .words = privacy policy legal
 settings-find-supporters =
     .words = support donate patreon ko-fi kofi sponsor discord
+settings-find-time-format =
+    .words = clock time 12h 24h hour format am pm
+settings-find-date-format =
+    .words = date calendar yyyy mm dd format
+settings-find-update-after-watching =
+    .words = auto mark update progress tracker watched
+settings-find-open-menu-on-add =
+    .words = track menu add library prompt
+settings-find-show-airing-time =
+    .words = next episode airing countdown schedule time
+settings-find-show-recommended =
+    .words = recommended for you discovery home hide show
 
 ## SettingsDownloadsTab
 
@@ -2934,6 +2946,10 @@ settings-about-link-github = GitHub
 
 settings-player-title = Player
 settings-tracking-title = Tracking
+settings-tracking-behavior = Behavior
+settings-tracking-update-after-watching = Update progress after watching
+settings-tracking-open-menu-on-add = Open track menu on adding to library
+settings-tracking-show-airing-time = Show next episode airing time
 settings-connections-title = Connections
 settings-connections-tailnet-details = Tailnet addresses and devices
 settings-connections-open-advanced = Open in Advanced
@@ -2941,7 +2957,15 @@ settings-plugins-title = Plugins
 settings-plugins-empty = No plugins installed
 settings-plugins-empty-line = Plugin settings will appear here once plugins are available.
 settings-browse-title = Browse
+settings-browse-discovery = Discovery
+settings-browse-show-recommended = Show Recommended for you
 settings-browse-airing = Airing now
+settings-appearance-datetime = Date and time
+settings-appearance-time-format = Time format
+settings-appearance-date-format = Date format
+settings-appearance-format-system = System
+settings-appearance-time-24h = 24-hour
+settings-appearance-time-12h = 12-hour
 settings-storage-title = Data and storage
 settings-security-title = Security and privacy
 settings-advanced-title = Advanced
@@ -3463,22 +3487,23 @@ stats-recap-save-failed = Could not save the recap
 
 ## TrackerRow
 
-tracker-row-connected = Connected as { $user }, synced { $when }
+tracker-row-connected = Linked as { $user }, synced { $when }
 tracker-row-unknown-user = ?
 tracker-row-never = never
 tracker-row-waiting = Waiting for you to approve in the browser
-tracker-row-not-connected = Not connected
+tracker-row-not-connected = Not linked
+tracker-row-link = Link
 tracker-row-open-again = Open again
 tracker-row-open-again-tip = Open the sign-in page again
-tracker-row-disconnect = Disconnect
-tracker-row-disconnect-question = Disconnect { $name }? Your sign-in will be removed.
+tracker-row-disconnect = Unlink
+tracker-row-disconnect-question = Unlink { $name }? Your sign-in will be removed.
 tracker-row-secret-saved = A client secret is saved for this app.
 tracker-row-remove-secret = Remove it
 tracker-row-secret-removed = Client secret removed
 tracker-row-add-secret = Add client secret
 tracker-row-secret-where = It is the long string under "Client Secret" on the app's page at myanimelist.net/apiconfig.
 tracker-row-secret-placeholder = Client secret
-tracker-row-save-connect = Save and connect
+tracker-row-save-connect = Save and link
 
 ## RemoveSheet
 

@@ -166,4 +166,18 @@ SettingsTab {
         SettingRow { label: words.t("settings-appearance-reduce-motion")
             Switch { objectName: "reduce-motion"; checked: Theme.reducedMotion; onToggled: function(on) { Theme.pickReducedMotion(on) } } }
     }
+    Panel {
+        objectName: "settings-datetime"
+        title: words.t("settings-appearance-datetime")
+        SettingRow { label: words.t("settings-appearance-time-format")
+            Seg { objectName: "time-format"
+                  options: [words.t("settings-appearance-format-system"), words.t("settings-appearance-time-24h"), words.t("settings-appearance-time-12h")]
+                  index: Math.max(0, ["system", "24h", "12h"].indexOf(frame.prefs.timeFormat))
+                  onPicked: function(i) { frame.prefs.timeFormat = ["system", "24h", "12h"][i] } } }
+        SettingRow { label: words.t("settings-appearance-date-format")
+            Seg { objectName: "date-format"
+                  options: [words.t("settings-appearance-format-system"), "YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY"] // i18n: none
+                  index: Math.max(0, ["system", "ymd", "dmy", "mdy"].indexOf(frame.prefs.dateFormat))
+                  onPicked: function(i) { frame.prefs.dateFormat = ["system", "ymd", "dmy", "mdy"][i] } } }
+    }
 }

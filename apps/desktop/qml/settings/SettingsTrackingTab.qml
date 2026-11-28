@@ -17,6 +17,12 @@ SettingsTab {
         var r = Door.setPreferences(p)
         if (r.error) frame.fail(r.error, function() { tab.setOnHold(on) })
     }
+    function setPref(key, on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p[key] = on
+        var r = Door.setPreferences(p)
+        if (r.error) frame.fail(r.error, function() { tab.setPref(key, on) })
+    }
     property int pendingDays: 60
     function saveDays() {
         var p = JSON.parse(JSON.stringify(Door.preferences))
@@ -57,6 +63,16 @@ SettingsTab {
             onDisconnect: tab.disconnect("Anilist") }
         TrackerRow { tracker: "Mal"; account: Door.trackers.mal || ({})
             onDisconnect: tab.disconnect("Mal") }
+    }
+    Panel {
+        objectName: "settings-tracking-behavior"
+        title: words.t("settings-tracking-behavior")
+        SettingRow { label: words.t("settings-tracking-update-after-watching")
+            Switch { objectName: "settings-track-update"; checked: Door.preferences.track_update_after_watching !== false; onToggled: function(on) { tab.setPref("track_update_after_watching", on) } } }
+        SettingRow { label: words.t("settings-tracking-open-menu-on-add")
+            Switch { objectName: "settings-track-open-menu"; checked: Door.preferences.track_open_menu_on_add !== false; onToggled: function(on) { tab.setPref("track_open_menu_on_add", on) } } }
+        SettingRow { label: words.t("settings-tracking-show-airing-time")
+            Switch { objectName: "settings-track-airing-time"; checked: Door.preferences.track_show_airing_time !== false; onToggled: function(on) { tab.setPref("track_show_airing_time", on) } } }
     }
     Panel {
         visible: tab.tracked

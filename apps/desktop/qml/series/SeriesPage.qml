@@ -525,7 +525,7 @@ Item {
         return words.t(p.estimate ? "series-watched-of-estimate" : "series-watched-of", { watched: watchedCount, total: p.total })
     }
     readonly property real progressFraction: tracked && detail.progress.total ? Math.min(1, watchedCount / detail.progress.total) : 0
-    readonly property bool airsAhead: !!card.next_airing && card.next_airing.at * 1000 > nowMs
+    readonly property bool airsAhead: Door.preferences.track_show_airing_time !== false && !!card.next_airing && card.next_airing.at * 1000 > nowMs
     // The core's pick (#1475): the wider of the show's background and its banner
     readonly property bool hasBackdrop: !!(detail && detail.backdrop)
     // Without one the poster, blurred, fills the head the same way

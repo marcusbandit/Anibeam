@@ -1844,7 +1844,7 @@ Item {
             objectName: "home-recommended"
             width: parent.width
             spacing: theme.space(3)
-            visible: !!page.recommended && page.recommended.counts.all > 0
+            visible: Door.preferences.browse_show_recommended !== false && !!page.recommended && page.recommended.counts.all > 0
             readonly property int cols: Math.max(1, Math.floor((width + page.gap) / (theme.posterWidth + page.gap)))
             readonly property real cardWidth: Math.floor((width - page.gap * (cols - 1)) / cols)
             readonly property var shown: page.recList.slice(0, cols)

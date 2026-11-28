@@ -50,7 +50,7 @@ Item {
     // read as a fresh one
     function stampOf(at) {
         var d = new Date(at * 1000), now = new Date()
-        return d.toDateString() === now.toDateString() ? Qt.formatTime(d, words.t("activity-drawer-time-format")) : Qt.formatDateTime(d, words.t("activity-drawer-stamp-format"))
+        return d.toDateString() === now.toDateString() ? frame.formatTime(d) : frame.formatDateTime(d)
     }
     // `plainWords` is the plain line as a message ID and its arguments (#792); `said` is the
     // core's own words, for lines from before the core kept their IDs. Each entry is worded

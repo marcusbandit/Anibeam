@@ -843,6 +843,16 @@ fn mark(playback: &Playback, s: &Session) {
     if s.profile != anibeam_foundation::trust::OWNER {
         return;
     }
+    // Respect the user's "Update progress after watching" preference.
+    let auto_update = playback
+        .services
+        .store
+        .read(prefs::load_preferences)
+        .map(|p| p.track_update_after_watching)
+        .unwrap_or(true);
+    if !auto_update {
+        return;
+    }
     let Some(number) = s.number else { return };
     if s.anilist_id.is_none() && s.mal_id.is_none() {
         let folder = playback

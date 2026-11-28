@@ -1072,6 +1072,11 @@ async fn import_preferences(
                 logo_language: current.logo_language,
                 // And whether it keeps a usage log.
                 usage_log: current.usage_log,
+                // And the tracking / browse display toggles.
+                track_update_after_watching: current.track_update_after_watching,
+                track_open_menu_on_add: current.track_open_menu_on_add,
+                track_show_airing_time: current.track_show_airing_time,
+                browse_show_recommended: current.browse_show_recommended,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

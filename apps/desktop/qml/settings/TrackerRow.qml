@@ -21,6 +21,9 @@ Item {
     signal disconnect()
 
     readonly property string name: frame.trackerName(tracker)
+    readonly property string brandIcon: tracker === "Anilist" ? "anilist" : "myanimelist" // i18n: none
+    readonly property color brandBg: tracker === "Anilist" ? "#0B1622" : "#2E51A2"
+    readonly property color brandFg: tracker === "Anilist" ? "#02A9FF" : "#FFFFFF"
     readonly property bool connected: account.connected === true
     // A confirm left up must not greet the next connection: any way the row stops being
     // connected (the confirm's own Disconnect, a revoked token) puts the question away
@@ -53,30 +56,47 @@ Item {
             id: avatar
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            // One width for both services, so the two rows' connection lines start level
-            width: Math.max(theme.space(30), badge.implicitWidth + theme.space(3) * 2)
-            height: theme.controlHeight
-            radius: height / 2
+            width: theme.space(11)
+            height: theme.space(11)
+            radius: theme.radiusTile
             smoothing: theme.cornerSmoothing
-            color: root.connected ? theme.accentSoft : theme.tileSunken
-            borderColor: root.connected ? "transparent" : theme.line
-            borderWidth: root.connected ? 0 : 1
-            Label {
-                id: badge
+            color: root.brandBg
+            borderColor: root.connected ? theme.accent : Qt.rgba(1, 1, 1, 0.1)
+            borderWidth: root.connected ? 1.5 : 1
+            Image {
+                visible: root.tracker === "Anilist"
                 anchors.centerIn: parent
-                text: root.name
-                role: "ledger"
-                color: root.connected ? theme.accent : theme.textDim
+                source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/icons/anilist-brand.svg"
+                width: theme.space(7)
+                height: theme.space(7)
+                sourceSize: Qt.size(64, 64)
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+            }
+            Icon {
+                visible: root.tracker !== "Anilist"
+                anchors.centerIn: parent
+                glyph: root.brandIcon
+                size: theme.space(7.5)
+                color: root.brandFg
             }
         }
         Column {
             id: lineColumn
             anchors.left: avatar.right
-            anchors.leftMargin: theme.space(3)
+            anchors.leftMargin: theme.space(3.5)
             anchors.right: slot.left
             anchors.rightMargin: theme.space(6)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
+            Text {
+                width: lineColumn.width
+                text: root.name
+                color: theme.text
+                font.family: theme.fontSans
+                font.pointSize: theme.typeNormal
+                elide: Text.ElideRight
+            }
             PrivacyBlur {
                 id: trackerBlur
                 active: root.connected
@@ -140,7 +160,7 @@ Item {
     }
     Component {
         id: connectButton
-        ConnectButton { objectName: "tracker-" + root.tracker + "-connect"; tracker: root.tracker; text: words.t("action-connect"); icon: "log-in"; primary: !root.needsSecret; onClicked: frame.openConnect(root.tracker) }
+        ConnectButton { objectName: "tracker-" + root.tracker + "-connect"; tracker: root.tracker; text: words.t("tracker-row-link"); icon: "link"; primary: !root.needsSecret; onClicked: frame.openConnect(root.tracker) }
     }
 
     Row {
@@ -193,7 +213,7 @@ Item {
             spacing: theme.space(2)
             ConnectButton {
                 tracker: root.tracker
-                text: words.t("tracker-row-save-connect"); icon: "log-in"; primary: true
+                text: words.t("tracker-row-save-connect"); icon: "link"; primary: true
                 enabled: secret.text.trim() !== ""
                 onClicked: {
                     var r = Door.setTrackerCredentials(root.tracker, root.account.client_id || "", secret.text.trim())

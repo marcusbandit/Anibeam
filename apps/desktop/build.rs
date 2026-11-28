@@ -200,6 +200,7 @@ fn main() {
         "assets/fonts/B612-Bold.ttf",
         "assets/icons/activity.svg",
         "assets/icons/anilist.svg",
+        "assets/icons/anilist-brand.svg",
         "assets/icons/archive.svg",
         "assets/icons/arrow-down.svg",
         "assets/icons/arrow-down-wide-narrow.svg",
