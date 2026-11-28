@@ -619,7 +619,7 @@ html[data-os="windows"] .endcard .get-term { display: none; }
 body.rd { --solid-0: #0a0b0d; --solid-1: #0f1013; --solid-2: #15161a; --solid-3: #1c1d22; }
 .rd .card { background: var(--solid-2); }
 .rd .row-vis { background: var(--solid-1); }
-.rd .pickup-art { background: linear-gradient(90deg, #0b0c0f 38%, rgba(11, 12, 15, 0.9)), url("img/art/frieren.webp") 70% 30% / cover no-repeat; filter: brightness(0.75); }
+.rd .pickup-art { background: linear-gradient(90deg, #0b0c0f 38%, rgba(11, 12, 15, 0.9)), url("img/art/pickup.webp") 70% 30% / cover no-repeat; filter: brightness(0.75); }
 .rd .mk-row { background: var(--solid-1); }
 .rd .r2-code { background: var(--solid-0); }
 .rd .r2-copy, .rd .r2-people em { background: var(--solid-3); }

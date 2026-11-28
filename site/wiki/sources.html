@@ -23,7 +23,7 @@
 </section>
 
 <section>
-  <h2 id="lists">What a source list is (and where to find one)</h2>
+  <h2 id="lists">What a source list is</h2>
   <p>Think of a <b>source list</b> as a shared address book for Anibeam. It is a single web link to a JSON file, such as <code>https://example.com/anibeam/repo.json</code>, that tells Anibeam which search sites are available and how to read their results.</p>
   <ul>
     <li><b>Data only, never executable code:</b> A source list does not install plugins or run scripts on your computer. It only lists web addresses and search formats that Anibeam already knows how to read.</li>
@@ -32,9 +32,8 @@
     <li><b>Easy updates:</b> Whenever the list's maintainer fixes a broken site or updates an address, Anibeam offers the update inside Settings.</li>
   </ul>
   <div class="callout">
-    <span class="callout-title">Where to find source lists: Discord (coming soon)</span>
-    <p>This website and Anibeam's GitHub repository do not host or link to download sites. Once the <b>Anibeam Discord server</b> opens <em>(coming soon)</em>, it will have a community channel where users share source lists with one another.</p>
-    <p>Lists shared there come from community members rather than the Anibeam app itself. Because a source list decides which websites Anibeam sends your searches to, only add links from people or communities you trust.</p>
+    <span class="callout-title">No source lists from Anibeam</span>
+    <p>The app, this website and the GitHub repository do not host, link to, share or recommend download sites or source lists, and no Anibeam channel is a place to share them. A source list decides which websites your searches go to, so only add one from someone you trust.</p>
   </div>
 </section>
 
@@ -87,7 +86,7 @@ https://example.com/rss?q={query}</pre>
         </tr>
         <tr>
           <td>Category-filtered RSS</td>
-          <td><code>https://example.com/?page=rss&amp;c=anime&amp;q={query}</code></td>
+          <td><code>https://example.com/feed?category=anime&amp;search={query}</code></td>
         </tr>
         <tr>
           <td>Search term in path</td>
