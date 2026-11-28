@@ -125,21 +125,26 @@
     for (const [s, m] of marks) if (by[s] && by[s].by) { m.textContent = by[s].by; m.classList.add("by"); }
   }).catch(() => {});
 
-  // The note about the art opens on hover as well as on click.
+  // The note about the art opens above its button: on hover with a mouse, and a click keeps it open.
   const btn = document.querySelector(".art-note-btn");
   const note = document.getElementById("art-note");
-  if (btn && note && note.showPopover && matchMedia("(hover: hover)").matches) {
+  if (btn && note) {
     let pinned = false, timer = 0;
-    const open = () => { clearTimeout(timer); if (!note.matches(":popover-open")) note.showPopover(); };
-    const close = () => { timer = setTimeout(() => { if (!pinned && note.matches(":popover-open")) note.hidePopover(); }, 250); };
-    btn.addEventListener("pointerenter", open);
-    btn.addEventListener("pointerleave", close);
-    note.addEventListener("pointerenter", open);
-    note.addEventListener("pointerleave", close);
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      if (pinned && note.matches(":popover-open")) { pinned = false; note.hidePopover(); } else { pinned = true; open(); }
+    const show = (on) => { clearTimeout(timer); note.hidden = !on; btn.setAttribute("aria-expanded", String(on)); if (!on) pinned = false; };
+    btn.addEventListener("click", () => { pinned = !(pinned && !note.hidden); show(pinned); });
+    if (matchMedia("(hover: hover)").matches) {
+      const leave = () => { timer = setTimeout(() => { if (!pinned) show(false); }, 250); };
+      for (const el of [btn, note]) {
+        el.addEventListener("pointerenter", () => show(true));
+        el.addEventListener("pointerleave", leave);
+      }
+    }
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || note.hidden) return;
+      const inside = btn === document.activeElement || note.contains(document.activeElement);
+      show(false);
+      if (inside) btn.focus();
     });
-    note.addEventListener("toggle", (e) => { if (e.newState === "closed") pinned = false; });
+    document.addEventListener("click", (e) => { if (!note.hidden && !e.target.closest(".art-note-wrap")) show(false); });
   }
 })();
