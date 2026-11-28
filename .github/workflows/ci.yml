@@ -9,7 +9,8 @@ name: CI
 # (#986), which sets those up for the AppImage. Runs on main
 # too, so rust-cache keeps a cache every pull request can restore. The toolchain comes from
 # rust-toolchain.toml, which every workflow reads (#526).
-# A change that only touches markdown or docs/ skips Cargo checks (#428). The two CHANGELOG.md
+# A change that only touches markdown, docs/ or the website in site/ skips Cargo checks (#428,
+# #1548); site.yml checks the website. The two CHANGELOG.md
 # files still run them (the apps compile them in and crates/core/tests/changelog.rs checks them),
 # and ARCHITECTURE.md still triggers pushes on main so the repo structure guard runs on edits to it.
 # Later patterns win, so those lines have to stay after the markdown exclusion. A pull request
@@ -63,7 +64,7 @@ jobs:
             while IFS= read -r f; do
               case "$f" in
                 */CHANGELOG.md|CHANGELOG.md) code=true ;;
-                *.md|docs/*) ;;
+                *.md|docs/*|site/*|.github/workflows/site.yml) ;;
                 *) code=true ;;
               esac
             done < <(git diff --name-only HEAD^1 HEAD)

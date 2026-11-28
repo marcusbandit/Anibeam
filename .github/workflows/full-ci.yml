@@ -8,6 +8,10 @@ name: Full CI
 # without a rebuild. The Android check runs on a push already (android.yml), and the signed
 # APK stays with nightly.yml, so PR code never runs next to the phone's key. Nothing is
 # published: the builds' files stay on the workflow run.
+#
+# A pull request that changes no app (only site/, docs/ or Markdown other than the two
+# CHANGELOG.md files the apps compile in) builds nothing here (#1548): the gate says so and
+# the no-app job stands in for the builds, so automerge still counts the run.
 on:
   pull_request:
     types: [labeled, synchronize, reopened]
@@ -22,6 +26,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   # The one job that always runs. scripts/ci/ios-automerge.sh counts a Full CI run as one that
@@ -31,6 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.gate.outputs.build }}
+      no_app: ${{ steps.gate.outputs.no_app }}
     steps:
       - name: Build or not
         id: gate
@@ -38,14 +44,45 @@ jobs:
           ACTION: ${{ github.event.action }}
           CHANGED: ${{ github.event.label.name }}
           LABELLED: ${{ contains(github.event.pull_request.labels.*.name, 'full ci') }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
           build=false
           case "$ACTION" in
             labeled) [ "$CHANGED" = "full ci" ] && build=true ;;
             synchronize|reopened) [ "$LABELLED" = true ] && build=true ;;
           esac
+          # Whether the pull request touches any app at all (#1548). The file list is the
+          # whole PR against its base, so a later push that adds app code builds again.
+          no_app=false
+          if [ "$build" = true ]; then
+            files="$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files" --jq '.[].filename')"
+            app=false
+            while IFS= read -r f; do
+              case "$f" in
+                */CHANGELOG.md|CHANGELOG.md) app=true ;;
+                site/*|docs/*|*.md|.github/workflows/site.yml) ;;
+                *) app=true ;;
+              esac
+            done <<<"$files"
+            if [ -n "$files" ] && [ "$app" = false ]; then
+              build=false
+              no_app=true
+            fi
+          fi
           echo "build=$build" >> "$GITHUB_OUTPUT"
-          echo "build=$build"
+          echo "no_app=$no_app" >> "$GITHUB_OUTPUT"
+          echo "build=$build no_app=$no_app"
+
+  # Stands in for the builds when the pull request changes no app, so scripts/ci/ios-automerge.sh
+  # sees a run that did more than its gate and counts this head as checked.
+  no-app:
+    needs: gate
+    if: needs.gate.outputs.no_app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Only the website, docs or Markdown changed, so no app is built."
 
   linux:
     needs: gate
