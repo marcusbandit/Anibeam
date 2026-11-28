@@ -150,6 +150,7 @@ FocusScope {
         property bool enabled: false
         property bool images: true
         property bool hud: true
+        property bool hitboxes: false
         property bool readCache: true
         property bool posterPool: true
     }
@@ -301,6 +302,14 @@ FocusScope {
         anchors.right: content.right; anchors.rightMargin: theme.space(4)
         anchors.bottom: content.bottom; anchors.bottomMargin: strip.height + theme.space(2)
         z: 450
+    }
+    Loader {
+        id: hitboxLoader
+        anchors.fill: parent
+        z: 9999
+        active: devKept.hitboxes
+        source: "../dev/HitboxOverlay.qml"
+        onLoaded: item.targetRoot = frame
     }
     ActivityDrawer {
         id: drawer
@@ -1519,4 +1528,5 @@ FocusScope {
     // ? anywhere outside the player, which keeps its own list
     Shortcut { sequence: "?"; enabled: !frame.fullWindow; onActivated: frameKeys.open ? frameKeys.close() : frameKeys.show() }
     Shortcut { sequence: "F11"; onActivated: frame.hostWindow.visibility = frame.hostWindow.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen }
+    Shortcut { sequence: "Ctrl+Shift+H"; onActivated: devKept.hitboxes = !devKept.hitboxes }
 }
