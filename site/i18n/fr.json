@@ -87,7 +87,7 @@
  "Open a room": "Ouvrir un salon",
  "Connected": "Connecté",
  "Copy link": "Copier le lien",
- "Cowboy Bebop · Episode 5": "Cowboy Bebop · Épisode 5",
+ "Starlight Freight · Episode 5": "Starlight Freight · Épisode 5",
  "Host": "Hôte",
  "Ready": "Prêt",
  "You": "Vous",
@@ -100,5 +100,9 @@
  "Support": "Soutenir",
  "Small print": "Petits caractères",
  "Privacy": "Confidentialité",
- "Terms": "Conditions"
+ "Terms": "Conditions",
+ "About the art": "À propos des affiches",
+ "AI posters, for now": "Des affiches IA, pour l'instant",
+ "These posters are made with AI because nobody on the project can draw, and we'd love to have real art here. If you want to draw one for a made-up anime, it will replace an AI poster and have your name on it.": "Ces affiches sont faites avec une IA parce que personne sur le projet ne sait dessiner, et on aimerait vraiment avoir de vrais dessins ici. Si vous voulez en dessiner une pour un anime inventé, elle remplacera une affiche IA et portera votre nom.",
+ "How to contribute": "Comment contribuer"
 }

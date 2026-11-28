@@ -87,7 +87,7 @@
  "Open a room": "방 열기",
  "Connected": "연결됨",
  "Copy link": "링크 복사",
- "Cowboy Bebop · Episode 5": "Cowboy Bebop · 5화",
+ "Starlight Freight · Episode 5": "Starlight Freight · 5화",
  "Host": "호스트",
  "Ready": "준비됨",
  "You": "나",
@@ -100,5 +100,9 @@
  "Support": "후원",
  "Small print": "세부 사항",
  "Privacy": "개인정보",
- "Terms": "약관"
+ "Terms": "약관",
+ "About the art": "포스터 안내",
+ "AI posters, for now": "지금은 AI 포스터예요",
+ "These posters are made with AI because nobody on the project can draw, and we'd love to have real art here. If you want to draw one for a made-up anime, it will replace an AI poster and have your name on it.": "프로젝트에 그림을 그릴 수 있는 사람이 없어서 지금은 AI로 만든 포스터를 쓰고 있지만, 진짜 그림으로 채우고 싶어요. 가상의 애니 포스터를 그려 주시면 AI 포스터를 바꾸고 그린 분의 이름을 함께 올려 드려요.",
+ "How to contribute": "참여 방법 보기"
 }
