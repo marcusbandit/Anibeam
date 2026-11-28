@@ -677,3 +677,5 @@ body.rd { --solid-0: #0a0b0d; --solid-1: #0f1013; --solid-2: #15161a; --solid-3:
 .art-note b { display: block; font-size: 15px; margin-bottom: 6px; }
 .art-note p { margin: 0 0 12px; color: rgba(255, 255, 255, 0.72); font-size: 14px; line-height: 1.5; }
 .art-note a { color: var(--accent, #fdc901); font-weight: 600; font-size: 14px; }
+.tw-screen { position: relative; }
+.art-mark.tour-mark { left: auto; right: 10px; bottom: 10px; font-size: 10px; }
