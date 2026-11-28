@@ -87,7 +87,7 @@ void set_render_loop_env()
     if (qgetenv("QT_QPA_PLATFORM").trimmed() != "offscreen") {
         const QByteArray theme = qgetenv("QT_QPA_PLATFORMTHEME").trimmed();
         if (theme.isEmpty() || theme == "qt6ct" || theme == "qt5ct")
-            qputenv("QT_QPA_PLATFORMTHEME", QByteArrayLiteral("xdgdesktopportal,gtk3"));
+            qputenv("QT_QPA_PLATFORMTHEME", QByteArrayLiteral("xdgdesktopportal"));
     }
 #endif
 }
