@@ -74,7 +74,8 @@ gated_run() {
     jobs="$(gh api --paginate "repos/$GH_REPO/actions/runs/$id/jobs?filter=latest&per_page=100" \
       --jq '.jobs[]')" || return 1
     # The gate always runs; a run built when any other job did not skip. full-ci.yml and
-    # pr-build.yml keep their gate job named gate for this.
+    # pr-build.yml keep their gate job named gate for this. Full CI's no-app job counts too:
+    # it runs instead of the builds when the pull request changes no app (#1548).
     if jq -se 'any(.[]; .name != "gate" and .conclusion != "skipped")' <<<"$jobs" >/dev/null; then
       echo "$id built"
       return 0

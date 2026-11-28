@@ -41,8 +41,9 @@ points PULSE_SERVER and PIPEWIRE_REMOTE at nothing, so a capture never makes a s
 machine's speakers (#564). ANIBEAM_SILENT=1 does the same for a windowed run; `bench.sh` sets it.
 
 `ANIBEAM_QML_DIR=qml` (run from `apps/desktop/`, like every command here) loads the shell's QML from that directory instead of the copy compiled
-into the binary, so a QML-only edit shows up on the next run with no cargo build (a relink of the
-debug binary is minutes; the QML parse is a fraction of a second). It exists in debug builds and in
+into the binary, so a QML-only edit needs no cargo build (a relink of the
+debug binary is minutes; the QML parse is a fraction of a second). On an interactive run (not `--shoot` or `--drive`),
+it also watches that directory for `.qml` and `.js` saves, clears Qt's component cache, and reloads the UI in place while keeping your current page (set `ANIBEAM_QML_WATCH=0` to disable watching, or run `anibeam ctl reload` to trigger a reload manually; edits to `Main.qml` itself still need a restart). It exists in debug builds and in
 builds with the `dev-qml` feature only. A
 URL interceptor in `cpp/helpers.cpp` redirects each `qrc:/qt/qml/com/marcusrosado/Anibeam/qml/<name>.qml`
 the engine asks for to `<dir>/<name>.qml` when that file exists, so `Main.qml`, the pages and the shared

@@ -26,6 +26,10 @@ Window {
         property bool maximized: false
     }
     Component.onCompleted: {
+        if (window.frameReady && !window.frameInitialized) {
+            window.frameInitialized = true
+            window.loadFrame()
+        }
         if (capturing) return
         if (placement.x >= 0 && placement.y >= 0) { window.x = placement.x; window.y = placement.y }
         if (placement.maximized) window.visibility = Window.Maximized
@@ -128,6 +132,7 @@ Window {
         target: Shell
         function onActivateRequested(token) { Shell.raiseWindow(window, token) }
         function onQuitRequested() { Qt.quit() }
+        function onQmlChanged() { window.reloadQml() }
     }
 
     // Window.color is the clear colour the compositor paints with; grabToImage renders only
@@ -151,15 +156,92 @@ Window {
     readonly property string pageName: Shell.page.indexOf(":") >= 0 ? Shell.page.slice(0, Shell.page.indexOf(":")) : Shell.page
     readonly property string pageAction: Shell.page.indexOf(":") >= 0 ? Shell.page.slice(Shell.page.indexOf(":") + 1) : ""
 
+    readonly property bool frameReady: Theme.ready && Door.ready
+    property bool frameInitialized: false
+    property bool reloadingQml: false
+    property bool pendingReload: false
+    property var reloadState: null
+    property string reloadError: ""
+
+    onFrameReadyChanged: {
+        if (frameReady && !frameInitialized) {
+            frameInitialized = true
+            window.loadFrame()
+        }
+    }
+
+    function loadFrame() {
+        window.reloadError = ""
+        if (window.pageName === "tokens")
+            frame.setSource(Qt.resolvedUrl("ui/TokensPage.qml"))
+        else
+            frame.setSource(Qt.resolvedUrl("shell/Frame.qml"), { hostWindow: window })
+    }
+
+    // Dev live reload: snapshot the current route, unload Frame so its QML objects can be
+    // collected, clear the engine's component cache on the next tick, and reload from disk.
+    function reloadQml() {
+        if (!window.frameReady) return
+        if (window.reloadingQml) { window.pendingReload = true; return }
+        window.reloadingQml = true
+        window.pendingReload = false
+        if (frame.item && frame.item.nav && frame.item.nav.current) {
+            var cur = frame.item.nav.current
+            window.reloadState = {
+                page: cur.page,
+                props: cur.props || {},
+                label: cur.own ? cur.label : "",
+                scrollY: frame.item.leavingScroll ? frame.item.leavingScroll() : 0
+            }
+        }
+        frame.source = ""
+        reloadTimer.restart()
+    }
+
+    // One event-loop beat after clearing `frame.source` lets Qt flush deferred deletions
+    // before `clearQmlCache()` evicts the old compilation units.
+    Timer {
+        id: reloadTimer
+        interval: 50
+        onTriggered: window.finishReloadQml()
+    }
+
+    function finishReloadQml() {
+        Shell.clearQmlCache()
+        window.loadFrame()
+        if (frame.status === Loader.Error) {
+            window.reloadError = "QML reload failed — check the terminal log, fix the syntax error, and save again." // i18n: none
+            window.reloadingQml = false
+            if (window.pendingReload) { window.pendingReload = false; Qt.callLater(window.reloadQml) }
+        }
+    }
+
     Loader {
         id: frame
         anchors.fill: parent
         // Built as soon as the engine and the core are up, not after the first empty frame:
         // the render thread sets up the GPU meanwhile, and a compositor's late size is one
         // relayout, where waiting for it was most of a launch (#289)
-        active: Theme.ready && Door.ready
-        sourceComponent: window.pageName === "tokens" ? tokensPage : frameComponent
+        onStatusChanged: {
+            if (status === Loader.Error) {
+                window.reloadError = "QML load failed — check the terminal log, fix the syntax error, and save again." // i18n: none
+                window.reloadingQml = false
+                if (window.pendingReload) { window.pendingReload = false; Qt.callLater(window.reloadQml) }
+            }
+        }
         onLoaded: {
+            window.reloadError = ""
+            if (window.reloadingQml) {
+                window.reloadingQml = false
+                var saved = window.reloadState
+                window.reloadState = null
+                if (saved && item.nav) {
+                    item.nav.replace(saved.page, saved.props, saved.label || undefined)
+                    if (saved.scrollY > 0) item.nav.pendingScroll = saved.scrollY
+                }
+                if (window.pendingReload) { window.pendingReload = false; Qt.callLater(window.reloadQml) }
+                return
+            }
             Dev.mark("frame built") // i18n: none
             // Home is the default page, so its props ride only when a launch actually
             // handed some over; every other page always replaces.
@@ -184,8 +266,57 @@ Window {
             window.maybeShoot()
         }
     }
-    Component { id: frameComponent; Frame { hostWindow: window } }
-    Component { id: tokensPage; TokensPage {} }
+    // Dev live-reload error fallback: keeps the window usable when a saved edit has a syntax error.
+    Rectangle {
+        visible: window.reloadError !== ""
+        anchors.fill: parent
+        color: window.color
+        z: 100
+        Column {
+            anchors.centerIn: parent
+            spacing: 12
+            width: Math.min(parent.width - 64, 520)
+            Text {
+                width: parent.width
+                text: "QML reload error" // i18n: none
+                color: theme.text
+                font.family: theme.fontFamily
+                font.pixelSize: theme.typeLarge
+                font.weight: Font.DemiBold
+                horizontalAlignment: Text.AlignHCenter
+            }
+            Text {
+                width: parent.width
+                text: window.reloadError
+                color: theme.textDim
+                font.family: theme.fontFamily
+                font.pixelSize: theme.typeNormal
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+            }
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: retryLabel.implicitWidth + 28
+                height: retryLabel.implicitHeight + 14
+                radius: theme.radiusSm
+                color: theme.accent
+                Text {
+                    id: retryLabel
+                    anchors.centerIn: parent
+                    text: "Retry" // i18n: none
+                    color: theme.bg
+                    font.family: theme.fontFamily
+                    font.pixelSize: theme.typeNormal
+                    font.weight: Font.DemiBold
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: window.reloadQml()
+                }
+            }
+        }
+    }
     title: frame.item && frame.item.windowTitle ? frame.item.windowTitle : "Anibeam"
 
     // --shoot <png>: one capture of the frame after settle, then quit. grabToImage renders
