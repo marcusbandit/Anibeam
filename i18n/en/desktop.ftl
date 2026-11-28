@@ -526,6 +526,9 @@ rail-room = Watch together (Ctrl+J)
 rail-room-in = In a watch together room (Ctrl+J)
 rail-join-room = Join room
 rail-in-room = In a room
+rail-support = Support Anibeam
+rail-support-github-sponsors = GitHub Sponsors
+rail-support-kofi = Ko-fi
 
 ## FixSheet.qml
 

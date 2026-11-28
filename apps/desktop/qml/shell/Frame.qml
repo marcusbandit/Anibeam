@@ -214,6 +214,13 @@ FocusScope {
         inRoom: roomState.inRoom
         roomOpen: roomSheet.open
         onRoomClicked: frame.toggleRoom()
+        onSupportClicked: function(anchor) {
+            var p = anchor.mapToItem(frame, anchor.width + rail.pad + theme.space(2), 0)
+            frame.openMenu(p.x, p.y, [
+                { text: words.t("rail-support-github-sponsors"), icon: "heart", action: function() { frame.openLink("https://github.com/sponsors/marcusbandit") } },
+                { text: words.t("rail-support-kofi"), icon: "external-link", action: function() { frame.openLink("https://ko-fi.com/marcusbandit") } }
+            ])
+        }
     }
 
     Item {

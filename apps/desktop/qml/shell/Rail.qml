@@ -1,6 +1,6 @@
-// The sidebar (#1012): one flat column a step up from the ground, holding four places and two
+// The sidebar (#1012): one flat column a step up from the ground, holding four places and three
 // round buttons, glyphs only, each named by its tip. The brand at the top, then Home, Library,
-// Airing and Downloads as square tiles, and at the foot Join room and Settings. The column is
+// Airing and Downloads as square tiles, and at the foot Join room, Support and Settings. The column is
 // one tile wide plus the same gap on each side as between the tiles, so a lit tile sits with
 // an even margin all round. The pages that used to have glyphs of their own live inside a
 // place: the feed opens from Home's week, and Watching, Stats and Show info are tabs of
@@ -26,6 +26,7 @@ Item {
     property bool inRoom: false
     property bool roomOpen: false
     signal roomClicked()
+    signal supportClicked(var anchor)
 
     // `key` names the --drive target (rail-<key>) and the page it opens, `msg` the words
     readonly property var places: [
@@ -48,10 +49,10 @@ Item {
     readonly property real roundSize: itemWidth
     // A short window shrinks the place tiles before they run under the round buttons at the
     // foot; a tall one leaves them square. Upper: the brand, a gap and four tiles, a gap between
-    // each; lower: two round buttons over the bottom gap.
+    // each; lower: three round buttons over the bottom gap.
     readonly property real tileSize: {
         var brand = itemWidth - theme.space(2)
-        var free = height - (pad + theme.space(1)) - brand - pad * 6 - pad - (roundSize * 2 + pad * 2)
+        var free = height - (pad + theme.space(1)) - brand - pad * 6 - pad - (roundSize * 3 + pad * 3)
         return Math.max(theme.space(8), Math.min(itemWidth, Math.floor(free / 4)))
     }
 
@@ -132,7 +133,7 @@ Item {
         }
     }
 
-    // The foot: Join room and Settings, round and named by their tips
+    // The foot: Join room, Support and Settings, round and named by their tips
     Column {
         id: lower
         x: root.pad
@@ -166,6 +167,33 @@ Item {
             }
             MouseArea { id: rm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.roomClicked() }
             Tooltip { text: root.inRoom ? words.t("rail-room-in") : words.t("rail-room") }
+        }
+
+        // Support Anibeam (#1028): opens a popover menu with GitHub Sponsors and Ko-fi
+        Rectangle {
+            id: supportEntry
+            objectName: "rail-support"
+            Accessible.role: Accessible.Button
+            Accessible.name: words.t("rail-support")
+            Accessible.onPressAction: root.supportClicked(supportEntry)
+            x: (root.itemWidth - width) / 2
+            width: root.roundSize; height: width
+            radius: width / 2
+            color: supm.containsMouse ? theme.raised : "transparent"
+            border.color: supportEntry.activeFocus ? theme.focusRing : "transparent"
+            border.width: 1
+            scale: theme.reducedMotion ? 1 : (supm.pressed ? 0.95 : 1)
+            activeFocusOnTab: true
+            Keys.onReturnPressed: root.supportClicked(supportEntry)
+            Keys.onSpacePressed: root.supportClicked(supportEntry)
+            Icon {
+                anchors.centerIn: parent
+                glyph: "heart"
+                size: theme.space(5)
+                color: supm.containsMouse ? theme.text : theme.textDim
+            }
+            MouseArea { id: supm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.supportClicked(supportEntry) }
+            Tooltip { text: words.t("rail-support") }
         }
 
         Rectangle {
