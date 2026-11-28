@@ -45,6 +45,9 @@ Item {
         panel.x = Math.max(theme.space(2), Math.min(p.x - panel.width / 2, root.width - panel.width - theme.space(2)))
         panel.y = Math.max(theme.space(2), floor - panel.height)
     }
+    readonly property real panelPadding: theme.space(2.5)
+    readonly property real rowSpacing: theme.space(0.5)
+    readonly property real headerHeight: theme.textSpace(6)
     // The current track, scrolled into the middle of the list when the list scrolls
     function revealSelected() {
         for (var i = 0; i < rows.length; i++) if (rows[i].id === selected) break
@@ -53,7 +56,7 @@ Item {
         revealRow(i)
     }
     function revealRow(i) {
-        var y = theme.space(6) + i * theme.controlHeight
+        var y = headerHeight + rowSpacing + i * (theme.controlHeight + rowSpacing)
         trackList.contentY = Math.max(0, Math.min(trackList.contentHeight - trackList.height, y - (trackList.height - theme.controlHeight) / 2))
     }
     // Deferred a tick: the picker resizes with the window before the chrome lays its
@@ -83,16 +86,18 @@ Item {
     Corner {
         id: panel
         objectName: root.objectName !== "" ? root.objectName + "-panel" : "track-picker-panel"
-        width: theme.space(70); height: Math.min(root.maxHeight, column.implicitHeight + theme.space(4))
-        // One fill step above raised: it floats over a raised surface (the player's
-        // controls tile, the rating prompt), and the same fill would merge with it
-        color: theme.glassFloat; borderColor: theme.lineStrong; borderWidth: 1; highlight: theme.glassHighlight
+        width: theme.space(70); height: Math.min(root.maxHeight, column.implicitHeight + root.panelPadding * 2)
+        radius: theme.space(3)
+        // Translucent dark glass over video: always dark so the picture never washes the rows out
+        color: Qt.rgba(16 / 255, 17 / 255, 20 / 255, 0.84)
+        borderColor: Qt.rgba(1, 1, 1, 0.10); borderWidth: 1
+        highlight: Qt.rgba(1, 1, 1, 0.08)
         // The list's length can change while open (tracks arrive late); keep the foot put
         onHeightChanged: if (root.open) root.place()
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
         Flickable {
             id: trackList
-            anchors.fill: parent; anchors.margins: theme.space(2); clip: true
+            anchors.fill: parent; anchors.margins: root.panelPadding; clip: true
             contentWidth: width; contentHeight: column.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
             QC.ScrollBar.vertical: ThinScrollBar {}
@@ -100,22 +105,60 @@ Item {
             Column {
                 id: column
                 width: parent.width
-                Text { text: root.title; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall; font.weight: Font.DemiBold; height: theme.textSpace(6); verticalAlignment: Text.AlignVCenter; leftPadding: theme.space(2) }
+                spacing: root.rowSpacing
+                Text {
+                    text: root.title
+                    color: Qt.rgba(1, 1, 1, 0.50)
+                    font.family: theme.fontSans
+                    font.pointSize: theme.typeSmall
+                    font.weight: Font.DemiBold
+                    width: column.width
+                    height: root.headerHeight
+                    verticalAlignment: Text.AlignVCenter
+                    leftPadding: theme.space(2)
+                    rightPadding: theme.space(2)
+                    elide: Text.ElideRight
+                }
                 Repeater {
                     model: root.rows
                     Corner {
+                        id: row
                         required property var modelData
                         required property int index
+                        readonly property bool active: modelData.id === root.selected
+                        readonly property bool lit: m.containsMouse || index === root.cursor
                         width: column.width; height: theme.controlHeight
-                        radius: theme.radiusSm
-                        // Pressed darkest, then picked (a step brighter under the pointer or the keys), then the keys' row or the pointer's
-                        color: m.pressed ? theme.surfacePressed : modelData.id === root.selected ? (m.containsMouse || index === root.cursor ? theme.accentSoftHover : theme.accentSoft)
-                             : m.containsMouse || index === root.cursor ? theme.floatHover : "transparent"
+                        radius: theme.space(2)
+                        color: active
+                             ? (m.pressed ? Qt.rgba(1, 1, 1, 0.18) : lit ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.10))
+                             : (m.pressed ? Qt.rgba(1, 1, 1, 0.10) : lit ? Qt.rgba(1, 1, 1, 0.06) : "transparent")
                         borderColor: index === root.cursor ? theme.focusRing : "transparent"; borderWidth: index === root.cursor ? 1 : 0
-                        Text { anchors.left: parent.left; anchors.leftMargin: theme.space(2); anchors.verticalCenter: parent.verticalCenter; text: modelData.label; color: modelData.id === root.selected ? theme.accent : theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: modelData.id === root.selected ? Font.DemiBold : Font.Normal; elide: Text.ElideRight; width: parent.width - theme.space(4) }
-                        MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.picked(modelData.id); root.close() }
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: theme.space(2.25)
+                            anchors.right: dot.visible ? dot.left : parent.right
+                            anchors.rightMargin: theme.space(2.25)
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: row.modelData.label
+                            color: row.active ? "#ffffff" : Qt.rgba(1, 1, 1, 0.85)
+                            font.family: theme.fontSans
+                            font.pointSize: theme.typeNormal
+                            font.weight: row.active ? Font.DemiBold : Font.Normal
+                            elide: Text.ElideRight
+                        }
+                        Rectangle {
+                            id: dot
+                            visible: row.active
+                            anchors.right: parent.right
+                            anchors.rightMargin: theme.space(2.5)
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 7; height: 7; radius: 3.5
+                            color: theme.accent
+                            antialiasing: true
+                        }
+                        MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.picked(row.modelData.id); root.close() }
                             Accessible.role: Accessible.Button; Accessible.name: theme.nameNear(parent) }
-                            Accessible.onPressAction: { root.picked(modelData.id); root.close() }
+                        Accessible.onPressAction: { root.picked(row.modelData.id); root.close() }
                     }
                 }
             }
