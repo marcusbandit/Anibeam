@@ -63,10 +63,21 @@ Item {
             color: root.brandBg
             borderColor: root.connected ? theme.accent : Qt.rgba(1, 1, 1, 0.1)
             borderWidth: root.connected ? 1.5 : 1
+            Image {
+                visible: root.tracker === "Anilist"
+                anchors.centerIn: parent
+                source: "qrc:/qt/qml/com/marcusrosado/Anibeam/assets/icons/anilist-brand.svg"
+                width: theme.space(7)
+                height: theme.space(7)
+                sourceSize: Qt.size(64, 64)
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+            }
             Icon {
+                visible: root.tracker !== "Anilist"
                 anchors.centerIn: parent
                 glyph: root.brandIcon
-                size: root.tracker === "Anilist" ? theme.space(6.5) : theme.space(7.5)
+                size: theme.space(7.5)
                 color: root.brandFg
             }
         }
