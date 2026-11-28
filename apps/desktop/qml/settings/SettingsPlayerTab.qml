@@ -1,19 +1,13 @@
-// Playback: Skipping (intro and outro on their own switches), Next episode, Languages
+// Player: Skipping (intro and outro on their own switches), Next episode, Languages
 // (which subtitle and audio tracks a new episode starts on, by language code, most wanted
-// first), then Subtitles: the preview, rendered through mpv on the episode watched last at
-// its resume point (else the bundled sample), so every change under it shows on a real
-// frame, then Size and place, and Style (how styled ASS files are treated, then the look
-// plain SRT and VTT files get: font, colour, outline, shadow, the box behind them, bold).
-// Everything subtitles write goes through the frame's one debounced save of the subtitle
-// defaults. Then Discord (showing what plays on the person's profile, where the build has a
-// Discord application, its state under the switch), Watch together, and Advanced (whether
-// their own mpv settings file is read, the room server).
+// first), then Subtitles (preview, size and place, style), Watch together (room name),
+// and Advanced (whether the user's own mpv settings file is read).
 import QtQuick
 import com.marcusrosado.Anibeam
 
 SettingsTab {
     id: tab
-    title: words.t("settings-playback-title")
+    title: words.t("settings-player-title")
     readonly property var defaults: frame.subtitleDefaults
     function edit(f) { frame.editSubtitleDefaults(f) }
     // An edit still waiting on the debounce is written as the tab closes
@@ -38,45 +32,17 @@ SettingsTab {
     // The core's ASS override modes, in the order the switch shows them
     readonly property var assModes: ["AsScripted", "ScaleOnly", "Force"] // i18n: none
     function pickPreview() {
-        // Always use the predefined template image and demo subtitles so the preview is
-        // predictable, never leaks whatever episode was watched last, and always displays
-        // subtitles ready to style.
         var sample = Player.samplePreview()
         preview = { path: sample.path, subtitle: sample.subtitle, startAt: 0 }
     }
 
     function codes(t) { return t.split(",").map(function(s) { return s.trim() }).filter(function(s) { return s }) }
     readonly property var skip: Door.settings.auto_skip || ({})
-    // Discord rich presence: a build with no Discord application has nothing to switch on
-    property bool discordAvailable: false
-    function setDiscord(on) {
-        var p = JSON.parse(JSON.stringify(Door.preferences))
-        p.discord_presence = on
-        var r = Door.setPreferences(p)
-        if (r.error) frame.fail(r.error, function() { tab.setDiscord(on) })
-    }
     function setSkip(intro, outro) {
         var r = Door.setAutoSkip(intro, outro)
         if (r && r.error) frame.fail(r.error, function() { tab.setSkip(intro, outro) })
     }
-    // A presence check that failed is not a build without Discord: it says so, with Try again
-    property bool presenceFailed: false
-    function readPresence() {
-        var presence = Door.call("GetPresence", {})
-        presenceFailed = !!presence.error
-        if (!presence.error) { discordAvailable = presence.reply.available; discordConnected = presence.reply.connected; discordProblem = presence.reply.problem || null }
-    }
-    // Why Discord shows nothing (#1029): serde's shape, the string "NoDiscord" or
-    // { Refused: { message } }, read again on every PresenceChanged
-    property var discordProblem: null
-    readonly property string discordState: !Door.preferences.discord_presence ? ""
-        : discordProblem === "NoDiscord" ? words.t("settings-playback-discord-no-discord")
-        : discordProblem && discordProblem.Refused ? words.t("settings-playback-discord-refused", { reason: discordProblem.Refused.message })
-        : discordConnected ? words.t("settings-playback-discord-connected") : words.t("settings-playback-discord-not-connected")
-    // Whether Discord is connected right now: read once, then kept current by the core's event
-    property bool discordConnected: false
-    // The subtitle preview reads the library and starts an mpv frame, so it waits until its
-    // panel comes near the view: opening Playback for a switch at the top costs neither
+    // The subtitle preview starts an mpv frame, so it waits until its panel comes near the view
     property bool previewWanted: false
     function checkPreview() {
         if (!previewWanted && subtitlesPanel.parent && contentY + height > subtitlesPanel.parent.y + subtitlesPanel.y - theme.space(20)) {
@@ -86,19 +52,7 @@ SettingsTab {
     }
     onContentYChanged: checkPreview()
     onHeightChanged: checkPreview()
-    // The people told no when they asked on Discord to join (#966)
-    property var discordBlocked: []
-    function readBlocked() {
-        var r = Door.call("DiscordBlocked", {})
-        if (!r.error) discordBlocked = r.reply.people || []
-    }
-    function clearBlocked() {
-        var r = Door.call("DiscordUnblock", { user_id: null })
-        if (r.error) { frame.fail(r.error); return }
-        discordBlocked = r.reply.people || []
-    }
-    Component.onCompleted: { readPresence(); readBlocked(); Qt.callLater(checkPreview) }
-    Connections { target: Door; function onPresenceChanged() { tab.readPresence() } }
+    Component.onCompleted: Qt.callLater(checkPreview)
 
     Panel {
         title: words.t("settings-playback-skipping")
@@ -173,23 +127,6 @@ SettingsTab {
         SettingRow { label: words.t("settings-subtitles-start-over")
             Button { objectName: "subtitle-reset"; msg: "settings-subtitles-reset"; icon: "rotate-ccw"; flat: true; onClicked: tab.resetStyle() } }
     }
-    Panel {
-        title: "Discord"
-        SettingRow { label: words.t("settings-playback-discord")
-            status: tab.presenceFailed ? words.t("settings-playback-discord-check-failed")
-                : !tab.discordAvailable ? words.t("settings-playback-discord-unavailable")
-                : tab.discordState
-            Row { spacing: theme.space(2)
-                Button { visible: tab.presenceFailed; msg: "action-try-again"; icon: "refresh-cw"; flat: true; small: true; onClicked: tab.readPresence() }
-                Switch { objectName: "settings-discord-switch"; enabled: tab.discordAvailable; opacity: enabled ? 1 : theme.disabledOpacity; checked: !!Door.preferences.discord_presence; onToggled: function(on) { tab.setDiscord(on) } } } }
-        SettingRow { label: words.t("settings-playback-discord-blocked")
-            visible: tab.discordAvailable
-            status: tab.discordBlocked.map(function(p) { return p.name }).join(", ")
-            redactStatus: tab.discordBlocked.length > 0
-            Button { objectName: "settings-discord-unblock"; msg: "action-clear"; flat: true; small: true
-                enabled: tab.discordBlocked.length > 0; opacity: enabled ? 1 : theme.disabledOpacity
-                onClicked: tab.clearBlocked() } }
-    }
     // Watch together (#846): the name others in a room see. Kept per machine, like the relay.
     Panel {
         title: words.t("settings-playback-together")
@@ -208,13 +145,5 @@ SettingsTab {
             status: Player.configLayers.length ? Player.configLayers.join("\n") : words.t("settings-playback-no-mpv-conf")
             redactStatus: Player.configLayers.length > 0
             Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.setUseMyMpvConf(on) } } }
-        SettingRow { label: words.t("settings-playback-room-relay")
-            PrivacyBlur {
-                id: roomRelayBlur
-                width: roomRelayField.width; height: roomRelayField.height
-                Field { id: roomRelayField; objectName: "settings-room-relay"; text: roomRelayBlur.blurred ? roomRelayBlur.mask(Door.preferences.room_relay || "") : (Door.preferences.room_relay || ""); mono: true; width: theme.space(64)
-                    accessibleName: words.t("settings-playback-room-relay")
-                    onEdited: function(t) { if (t.trim() !== (Door.preferences.room_relay || "")) frame.room.setRelay(t) } }
-            } }
     }
 }

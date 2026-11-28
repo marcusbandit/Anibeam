@@ -145,7 +145,7 @@ QtObject {
             home: {}, library: { q: "search", sort: "", group: "", genre: "", arrange: "", box: "" },
             airing: { season: "", filter: "" }, feed: {}, watching: { tab: "" }, stats: { year: "" },
             metadata: { q: "search" }, downloads: { query: "search", series: "series id" },
-            settings: { tab: "library accounts appearance playback downloads keys about developer", focus: "a setting's id" },
+            settings: { tab: "appearance library browse player keys downloads tracking connections plugins storage security advanced about supporters developer", focus: "a setting's id" },
             series: { id: "series id", find: "words of the title" }, player: { file: "path", speed: "" },
             show: { anilist: "AniList id" }, recommended: {}
         }

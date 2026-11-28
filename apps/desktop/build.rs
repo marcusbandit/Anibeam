@@ -129,10 +129,17 @@ fn main() {
             .qml_file("qml/settings/LookPreview.qml")
             .qml_file("qml/settings/SettingsAppearanceTab.qml")
             .qml_file("qml/settings/SubtitlePreview.qml")
-            .qml_file("qml/settings/SettingsPlaybackTab.qml")
-            .qml_file("qml/settings/SettingsAccountsTab.qml")
+            .qml_file("qml/settings/SettingsPlayerTab.qml")
+            .qml_file("qml/settings/SettingsTrackingTab.qml")
+            .qml_file("qml/settings/SettingsConnectionsTab.qml")
+            .qml_file("qml/settings/SettingsPluginsTab.qml")
+            .qml_file("qml/settings/SettingsBrowseTab.qml")
+            .qml_file("qml/settings/SettingsStorageTab.qml")
+            .qml_file("qml/settings/SettingsSecurityTab.qml")
+            .qml_file("qml/settings/SettingsAdvancedTab.qml")
             .qml_file("qml/settings/SettingsKeysTab.qml")
             .qml_file("qml/settings/SettingsAboutTab.qml")
+            .qml_file("qml/settings/SettingsSupportersTab.qml")
             .qml_file("qml/settings/UsagePreview.qml")
             .qml_file("qml/settings/SettingsDownloadsTab.qml")
             .qml_file("qml/downloads/EndpointReposPanel.qml")
@@ -231,6 +238,7 @@ fn main() {
         "assets/icons/copy.svg",
         "assets/icons/crown.svg",
         "assets/icons/database.svg",
+        "assets/icons/discord.svg",
         "assets/icons/download.svg",
         "assets/icons/ellipsis.svg",
         "assets/icons/external-link.svg",
@@ -246,6 +254,7 @@ fn main() {
         "assets/icons/folder.svg",
         "assets/icons/gauge.svg",
         "assets/icons/git-branch.svg",
+        "assets/icons/github.svg",
         "assets/icons/globe.svg",
         "assets/icons/hard-drive.svg",
         "assets/icons/heart.svg",
@@ -253,6 +262,7 @@ fn main() {
         "assets/icons/image.svg",
         "assets/icons/info.svg",
         "assets/icons/keyboard.svg",
+        "assets/icons/kofi.svg",
         "assets/icons/languages.svg",
         "assets/icons/layers.svg",
         "assets/icons/link.svg",
@@ -272,6 +282,7 @@ fn main() {
         "assets/icons/moon.svg",
         "assets/icons/myanimelist.svg",
         "assets/icons/palette.svg",
+        "assets/icons/patreon.svg",
         "assets/icons/pause.svg",
         "assets/icons/pencil.svg",
         "assets/icons/play.svg",

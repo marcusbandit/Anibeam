@@ -19,25 +19,32 @@ FocusScope {
     property string title: words.t("settings-title")
     property real scrollY: 0
 
-    // ---- The sections, in index order
+    // ---- The sections, in index order, grouped visually by theme
     readonly property var sections: [
-        { id: "library", name: words.t("settings-section-library"), icon: "folder" },
-        { id: "accounts", name: words.t("settings-section-accounts"), icon: "user-check" },
         { id: "appearance", name: words.t("settings-section-appearance"), icon: "palette" },
-        { id: "playback", name: words.t("settings-section-playback"), icon: "play" },
-        { id: "downloads", name: words.t("settings-section-downloads"), icon: "download" },
+        { id: "library", name: words.t("settings-section-library"), icon: "folder" },
+        { id: "browse", name: words.t("settings-section-browse"), icon: "globe" },
+        { id: "player", name: words.t("settings-section-player"), icon: "play" },
         { id: "keys", name: words.t("settings-section-keys"), icon: "keyboard" },
-        { id: "about", name: words.t("settings-section-about"), icon: "info" }
-    ].concat(frame.devOn ? [{ id: "developer", name: words.t("settings-section-developer"), icon: "bug" }] : [])
+        { id: "downloads", name: words.t("settings-section-downloads"), icon: "download", groupBreak: true },
+        { id: "tracking", name: words.t("settings-section-tracking"), icon: "user-check" },
+        { id: "connections", name: words.t("settings-section-connections"), icon: "link" },
+        { id: "plugins", name: words.t("settings-section-plugins"), icon: "shapes" },
+        { id: "storage", name: words.t("settings-section-storage"), icon: "hard-drive", groupBreak: true },
+        { id: "security", name: words.t("settings-section-security"), icon: "lock" },
+        { id: "advanced", name: words.t("settings-section-advanced"), icon: "sliders-horizontal" },
+        { id: "about", name: words.t("settings-section-about"), icon: "info", groupBreak: true },
+        { id: "supporters", name: words.t("settings-section-supporters"), icon: "heart" }
+    ].concat(frame.devOn ? [{ id: "developer", name: words.t("settings-section-developer"), icon: "bug", groupBreak: true }] : [])
     // Old tab names still open the section that took their place
-    readonly property var aliases: ({ subtitles: "playback", phone: "accounts", storage: "about", data: "about", help: "about", trackers: "accounts" })
+    readonly property var aliases: ({ playback: "player", subtitles: "player", accounts: "tracking", trackers: "tracking", phone: "connections", data: "storage", privacy: "security", tailnet: "advanced", help: "about" })
     function sectionIndex(id) { for (var i = 0; i < sections.length; i++) if (sections[i].id === id) return i; return -1 }
-    property string current: sectionIndex(aliases[frame.settingsTab] || frame.settingsTab) >= 0 ? (aliases[frame.settingsTab] || frame.settingsTab) : "library"
+    property string current: sectionIndex(aliases[frame.settingsTab] || frame.settingsTab) >= 0 ? (aliases[frame.settingsTab] || frame.settingsTab) : "appearance"
     // The trail remembers the section, so the rail comes back to it; the hidden sub-page comes
-    // back as Library, the section that opens it
+    // back as Browse, the section that opens it
     onCurrentChanged: {
         frame.settingsTab = current
-        frame.nav.current.props = Object.assign({}, frame.nav.current.props, { tab: current === "hidden" ? "library" : current })
+        frame.nav.current.props = Object.assign({}, frame.nav.current.props, { tab: current === "hidden" ? "browse" : current })
     }
     // Opens a section, and with `focus` the row or group of that name in it. The reveal waits
     // a beat in every case: a section just loaded, or one coming back from behind the search
@@ -75,7 +82,7 @@ FocusScope {
     // property, method or signal name on any object.
     function escapePressed() {
         if (query !== "") { clearSearch(); return true }
-        if (current === "hidden") { open("library"); return true }
+        if (current === "hidden") { open("browse"); return true }
         return false
     }
 
@@ -109,15 +116,6 @@ FocusScope {
     // for it. `label` is the row's own label (or the group's title), so reveal finds it.
     // Built only when a query is typed: it is some 140 catalog lookups nobody else reads.
     function searchIndex() { return [
-        ["library", words.t("settings-library-folders"), words.t("settings-find-folders.words")],
-        ["library", words.t("settings-library-matching"), words.t("settings-find-matching.words")],
-        ["library", words.t("settings-library-show-hidden"), words.t("settings-find-hidden-shows.words")],
-        ["library", words.t("settings-library-hidden-from-airing"), words.t("settings-find-hidden-airing.words")],
-        ["library", words.t("settings-library-calendar-feed"), words.t("settings-find-calendar.words")],
-        ["accounts", words.t("settings-accounts-lists"), words.t("settings-find-anime-lists.words")],
-        ["accounts", words.t("settings-accounts-main-list"), words.t("settings-find-main-list.words"), words.t("settings-accounts-lists")],
-        ["accounts", words.t("settings-accounts-sync-now"), words.t("settings-find-sync-now.words"), words.t("settings-accounts-lists")],
-        ["accounts", words.t("settings-accounts-move-on-hold"), words.t("settings-find-on-hold.words"), words.t("settings-accounts-lists")],
         ["appearance", words.t("settings-appearance-language"), words.t("settings-find-language.words")],
         ["appearance", words.t("settings-appearance-title-language"), words.t("settings-find-title-language.words")],
         ["appearance", words.t("settings-appearance-mode"), words.t("settings-find-mode.words")],
@@ -128,30 +126,29 @@ FocusScope {
         ["appearance", words.t("settings-appearance-text-size"), words.t("settings-find-text-size.words")],
         ["appearance", words.t("settings-appearance-density"), words.t("settings-find-density.words")],
         ["appearance", words.t("settings-appearance-poster-size"), words.t("settings-find-poster-size.words")],
-        ["appearance", words.t("settings-appearance-out-now"), words.t("settings-find-out-now.words")],
-        ["appearance", words.t("settings-appearance-out-now-grid"), words.t("settings-find-out-now-cards.words"), words.t("settings-appearance-out-now")],
         ["appearance", words.t("settings-appearance-reduce-motion"), words.t("settings-find-reduce-motion.words")],
-        ["appearance", words.t("settings-privacy-mode"), words.t("settings-find-privacy.words")],
         ["appearance", words.t("settings-appearance-app-icon"), words.t("settings-find-app-icon.words")],
-        ["playback", words.t("settings-playback-skip-intros"), words.t("settings-find-skip-intros.words")],
-        ["playback", words.t("settings-playback-skip-outros"), words.t("settings-find-skip-outros.words")],
-        ["playback", words.t("settings-playback-my-mpv"), words.t("settings-find-mpv-settings.words")],
-        ["playback", words.t("settings-playback-discord"), words.t("settings-find-discord.words")],
-        ["playback", words.t("settings-playback-name-next"), words.t("settings-find-next-episode.words")],
-        ["playback", words.t("settings-playback-subtitle-languages"), words.t("settings-find-subtitle-languages.words")],
-        ["playback", words.t("settings-playback-audio-languages"), words.t("settings-find-audio-languages.words")],
-        ["playback", words.t("settings-playback-room-name"), words.t("settings-find-room-name.words")],
-        ["playback", words.t("settings-playback-room-relay"), words.t("settings-find-room-relay.words")],
-        ["playback", words.t("settings-subtitles-start-over"), words.t("settings-find-start-over.words")],
-        ["playback", words.t("settings-subtitles-size"), words.t("settings-find-size.words")],
-        ["playback", words.t("settings-subtitles-position"), words.t("settings-find-position.words")],
-        ["playback", words.t("settings-subtitles-styled"), words.t("settings-find-styled.words")],
-        ["playback", words.t("settings-subtitles-font"), words.t("settings-find-font.words")],
-        ["playback", words.t("settings-subtitles-text-colour"), words.t("settings-find-text-colour.words")],
-        ["playback", words.t("settings-subtitles-outline"), words.t("settings-find-outline.words")],
-        ["playback", words.t("settings-subtitles-shadow"), ""],
-        ["playback", words.t("settings-subtitles-box"), words.t("settings-find-background.words")],
-        ["playback", words.t("settings-subtitles-bold"), words.t("settings-find-bold.words")],
+        ["library", words.t("settings-library-folders"), words.t("settings-find-folders.words")],
+        ["library", words.t("settings-library-matching"), words.t("settings-find-matching.words")],
+        ["library", words.t("settings-library-show-hidden"), words.t("settings-find-hidden-shows.words")],
+        ["library", words.t("settings-library-calendar-feed"), words.t("settings-find-calendar.words")],
+        ["player", words.t("settings-playback-skip-intros"), words.t("settings-find-skip-intros.words")],
+        ["player", words.t("settings-playback-skip-outros"), words.t("settings-find-skip-outros.words")],
+        ["player", words.t("settings-playback-my-mpv"), words.t("settings-find-mpv-settings.words")],
+        ["player", words.t("settings-playback-name-next"), words.t("settings-find-next-episode.words")],
+        ["player", words.t("settings-playback-subtitle-languages"), words.t("settings-find-subtitle-languages.words")],
+        ["player", words.t("settings-playback-audio-languages"), words.t("settings-find-audio-languages.words")],
+        ["player", words.t("settings-playback-room-name"), words.t("settings-find-room-name.words")],
+        ["player", words.t("settings-subtitles-start-over"), words.t("settings-find-start-over.words")],
+        ["player", words.t("settings-subtitles-size"), words.t("settings-find-size.words")],
+        ["player", words.t("settings-subtitles-position"), words.t("settings-find-position.words")],
+        ["player", words.t("settings-subtitles-styled"), words.t("settings-find-styled.words")],
+        ["player", words.t("settings-subtitles-font"), words.t("settings-find-font.words")],
+        ["player", words.t("settings-subtitles-text-colour"), words.t("settings-find-text-colour.words")],
+        ["player", words.t("settings-subtitles-outline"), words.t("settings-find-outline.words")],
+        ["player", words.t("settings-subtitles-shadow"), ""],
+        ["player", words.t("settings-subtitles-box"), words.t("settings-find-background.words")],
+        ["player", words.t("settings-subtitles-bold"), words.t("settings-find-bold.words")],
         ["keys", words.t("settings-keys-player"), words.t("settings-find-keys-player.words")],
         ["keys", words.t("settings-keys-player-around"), words.t("settings-find-keys-player-around.words")],
         ["keys", words.t("settings-keys-around"), words.t("settings-find-keys-around.words")],
@@ -163,20 +160,34 @@ FocusScope {
         ["downloads", words.t("settings-downloads-watched-on-disk"), words.t("settings-find-delete-watched.words")],
         ["downloads", words.t("settings-downloads-last-search"), words.t("settings-find-last-search.words")],
         ["downloads", words.t("endpoint-repos-panel-title"), words.t("settings-find-source-lists.words") + " " + words.t("settings-find-search-sources.words")],
-        ["accounts", words.t("settings-phone-share"), words.t("settings-find-share-tailscale.words")],
-        ["accounts", words.t("settings-phone-stream"), words.t("settings-find-stream.words")],
-        ["accounts", words.t("settings-phone-devices"), words.t("settings-find-devices.words")],
-        ["about", words.t("settings-data-back-up-library"), words.t("settings-find-back-up.words")],
-        ["about", words.t("settings-data-restore-from"), words.t("settings-find-restore.words")],
-        ["about", words.t("settings-data-image-cache"), words.t("settings-find-image-cache.words")],
-        ["about", words.t("settings-data-files"), words.t("settings-find-files.words")],
-        ["about", words.t("settings-help-folders"), words.t("settings-find-help-folders.words")],
-        ["about", words.t("settings-help-more"), words.t("settings-find-help-else.words")],
+        ["tracking", words.t("settings-accounts-lists"), words.t("settings-find-anime-lists.words")],
+        ["tracking", words.t("settings-accounts-main-list"), words.t("settings-find-main-list.words"), words.t("settings-accounts-lists")],
+        ["tracking", words.t("settings-accounts-sync-now"), words.t("settings-find-sync-now.words"), words.t("settings-accounts-lists")],
+        ["tracking", words.t("settings-accounts-move-on-hold"), words.t("settings-find-on-hold.words"), words.t("settings-accounts-lists")],
+        ["connections", words.t("settings-playback-discord"), words.t("settings-find-discord.words")],
+        ["connections", words.t("settings-phone-share"), words.t("settings-find-share-tailscale.words")],
+        ["connections", words.t("settings-phone-stream"), words.t("settings-find-stream.words")],
+        ["browse", words.t("settings-appearance-out-now"), words.t("settings-find-out-now.words")],
+        ["browse", words.t("settings-appearance-out-now-grid"), words.t("settings-find-out-now-cards.words"), words.t("settings-appearance-out-now")],
+        ["browse", words.t("settings-library-hidden-from-airing"), words.t("settings-find-hidden-airing.words")],
+        ["storage", words.t("settings-data-back-up-library"), words.t("settings-find-back-up.words")],
+        ["storage", words.t("settings-data-restore-from"), words.t("settings-find-restore.words")],
+        ["storage", words.t("settings-data-image-cache"), words.t("settings-find-image-cache.words")],
+        ["storage", words.t("settings-data-files"), words.t("settings-find-files.words")],
+        ["security", words.t("settings-privacy-mode"), words.t("settings-find-privacy.words")],
+        ["advanced", words.t("settings-about-usage"), words.t("settings-find-usage.words")],
+        ["advanced", words.t("settings-phone-devices"), words.t("settings-find-devices.words")],
+        ["advanced", words.t("settings-playback-room-relay"), words.t("settings-find-room-relay.words")],
+        ["advanced", words.t("settings-about-developer"), words.t("settings-find-developer-options.words"), "", "unforced"],
+        ["advanced", words.t("settings-about-setup"), words.t("settings-find-setup.words")],
+        ["advanced", words.t("settings-help-folders"), words.t("settings-find-help-folders.words")],
+        ["advanced", words.t("settings-help-more"), words.t("settings-find-help-else.words")],
         ["about", words.t("settings-about-version"), words.t("settings-find-version.words")],
-        ["about", words.t("settings-about-setup"), words.t("settings-find-setup.words")],
         ["about", words.t("settings-about-updates"), words.t("settings-find-updates.words")],
-        ["about", words.t("settings-about-developer"), words.t("settings-find-developer-options.words"), "", "unforced"],
-        ["about", words.t("settings-about-ratings"), words.t("settings-find-ratings.words")]
+        ["about", words.t("settings-about-licenses"), words.t("settings-find-licenses.words")],
+        ["about", words.t("settings-about-privacy-policy"), words.t("settings-find-privacy-policy.words")],
+        ["about", words.t("settings-about-ratings"), words.t("settings-find-ratings.words")],
+        ["supporters", words.t("settings-supporters-ways"), words.t("settings-find-supporters.words")]
     ] }
     property string query: ""
     readonly property var results: {
@@ -247,66 +258,83 @@ FocusScope {
             width: indexPane.width
             Repeater {
                 model: page.sections
-                Rectangle {
-                    id: entry
+                Column {
+                    id: entryWrap
                     required property var modelData
-                    // Library stays lit on its own sub-page, the shows hidden from Airing now
-                    readonly property bool active: page.query === "" && (page.current === modelData.id || (page.current === "hidden" && modelData.id === "library"))
-                    objectName: "settings-tabs-" + modelData.id
                     width: indexCol.width
-                    height: theme.space(11)
-                    radius: theme.radiusTile
-                    color: entry.active ? theme.accentSoft : hover.containsMouse ? theme.tile : "transparent"
-                    border.width: entry.active ? 1 : 0
-                    border.color: theme.accentEdge
-                    Icon {
-                        id: glyph
-                        x: page.compact ? (entry.width - width) / 2 : theme.space(4)
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: entry.modelData.icon
-                        size: theme.space(5)
-                        color: entry.active ? theme.accent : theme.text
+                    Item {
+                        visible: !!entryWrap.modelData.groupBreak
+                        width: parent.width
+                        height: theme.space(5)
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: page.compact ? theme.space(2) : theme.space(4)
+                            width: parent.width - x * 2
+                            height: 1
+                            color: theme.line
+                        }
                     }
-                    Label {
-                        id: entryName
-                        visible: !page.compact
-                        anchors.left: glyph.right
-                        anchors.leftMargin: theme.space(3.5)
-                        anchors.right: dot.left
-                        anchors.rightMargin: theme.space(2)
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: entry.modelData.name
-                        role: "title"
-                        font.pointSize: theme.typeNormal
-                        color: entry.active ? theme.accent : theme.text
-                        elide: Text.ElideRight
-                    }
-                    // The section wants attention
                     Rectangle {
-                        id: dot
-                        objectName: "settings-tabs-" + entry.modelData.id + "-dot"
-                        visible: page.warns(entry.modelData.id)
-                        // Folded, it sits over the glyph's top right, as the rail's badges do
-                        x: page.compact ? entry.width - width - theme.space(1.5) : entry.width - width - theme.space(4)
-                        y: page.compact ? theme.space(1.5) : (entry.height - height) / 2
-                        width: theme.space(2); height: width; radius: width / 2
-                        color: theme.red
+                        id: entry
+                        property var modelData: entryWrap.modelData
+                        // Browse stays lit on its own sub-page, the shows hidden from Airing now
+                        readonly property bool active: page.query === "" && (page.current === modelData.id || (page.current === "hidden" && modelData.id === "browse"))
+                        objectName: "settings-tabs-" + modelData.id
+                        width: indexCol.width
+                        height: theme.space(11)
+                        radius: theme.radiusTile
+                        color: entry.active ? theme.accentSoft : hover.containsMouse ? theme.tile : "transparent"
+                        border.width: entry.active ? 1 : 0
+                        border.color: theme.accentEdge
+                        Icon {
+                            id: glyph
+                            x: page.compact ? (entry.width - width) / 2 : theme.space(4)
+                            anchors.verticalCenter: parent.verticalCenter
+                            glyph: entry.modelData.icon
+                            size: theme.space(5)
+                            color: entry.active ? theme.accent : theme.text
+                        }
+                        Label {
+                            id: entryName
+                            visible: !page.compact
+                            anchors.left: glyph.right
+                            anchors.leftMargin: theme.space(3.5)
+                            anchors.right: dot.left
+                            anchors.rightMargin: theme.space(2)
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: entry.modelData.name
+                            role: "title"
+                            font.pointSize: theme.typeNormal
+                            color: entry.active ? theme.accent : theme.text
+                            elide: Text.ElideRight
+                        }
+                        // The section wants attention
+                        Rectangle {
+                            id: dot
+                            objectName: "settings-tabs-" + entry.modelData.id + "-dot"
+                            visible: page.warns(entry.modelData.id)
+                            // Folded, it sits over the glyph's top right, as the rail's badges do
+                            x: page.compact ? entry.width - width - theme.space(1.5) : entry.width - width - theme.space(4)
+                            y: page.compact ? theme.space(1.5) : (entry.height - height) / 2
+                            width: theme.space(2); height: width; radius: width / 2
+                            color: theme.red
+                        }
+                        MouseArea {
+                            Accessible.role: Accessible.Button
+                            Accessible.onPressAction: page.open(entry.modelData.id)
+                            Accessible.name: theme.nameNear(parent)
+                            // The red dot, said aloud: the section wants attention
+                            Accessible.description: page.warns(entry.modelData.id) ? words.t("settings-needs-attention") : ""
+                            id: hover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: page.open(entry.modelData.id)
+                        }
+                        // Folded to its glyph, or its name cut short by a large text size, the
+                        // entry is named by its tip
+                        Tooltip { text: page.compact || entryName.truncated ? entry.modelData.name : "" }
                     }
-                    MouseArea {
-                        Accessible.role: Accessible.Button
-                        Accessible.onPressAction: page.open(entry.modelData.id)
-                        Accessible.name: theme.nameNear(parent)
-                        // The red dot, said aloud: the section wants attention
-                        Accessible.description: page.warns(entry.modelData.id) ? words.t("settings-needs-attention") : ""
-                        id: hover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: page.open(entry.modelData.id)
-                    }
-                    // Folded to its glyph, or its name cut short by a large text size, the
-                    // entry is named by its tip
-                    Tooltip { text: page.compact || entryName.truncated ? entry.modelData.name : "" }
                 }
             }
         }
@@ -325,8 +353,10 @@ FocusScope {
             // under the results
             opacity: page.query === "" ? 1 : 0
             enabled: page.query === ""
-            source: "Settings" + ({ library: "Library", accounts: "Accounts", appearance: "Appearance", playback: "Playback",
-                                     downloads: "Downloads", keys: "Keys", about: "About", developer: "Developer", hidden: "HiddenAiring" })[page.current] + "Tab.qml"
+            source: "Settings" + ({ appearance: "Appearance", library: "Library", player: "Player", keys: "Keys",
+                                     downloads: "Downloads", tracking: "Tracking", connections: "Connections", plugins: "Plugins", browse: "Browse",
+                                     storage: "Storage", security: "Security", advanced: "Advanced", about: "About",
+                                     supporters: "Supporters", developer: "Developer", hidden: "HiddenAiring" })[page.current] + "Tab.qml"
             onLoaded: {
                 item.contentY = frame.settingsScroll[page.current] || 0
                 if (page.pendingFocus !== "") focusLater.restart()

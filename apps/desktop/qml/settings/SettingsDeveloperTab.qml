@@ -75,7 +75,7 @@ SettingsTab {
             SettingRow { label: words.t("settings-developer-poster-pool")
                 Switch { checked: tab.kept.posterPool; onToggled: function(on) { tab.kept.posterPool = on } } }
             SettingRow { visible: !Dev.forced; label: words.t("settings-developer-options")
-                Switch { checked: true; onToggled: function(on) { if (!on) { tab.kept.enabled = false; frame.devApply(); frame.go("settings", { tab: "about" }) } } } }
+                Switch { checked: true; onToggled: function(on) { if (!on) { tab.kept.enabled = false; frame.devApply(); frame.go("settings", { tab: "advanced" }) } } } }
         }
     }
     Component {
