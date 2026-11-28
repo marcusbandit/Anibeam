@@ -97,8 +97,8 @@ Corner {
     Component.onDestruction: frame.hoverEpisode(root, false)
     readonly property bool playable: !downloading && !absent && !upcoming
     // With a tracker, any aired episode marks there; without one, an episode on disk marks
-    // as watched here
-    readonly property bool trackable: !extra && !upcoming && (hasTracker || !absent)
+    // as watched here. An extra (its record names a kind) never marks.
+    readonly property bool trackable: !extra && episode.kind === undefined && !upcoming && (hasTracker || !absent)
     readonly property bool downloading: episode.downloading !== undefined && episode.downloading !== null
     readonly property bool nextUp: !!episode.next_up && !downloading
     readonly property real downloadFraction: downloading ? Math.max(0, Math.min(1, episode.downloading)) : 0

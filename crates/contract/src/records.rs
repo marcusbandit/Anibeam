@@ -311,6 +311,13 @@ pub struct Episode {
     /// fallback's (#1461); None without one.
     #[serde(default)]
     pub synopsis: Option<String>,
+    /// The file's size in bytes, as the last scan found it.
+    #[serde(default)]
+    pub size: u64,
+    /// The name of the torrent the file came from, once the torrent client
+    /// has listed it (`file_origins`, #241); None for a file it never did.
+    #[serde(default)]
+    pub torrent: Option<String>,
 }
 
 /// One file of an episode that is on disk more than once: two releases of it.
@@ -394,6 +401,12 @@ pub struct Extra {
     /// two releases of it (`SP01` and `SP01v2`, #468); empty for a lone file.
     #[serde(default)]
     pub versions: Vec<EpisodeVersion>,
+    /// As `Episode::size`.
+    #[serde(default)]
+    pub size: u64,
+    /// As `Episode::torrent`.
+    #[serde(default)]
+    pub torrent: Option<String>,
 }
 
 /// What a file is, as the user says it (#170): an episode with its number and

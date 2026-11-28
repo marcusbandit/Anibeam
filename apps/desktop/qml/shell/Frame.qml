@@ -192,7 +192,7 @@ FocusScope {
     // reclaimFrameOwned() keeps their entries, in this same handler, so Escape still
     // reaches them; a second Connections on nav.changed would race this one with no
     // ordering guarantee between them.
-    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); whatsNew.close(); scanSummary.close(); frame.reclaimFrameOwned() } }
+    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); aboutSheet.close(); whatsNew.close(); scanSummary.close(); frame.reclaimFrameOwned() } }
 
     Rail {
         id: rail
@@ -636,6 +636,7 @@ FocusScope {
         RoomPanel { id: roomSheet }
         RemoveSheet { id: removeSheet }
         MoveListsSheet { id: moveListsSheet }
+        AboutEpisodeSheet { id: aboutSheet }
         WhatsNew { id: whatsNew }
         ScanSummary { id: scanSummary }
         DiscordAsk {
@@ -938,7 +939,7 @@ FocusScope {
     readonly property real islandReach: updateNotice.visible ? updateNotice.width + updateNotice.anchors.rightMargin : 0
 
     // The right-click menu at a point: Back and Forward, then what is under the pointer (an
-    // episode, a card), the page's own rows, and deleting a card's files last
+    // episode, a card), the page's own rows, deleting a card's files, and About episode last
     function openContextMenu(p) {
         var items = [{ split: [{ text: words.t("action-back"), icon: "arrow-left", action: frame.back, enabled: nav.canBack },
                                { text: words.t("frame-forward"), icon: "arrow-right", action: frame.forward, enabled: nav.canForward, trailing: true }] }]
@@ -953,6 +954,7 @@ FocusScope {
         group(frame.seriesCardItems())
         if (page.item && page.item.contextItems) group(page.item.contextItems())
         group(frame.seriesDeleteItems())
+        group(frame.aboutEpisodeItems())
         frame.openMenu(p.x, p.y, items)
     }
     // From the keys: at the focused item, or the middle of the page when nothing has focus
@@ -1100,6 +1102,14 @@ FocusScope {
         out.push({ text: words.t("frame-copy-path"), icon: "copy", action: function() { frame.copyText(path, words.t("frame-path-copied")) } })
         if (row.trackable && !row.picking) out.push({ text: row.watched ? words.t("frame-mark-unwatched") : words.t("frame-mark-watched"), icon: "check-check", action: function() { row.marker() } })
         return out
+    }
+    // About episode (#1562), the menu's last row: the file behind the row under the pointer
+    function aboutEpisodeItems() {
+        var row = hoverEpisodeRow
+        if (!row || !row.episode || !row.episode.path) return []
+        var ep = row.episode, title = row.title, isExtra = ep.kind !== undefined
+        return [{ text: words.t(isExtra ? "frame-about-file" : "frame-about-episode"), icon: "info",
+                  action: function() { aboutSheet.openFor(ep, title, isExtra) } }]
     }
     // A card's own rows, above the delete ones: open it, its folder, its title, its page
     function seriesCardItems() {
