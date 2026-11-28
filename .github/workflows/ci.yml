@@ -9,8 +9,8 @@ name: CI
 # (#986), which sets those up for the AppImage. Runs on main
 # too, so rust-cache keeps a cache every pull request can restore. The toolchain comes from
 # rust-toolchain.toml, which every workflow reads (#526).
-# A change that only touches markdown, docs/ or the website in site/ skips Cargo checks (#428,
-# #1548); site.yml checks the website. The two CHANGELOG.md
+# A change that only touches markdown, docs/ or the website (site/ and site.yml) skips Cargo
+# checks on a pull request (#428, #1548); site.yml checks the website. The two CHANGELOG.md
 # files still run them (the apps compile them in and crates/core/tests/changelog.rs checks them),
 # and ARCHITECTURE.md still triggers pushes on main so the repo structure guard runs on edits to it.
 # Later patterns win, so those lines have to stay after the markdown exclusion. A pull request
@@ -39,8 +39,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Whether this run touches anything but markdown and docs/, by the same rule as the push
-  # paths above. Only a pull request can skip; main and a run by hand always check.
+  # Whether this run touches anything but markdown, docs/ and the website. The push paths
+  # above skip only markdown and docs/, so main still checks after a site change. Only a
+  # pull request can skip; main and a run by hand always check.
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -67,7 +68,7 @@ jobs:
                 *.md|docs/*|site/*|.github/workflows/site.yml) ;;
                 *) code=true ;;
               esac
-            done < <(git diff --name-only HEAD^1 HEAD)
+            done < <(git diff --name-only --no-renames HEAD^1 HEAD)
           fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "code: $code"
