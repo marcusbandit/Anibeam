@@ -659,23 +659,23 @@ body.rd { --solid-0: #0a0b0d; --solid-1: #0f1013; --solid-2: #15161a; --solid-3:
 .art-mark.by { letter-spacing: 0; text-transform: none; }
 .poster, .sp-art, .bl-art { position: relative; display: block; }
 .bl-stop .bl-art { margin: 0; }
+.art-note-wrap { position: absolute; right: max(16px, calc((100vw - var(--wide, 1200px)) / 2)); bottom: 28px; z-index: 5; }
 .art-note-btn {
-  position: absolute; right: max(16px, calc((100vw - var(--wide, 1200px)) / 2)); bottom: 24px; z-index: 4;
-  display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 0; border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.72); font: 500 13px/1 inherit; cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border: 0; border-radius: 999px;
+  background: #15171c; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 10px 30px -8px #000;
+  color: #eceef2; font: 600 13px/1 inherit; cursor: pointer; transition: background 0.2s ease, box-shadow 0.2s ease;
 }
-.art-note-btn:hover, .art-note-btn:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
-.art-note-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.art-note-btn:hover, .art-note-btn:focus-visible, .art-note-btn[aria-expanded="true"] { background: #1f2229; box-shadow: inset 0 0 0 1px rgba(253, 201, 1, 0.55), 0 10px 30px -8px #000; }
+.art-note-btn svg { width: 16px; height: 16px; fill: none; stroke: #fdc901; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .art-note {
-  position: fixed; inset: auto max(16px, calc((100vw - var(--wide, 1200px)) / 2)) 72px auto; margin: 0;
-  width: min(340px, calc(100vw - 32px)); padding: 18px 20px; border: 0; border-radius: 16px;
-  background: rgba(20, 22, 27, 0.92); backdrop-filter: blur(14px);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 60px -20px #000; color: var(--fg, #eee);
+  position: absolute; right: 0; bottom: calc(100% + 10px);
+  width: min(340px, calc(100vw - 32px)); padding: 18px 20px; border-radius: 16px;
+  background: rgba(20, 22, 27, 0.96); backdrop-filter: blur(14px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 24px 60px -20px #000; color: var(--fg, #eee);
 }
+.art-note[hidden] { display: none; }
 .art-note b { display: block; font-size: 15px; margin-bottom: 6px; }
-.art-note p { margin: 0 0 12px; color: rgba(255, 255, 255, 0.72); font-size: 14px; line-height: 1.5; }
+.art-note p { margin: 0 0 12px; color: rgba(255, 255, 255, 0.75); font-size: 14px; line-height: 1.5; }
 .art-note a { color: var(--accent, #fdc901); font-weight: 600; font-size: 14px; }
 .tw-screen { position: relative; }
 .art-mark.tour-mark { left: auto; right: 10px; bottom: 10px; font-size: 10px; }

@@ -101,8 +101,8 @@
  "Small print": "Мелкий шрифт",
  "Privacy": "Конфиденциальность",
  "Terms": "Условия",
- "About the art": "О постерах",
- "AI posters, for now": "Пока что постеры от ИИ",
- "These posters are made with AI because nobody on the project can draw, and we'd love to have real art here. If you want to draw one for a made-up anime, it will replace an AI poster and have your name on it.": "Эти постеры сделаны с помощью ИИ, потому что в проекте никто не умеет рисовать, а нам очень хочется видеть здесь настоящие рисунки. Если захотите нарисовать постер для выдуманного аниме, он заменит один из ИИ-постеров, и на нём будет ваше имя.",
- "How to contribute": "Как поучаствовать"
+ "About the art": "О картинках",
+ "Yes, these are AI": "Да, это ИИ",
+ "Nobody here can draw, so we made these posters look like AI on purpose instead of hiding it or pretending they're human art. Want to help fix that? Draw a poster for a made-up anime and it will replace one of these, with your name on it.": "У нас никто не умеет рисовать, поэтому эти постеры нарочно выглядят как ИИ: мы этого не скрываем и не выдаём их за работу человека. Хотите помочь это исправить? Нарисуйте постер для выдуманного аниме, и он заменит один из этих, с вашим именем.",
+ "Replace an AI poster": "Заменить ИИ-постер"
 }
