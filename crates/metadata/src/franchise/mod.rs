@@ -153,15 +153,20 @@ fn title_of(n: &Node) -> String {
         .unwrap_or_else(|| titles::fallback_title(n.anilist_id))
 }
 
-/// The series this node is, when the library holds it. Never a manga: the
-/// library holds video, and a manga id sharing a number with a series id
-/// is not the same thing at all.
+/// The live series this node is, when the library holds it. Never a manga
+/// (the library holds video, and a manga id sharing a number with a series id
+/// is not the same thing at all) and never a missing tombstone left behind by
+/// a removed or renamed folder (#1566).
 fn owned_by(conn: &Connection, n: &Node) -> Result<Option<u64>, CoreError> {
     if n.media_type.as_deref() == Some("MANGA") {
         return Ok(None);
     }
-    let mut stmt =
-        conn.prepare_cached("SELECT id FROM series WHERE anilist_id = ?1 ORDER BY id LIMIT 1")?;
+    let mut stmt = conn.prepare_cached(
+        "SELECT id FROM series
+         WHERE anilist_id = ?1 AND missing_since IS NULL
+         ORDER BY EXISTS (SELECT 1 FROM files f WHERE f.series_id = series.id) DESC, id
+         LIMIT 1",
+    )?;
     let found: Option<i64> = stmt
         .query_row(params![as_i64(n.anilist_id)], |r| r.get(0))
         .optional()?;
@@ -175,7 +180,7 @@ fn list_status(conn: &Connection, anilist_id: u64) -> Result<Option<ListStatus>,
     let mut stmt = conn.prepare_cached(
         "SELECT COALESCE(
              (SELECT status FROM tracker_entries WHERE tracker = 'anilist' AND media_id = ?1 AND profile_id = 1),
-             (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = ?1 ORDER BY ls.id LIMIT 1))",
+             (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = ?1 ORDER BY ls.missing_since IS NOT NULL, ls.id LIMIT 1))",
     )?;
     let found: Option<Option<String>> = stmt
         .query_row(params![as_i64(anilist_id)], |r| r.get(0))
@@ -186,6 +191,24 @@ fn list_status(conn: &Connection, anilist_id: u64) -> Result<Option<ListStatus>,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn node(anilist_id: u64, media_type: Option<&str>) -> Node {
+        Node {
+            anilist_id,
+            media_type: media_type.map(str::to_string),
+            title_romaji: None,
+            title_english: None,
+            cover_url: None,
+            banner_url: None,
+            format: None,
+            status: None,
+            year: None,
+            average_score: None,
+            site_url: None,
+            relations_fetched: true,
+            deferred_until: None,
+        }
+    }
 
     /// A friend's AniList entry is not the owner's, so a node only the
     /// friend has listed reads as off the list (#863).
@@ -201,5 +224,58 @@ mod tests {
         .unwrap();
         assert_eq!(list_status(&c, 10).unwrap(), Some(ListStatus::Watching));
         assert_eq!(list_status(&c, 20).unwrap(), None);
+    }
+
+    /// A missing series tombstone never counts as owned, and a live row wins
+    /// over an older missing row with the same AniList id (#1566).
+    #[test]
+    fn owned_by_skips_missing_series_and_prefers_live_with_files() {
+        let c = anibeam_foundation::store::testing::conn();
+        c.execute_batch(
+            "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+             INSERT INTO anilist_media (id, media_type, title_romaji) VALUES
+                 (100, 'ANIME', 'Removed'),
+                 (200, 'ANIME', 'Renamed'),
+                 (300, 'ANIME', 'Two live');
+             INSERT INTO series (id, source_id, kind, path, folder_name, missing_since, added_at, anilist_id) VALUES
+                 (10, 1, 'show', '/tv/Removed', 'Removed', 1000, 0, 100),
+                 (20, 1, 'show', '/tv/Renamed-old', 'Renamed-old', 1000, 0, 200),
+                 (21, 1, 'show', '/tv/Renamed-new', 'Renamed-new', NULL, 0, 200),
+                 (30, 1, 'show', '/tv/Two-empty', 'Two-empty', NULL, 0, 300),
+                 (31, 1, 'show', '/tv/Two-full', 'Two-full', NULL, 0, 300);
+             INSERT INTO files (id, series_id, path, size, mtime, kind, number, label, episode_key, seen_at) VALUES
+                 (1, 31, '/tv/Two-full/ep01.mkv', 100, 0, 'episode', 1, 'ep01', '1', 0);",
+        )
+        .unwrap();
+
+        assert_eq!(owned_by(&c, &node(100, Some("ANIME"))).unwrap(), None);
+        assert_eq!(owned_by(&c, &node(200, Some("ANIME"))).unwrap(), Some(21));
+        assert_eq!(owned_by(&c, &node(300, Some("ANIME"))).unwrap(), Some(31));
+    }
+
+    /// Local list status prefers a live series over a missing tombstone when
+    /// both carry entries, while preserving local status if only the tombstone
+    /// has one (#1566).
+    #[test]
+    fn list_status_prefers_live_local_entry_over_missing() {
+        let c = anibeam_foundation::store::testing::conn();
+        c.execute_batch(
+            "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+             INSERT INTO anilist_media (id, media_type, title_romaji) VALUES
+                 (100, 'ANIME', 'Removed'),
+                 (200, 'ANIME', 'Renamed');
+             INSERT INTO series (id, source_id, kind, path, folder_name, missing_since, added_at, anilist_id) VALUES
+                 (10, 1, 'show', '/tv/Removed', 'Removed', 1000, 0, 100),
+                 (20, 1, 'show', '/tv/Renamed-old', 'Renamed-old', 1000, 0, 200),
+                 (21, 1, 'show', '/tv/Renamed-new', 'Renamed-new', NULL, 0, 200);
+             INSERT INTO local_entries (series_id, status, updated_at) VALUES
+                 (10, 'completed', 0),
+                 (20, 'dropped', 0),
+                 (21, 'watching', 0);",
+        )
+        .unwrap();
+
+        assert_eq!(list_status(&c, 100).unwrap(), Some(ListStatus::Completed));
+        assert_eq!(list_status(&c, 200).unwrap(), Some(ListStatus::Watching));
     }
 }
