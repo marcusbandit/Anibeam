@@ -222,27 +222,42 @@ fn own_season(show: &Show) -> Option<u32> {
     stated_season(show).or_else(|| own_names(show).into_iter().find_map(|n| numeral_of(n).1))
 }
 
-/// The season a release states by a numeral right after one of the show's names, outside
-/// its leading `[group]`: `[Grp] Clevatess II - 01` is the second season of the show
-/// named `Clevatess`, and of the one named `Clevatess II: Majuu no Ou to ...`.
-fn release_numeral(show: &Show, title: &str) -> Option<u32> {
+/// The names a sequel's numeral may follow, as words: each of the show's own names cut
+/// before its numeral (`Clevatess` from `Clevatess II: Majuu no Ou to ...`), and each cut
+/// before its subtitle (`Mushoku Tensei` from `Mushoku Tensei: Isekai Ittara Honki Dasu`),
+/// for a show whose names all carry one.
+fn numeral_names(show: &Show) -> Vec<Vec<&str>> {
+    let mut out: Vec<Vec<&str>> = Vec::new();
+    for name in own_names(show) {
+        let cut = SUBTITLE_RE
+            .captures(name)
+            .and_then(|c| c.get(1))
+            .map(|sub| &name[..sub.start()]);
+        for n in [Some(name), cut].into_iter().flatten() {
+            let (words, _) = numeral_of(n);
+            if !words.is_empty() && !out.contains(&words) {
+                out.push(words);
+            }
+        }
+    }
+    out
+}
+
+/// The season a release states by a numeral right after one of the show's names
+/// (`numeral_names`), outside its leading `[group]`: `[Grp] Clevatess II - 01` is the
+/// second season of the show named `Clevatess`. Only the name's first place counts, so a
+/// pack of both seasons (`Clevatess + Clevatess II`) states none.
+fn release_numeral(names: &[Vec<&str>], title: &str) -> Option<u32> {
     let body = match title.trim_start().strip_prefix('[') {
         Some(rest) => rest.split_once(']').map_or(title, |(_, r)| r),
         None => title,
     };
     let words = raw_words(body);
-    own_names(show).into_iter().find_map(|name| {
-        let (name, _) = numeral_of(name);
-        if name.is_empty() || name.len() >= words.len() {
-            return None;
-        }
-        words.windows(name.len() + 1).find_map(|w| {
-            w.iter()
-                .zip(&name)
-                .all(|(a, b)| a.eq_ignore_ascii_case(b))
-                .then(|| numeral(w[name.len()]))
-                .flatten()
-        })
+    names.iter().find_map(|name| {
+        let at = words
+            .windows(name.len())
+            .position(|w| w.iter().zip(name).all(|(a, b)| a.eq_ignore_ascii_case(b)))?;
+        words.get(at + name.len()).and_then(|w| numeral(w))
     })
 }
 
@@ -347,6 +362,8 @@ pub fn of_show(
 ) -> (Vec<Release>, Vec<ReleaseFacts>, usize) {
     let mut out_items = Vec::new();
     let mut out_facts = Vec::new();
+    let names = numeral_names(show);
+    let ours = own_season(show).unwrap_or(1);
     for (i, item) in items.iter().enumerate() {
         let season = facts
             .get(i)
@@ -354,9 +371,8 @@ pub fn of_show(
             .or_else(|| facts::season_word(&item.title));
         // A numeral right after the show's name is AniList's own way of naming a sequel,
         // which keeps it an entry of its own: the first season, naming none, is season 1
-        let numbered = show.anilist
-            && release_numeral(show, &item.title)
-                .is_some_and(|n| n != own_season(show).unwrap_or(1));
+        let numbered =
+            show.anilist && release_numeral(&names, &item.title).is_some_and(|n| n != ours);
         if names_show(show, &item.title)
             && !numbered
             && !season.is_some_and(|s| {
@@ -1144,7 +1160,20 @@ mod tests {
         };
         assert!(keeps(&tv, sequel));
         // A group named like the show is no sequel's name
-        assert!(release_numeral(&first, "[Clevatess II] Clevatess - 01").is_none());
+        assert!(release_numeral(&numeral_names(&first), "[Clevatess II] Clevatess - 01").is_none());
+        // A pack of both seasons holds the first's episodes too
+        assert!(keeps(&first, "[Grp] Clevatess + Clevatess II [Batch]"));
+        // A show whose names all carry a subtitle reads the numeral after the part before it
+        let mushoku = entry(
+            "Mushoku Tensei: Isekai Ittara Honki Dasu",
+            &[
+                "Mushoku Tensei: Isekai Ittara Honki Dasu",
+                "Mushoku Tensei: Jobless Reincarnation",
+            ],
+            11,
+        );
+        assert!(!keeps(&mushoku, "[Grp] Mushoku Tensei II - 01 [1080p]"));
+        assert!(keeps(&mushoku, "[Grp] Mushoku Tensei - 01 [1080p]"));
     }
 
     #[test]

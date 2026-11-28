@@ -187,8 +187,8 @@ Item {
     // A sequel's roman numeral as a word of its own, upper case (Clevatess II), else null. A
     // lone I, V or X is as often a word and never counts. grid.rs `numeral` is the same
     function numeral(word) {
-        var n = { II: 2, III: 3, IV: 4, VI: 6, VII: 7, VIII: 8, IX: 9, XI: 11, XII: 12 }[word]
-        return n === undefined ? null : n
+        var map = { II: 2, III: 3, IV: 4, VI: 6, VII: 7, VIII: 8, IX: 9, XI: 11, XII: 12 }
+        return Object.prototype.hasOwnProperty.call(map, word) ? map[word] : null
     }
     function rawWords(name) { return String(name || "").split(/[^A-Za-z0-9]+/).filter(function(w) { return w.length > 0 }) }
     // The season a name's numeral states (Clevatess II: Majuu no Ou to ... is the second) and
@@ -204,18 +204,34 @@ Item {
         for (var i = 0; i < ownNames.length; i++) { var s = numeralOf(ownNames[i]).season; if (s !== null) return s }
         return null
     }
-    // The season a release states by a numeral right after one of the show's names, outside
-    // its leading [group]: "[Grp] Clevatess II - 01" is the second season of the show
-    // named Clevatess, and of the one named "Clevatess II: Majuu no Ou to ..."
+    // The names a sequel's numeral may follow, as words: each own name cut before its
+    // numeral (Clevatess from "Clevatess II: Majuu no Ou to ..."), and each cut before its
+    // subtitle (Mushoku Tensei from "Mushoku Tensei: Isekai Ittara Honki Dasu")
+    readonly property var numeralNames: {
+        var out = [], seen = {}
+        for (var i = 0; i < ownNames.length; i++) {
+            var name = String(ownNames[i] || "")
+            var m = /^(.*?)(?::\s+|\s-\s+)\S/.exec(name)
+            var cuts = m ? [name, m[1]] : [name]
+            for (var j = 0; j < cuts.length; j++) {
+                var ws = numeralOf(cuts[j]).words, k = ws.join(" ").toLowerCase()
+                if (ws.length && !seen[k]) { seen[k] = true; out.push(ws) }
+            }
+        }
+        return out
+    }
+    // The season a release states by a numeral right after one of those names, outside its
+    // leading [group]: "[Grp] Clevatess II - 01" is the second season of the show named
+    // Clevatess. Only the name's first place counts, so a pack of both seasons (Clevatess +
+    // Clevatess II) states none
     function releaseNumeral(title) {
         var ws = rawWords(String(title || "").replace(/^\s*\[[^\]]*\]/, ""))
-        for (var i = 0; i < ownNames.length; i++) {
-            var name = numeralOf(ownNames[i]).words
-            if (!name.length || name.length >= ws.length) continue
-            for (var at = 0; at + name.length < ws.length; at++) {
+        for (var i = 0; i < numeralNames.length; i++) {
+            var name = numeralNames[i]
+            for (var at = 0; at + name.length <= ws.length; at++) {
                 var same = true
                 for (var k = 0; k < name.length && same; k++) same = ws[at + k].toLowerCase() === name[k].toLowerCase()
-                if (same && numeral(ws[at + name.length]) !== null) return numeral(ws[at + name.length])
+                if (same) { var n = at + name.length < ws.length ? numeral(ws[at + name.length]) : null; if (n !== null) return n; break }
             }
         }
         return null
