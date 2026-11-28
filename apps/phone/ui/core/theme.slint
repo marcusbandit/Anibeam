@@ -106,21 +106,31 @@ export global Theme {
     out property <length> tile-min: 104px;
 
     // The episode cube colours, by the core's codes (library::cards::cubes): watched and
-    // tracked, watched here, on disk, missing, not downloaded, not aired, downloading.
+    // tracked (solid green), watched here (hollow green ring), on disk, missing, not
+    // downloaded, not aired, downloading, error.
     out property <color> cube-watched: self.ok;
-    out property <color> cube-here: self.cyan;
+    out property <color> cube-here: self.ok.with-alpha(self.dark ? 0.22 : 0.16);
     out property <color> cube-disk: self.dark ? #ffffff : self.text;
     out property <color> cube-missing: self.warn;
     out property <color> cube-none: self.ink.with-alpha(0.16);
     out property <color> cube-downloading: self.purple;
+    out property <color> cube-error: self.bad;
 
-    // The cube colour for a code: 0 w, 1 l, 2 d, 3 m, 4 g, 5 f, 6 t.
+    // The cube fill for a code: 0 w, 1 l, 2 d, 3 m, 4 g, 5 f, 6 t, 7 e.
     public pure function cube(code: int) -> color {
         if (code == 0) { return self.cube-watched; }
         if (code == 1) { return self.cube-here; }
         if (code == 2) { return self.cube-disk; }
         if (code == 3) { return self.cube-missing; }
         if (code == 6) { return self.cube-downloading; }
+        if (code == 7) { return self.cube-error; }
         return self.cube-none;
+    }
+
+    // The cube edge: watched-here takes a green ring, not-aired a quiet outline.
+    public pure function cube-edge(code: int) -> color {
+        if (code == 1) { return self.ok; }
+        if (code == 5) { return self.line-strong; }
+        return transparent;
     }
 }

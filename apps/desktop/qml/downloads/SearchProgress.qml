@@ -55,7 +55,7 @@ Tile {
                 Row {
                     spacing: theme.space(3)
                     Label { id: phase; text: root.label === "" ? words.t("search-progress-searching") : root.label; role: "title"; font.pointSize: theme.typeNormal * 1.15 }
-                    Label { anchors.baseline: phase.baseline; text: words.t("search-progress-seconds", { seconds: Math.floor(root.elapsed) }); role: "ledger"; color: root.slow ? theme.orange : theme.textDim }
+                    Label { anchors.baseline: phase.baseline; text: words.t("search-progress-seconds", { seconds: Math.floor(root.elapsed) }); role: "ledger"; color: root.slow ? theme.yellow : theme.textDim }
                 }
                 Label {
                     width: parent.width
@@ -89,7 +89,7 @@ Tile {
                 width: parent.width * Math.min(1, root.elapsed / Math.max(1, root.total))
                 height: parent.height
                 radius: height / 2
-                color: theme.orange
+                color: theme.yellow
                 Behavior on width { enabled: !theme.reducedMotion; NumberAnimation { duration: 900 } }
             }
             Rectangle {

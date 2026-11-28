@@ -30,7 +30,24 @@ component EpisodeItem inherits Rectangle {
     background: touch.pressed && (root.data.file != 0 || root.holdable) ? Theme.pressed : root.data.picked ? Theme.bad-soft : root.next && !AppData.deleting ? Theme.raised : transparent;
     border-width: root.next ? 1px : 0;
     border-color: Theme.line-strong;
-    if !AppData.deleting || root.data.file == 0: Rectangle {
+    property <bool> has-icon: root.data.cube == 0 || root.data.cube == 1 || root.data.cube == 3 || root.data.cube == 6 || root.data.cube == 7;
+    if (!AppData.deleting || root.data.file == 0) && root.has-icon: Image {
+        x: Theme.unit * 2.5;
+        y: (parent.height - self.height) / 2;
+        width: root.data.cube == 0 ? 15px : 14px;
+        height: self.width;
+        source: root.data.cube == 0 ? @image-url("../icons/check-check.svg")
+            : root.data.cube == 1 ? @image-url("../icons/check.svg")
+            : root.data.cube == 3 ? @image-url("../icons/triangle-alert.svg")
+            : root.data.cube == 6 ? @image-url("../icons/download.svg")
+            : @image-url("../icons/circle-alert.svg");
+        colorize: root.data.cube == 0 || root.data.cube == 1 ? Theme.ok
+            : root.data.cube == 3 ? Theme.warn
+            : root.data.cube == 6 ? Theme.purple
+            : Theme.bad;
+        opacity: AppData.deleting ? 0.4 : 1;
+    }
+    if (!AppData.deleting || root.data.file == 0) && !root.has-icon: Rectangle {
         x: Theme.unit * 3;
         y: (parent.height - self.height) / 2;
         width: 12px;
@@ -38,7 +55,7 @@ component EpisodeItem inherits Rectangle {
         border-radius: 3px;
         background: root.later ? transparent : Theme.cube(root.data.cube);
         border-width: root.later ? 1px : 0;
-        border-color: Theme.line-strong;
+        border-color: Theme.cube-edge(root.data.cube);
         opacity: AppData.deleting ? 0.4 : 1;
     }
     // While deleting, an episode on the phone shows whether it is picked.

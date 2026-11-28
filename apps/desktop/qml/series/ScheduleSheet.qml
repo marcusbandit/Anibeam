@@ -122,7 +122,7 @@ Corner {
         return words.t("schedule-no-date-yet")
     }
     function kindOf(n) { return !n ? "" : has(n.at) ? "day" : has(n.year) && n.month ? "month" : has(n.year) ? "year" : "tbc" }
-    function kindColor(k) { return k === "day" ? theme.green : k === "month" ? theme.orange : k === "year" ? theme.purple : theme.textDim }
+    function kindColor(k) { return k === "day" ? theme.green : k === "month" ? theme.yellow : k === "year" ? theme.purple : theme.textDim }
     // What a tile says under its number: the date, short
     function tileText(ep) {
         if (root.endAt > 0 && ep > root.endAt) return ""

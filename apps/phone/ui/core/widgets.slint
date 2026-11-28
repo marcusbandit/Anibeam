@@ -73,8 +73,8 @@ export component Cubes inherits Rectangle {
         height: root.size;
         border-radius: Math.max(1.5px, root.size / 4);
         background: code == 5 ? transparent : Theme.cube(code);
-        border-width: code == 5 ? 1px : 0;
-        border-color: Theme.line-strong;
+        border-width: (code == 1 || code == 5) ? 1px : 0;
+        border-color: Theme.cube-edge(code);
     }
 }
 

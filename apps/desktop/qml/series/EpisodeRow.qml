@@ -125,11 +125,24 @@ Corner {
         width: parent.width - theme.space(6)
         anchors.verticalCenter: parent.verticalCenter
         spacing: theme.space(3)
-        // The cube: the episode cubes' square in its state's colour, lifting on hover
+        // The state mark: semantic icons for watched (✓✓ synced / ✓ local), missing (⚠),
+        // error (!) and downloading (↓); quiet geometric squares for on-disk, not-downloaded
+        // and not-aired rows. Clicking toggles watched when trackable.
         Item {
             id: mark
             anchors.verticalCenter: parent.verticalCenter
             width: theme.space(5); height: width
+            readonly property string stateIcon: root.cube === "w" ? "check-check"
+                                              : root.cube === "l" ? "check"
+                                              : root.cube === "m" ? "triangle-alert"
+                                              : root.cube === "e" ? "circle-alert"
+                                              : root.cube === "t" ? "download"
+                                              : ""
+            readonly property color stateIconColor: root.cube === "w" || root.cube === "l" ? theme.green
+                                                  : root.cube === "m" ? theme.yellow
+                                                  : root.cube === "e" ? theme.red
+                                                  : root.cube === "t" ? theme.purple
+                                                  : theme.textDim
             // While picking, the phone's circle: filled red once picked
             Rectangle {
                 objectName: "episode-pick"
@@ -142,18 +155,29 @@ Corner {
                 border.color: markHover.containsMouse || hover.containsMouse ? theme.textDim : theme.lineStrong
                 Icon { visible: root.picked; anchors.centerIn: parent; glyph: "check"; size: theme.space(3); color: theme.contrast(theme.red, Qt.rgba(1, 1, 1, 1)) >= 4.5 ? "#ffffff" : "#0d0e11" }
             }
-            Rectangle {
+            Item {
                 objectName: "episode-cube"
                 visible: !(root.picking && root.playable)
-                anchors.centerIn: parent
-                width: theme.space(3.5); height: width
-                radius: Math.max(1, width * 0.3)
-                color: root.cubeState.fill
-                border.width: markHover.containsMouse ? 1 : root.cubeState.edge === "transparent" ? 0 : 1
-                border.color: markHover.containsMouse ? theme.accent : root.cubeState.edge
-                scale: theme.reducedMotion ? 1 : (markHover.containsMouse ? 1.18 : 1)
+                anchors.fill: parent
+                scale: theme.reducedMotion ? 1 : (markHover.containsMouse && root.trackable ? 1.18 : 1)
                 Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
-                Behavior on color { enabled: !theme.reducedMotion; ColorAnimation { duration: theme.motionFast } }
+                Icon {
+                    visible: mark.stateIcon !== ""
+                    anchors.centerIn: parent
+                    glyph: mark.stateIcon
+                    size: root.cube === "w" ? theme.space(4) : theme.space(3.75)
+                    color: mark.stateIconColor
+                }
+                Rectangle {
+                    visible: mark.stateIcon === ""
+                    anchors.centerIn: parent
+                    width: theme.space(3.5); height: width
+                    radius: Math.max(1, width * 0.3)
+                    color: root.cubeState.fill
+                    border.width: markHover.containsMouse && root.trackable ? 1 : root.cubeState.edge === "transparent" ? 0 : 1
+                    border.color: markHover.containsMouse && root.trackable ? theme.accent : root.cubeState.edge
+                    Behavior on color { enabled: !theme.reducedMotion; ColorAnimation { duration: theme.motionFast } }
+                }
             }
             MouseArea {
                 id: markHover
@@ -261,7 +285,7 @@ Corner {
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.getting && hover.containsMouse ? words.t("episode-row-get") : root.cubeState.label
                         role: "ledger"
-                        color: root.getting && hover.containsMouse ? theme.accent : root.cube === "m" ? root.cubeState.fill : theme.textFaint
+                        color: root.getting && hover.containsMouse ? theme.accent : root.cube === "m" ? theme.yellow : root.cube === "e" ? theme.red : theme.textFaint
                     }
                     Label {
                         objectName: "episode-predicted"

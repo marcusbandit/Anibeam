@@ -32,9 +32,10 @@ fn cube_code(c: char) -> i32 {
         'w' => 0,
         'l' => 1,
         'd' => 2,
-        'm' | 'e' => 3,
+        'm' => 3,
         'f' => 5,
         't' => 6,
+        'e' => 7,
         _ => 4,
     }
 }
@@ -887,7 +888,7 @@ mod tests {
 
     #[test]
     fn every_core_cube_letter_has_a_colour_code() {
-        assert_eq!(cube_codes("wldmgft"), vec![0, 1, 2, 3, 4, 5, 6]);
+        assert_eq!(cube_codes("wldmgfte"), vec![0, 1, 2, 3, 4, 5, 6, 7]);
     }
 
     /// A file of episode `number`, kept in the releases `versions` names.
