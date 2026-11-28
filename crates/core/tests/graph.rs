@@ -210,7 +210,7 @@ fn an_unmatched_series_has_no_layout_and_an_unknown_one_is_not_found() {
     let src = fixtures::insert_source(&core, "/lib");
     let series = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/new", "New");
 
-    assert!(layout_of(&core, series).is_none());
+    assert_eq!(layout_of(&core, series), None);
     assert!(matches!(
         core.call(Call::GetFranchiseGraph { series: 9_999 }),
         Err(CoreError::NotFound {
@@ -218,4 +218,42 @@ fn an_unmatched_series_has_no_layout_and_an_unknown_one_is_not_found() {
             id: 9_999
         })
     ));
+}
+
+/// A removed or renamed folder leaves a missing series row behind; the
+/// franchise graph must link to the live folder instead of that tombstone,
+/// and never mark a missing-only sequel as owned (#1566).
+#[test]
+fn franchise_nodes_link_to_the_live_series_and_skip_missing_tombstones() {
+    let (_dir, core, _c) = common::open_core_with_http(net::FakeHttp::new());
+    for (id, year) in [(1, 2025), (2, 2026), (3, 2027)] {
+        media(&core, id, "ANIME", "TV", "FINISHED", year);
+    }
+    edge(&core, 1, 2, "SEQUEL");
+    edge(&core, 2, 3, "SEQUEL");
+
+    let src = fixtures::insert_source(&core, "/lib");
+    let s1 = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/s1", "S1");
+    let s2_old = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/s2-old", "S2 Old");
+    let s2_live = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/s2-new", "S2 New");
+    let s3_gone = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/s3", "S3");
+    fixtures::match_series(&core, s1, Some(1), None);
+    fixtures::match_series(&core, s2_old, Some(2), None);
+    fixtures::match_series(&core, s2_live, Some(2), None);
+    fixtures::match_series(&core, s3_gone, Some(3), None);
+
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE series SET missing_since = 1000 WHERE id IN (?1, ?2)",
+                params![s2_old as i64, s3_gone as i64],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    let layout = layout_of(&core, s1).expect("three-season graph");
+    assert_eq!(node_of(&layout, 1).owned, Some(s1));
+    assert_eq!(node_of(&layout, 2).owned, Some(s2_live));
+    assert_eq!(node_of(&layout, 3).owned, None);
 }

@@ -722,11 +722,11 @@ impl Snapshot {
         };
         let mut stmt = conn.prepare(
             "SELECT r.recommended_id, m.title_romaji, m.title_english, i.path,
-                    (SELECT s.id FROM series s WHERE s.anilist_id = m.id ORDER BY s.id LIMIT 1),
+                    (SELECT s.id FROM series s WHERE s.anilist_id = m.id AND s.missing_since IS NULL ORDER BY EXISTS (SELECT 1 FROM files f WHERE f.series_id = s.id) DESC, s.id LIMIT 1),
                     (SELECT ta.status FROM tracker_entries ta WHERE ta.tracker = 'anilist' AND ta.media_id = m.id AND ta.profile_id = ?2),
                     (SELECT tm.status FROM tracker_entries tm WHERE tm.tracker = 'mal' AND tm.media_id = m.mal_id AND tm.profile_id = ?2),
                     m.title_native,
-                    (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = m.id ORDER BY ls.id LIMIT 1)
+                    (SELECT l.status FROM local_entries l JOIN series ls ON ls.id = l.series_id WHERE ls.anilist_id = m.id ORDER BY ls.missing_since IS NOT NULL, ls.id LIMIT 1)
              FROM recommendations r
              JOIN anilist_media m ON m.id = r.recommended_id
              LEFT JOIN images i ON i.url = m.cover_url
@@ -1483,6 +1483,68 @@ mod tests {
         assert_eq!(
             detail.extras[0].torrent.as_deref(),
             Some("[Group] Show Batch")
+        );
+    }
+
+    #[test]
+    fn recommendations_skip_missing_series_tombstones() {
+        // A removed or renamed folder leaves a missing row behind; a
+        // recommendation must link to the live folder instead (#1566).
+        let dir = tempfile::tempdir().unwrap();
+        let store = anibeam_foundation::store::Store::open(&dir.path().join("anibeam.db")).unwrap();
+        store
+            .write(|c| {
+                c.execute_batch(
+                    "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+                     INSERT INTO anilist_media (id, title_romaji) VALUES
+                         (10, 'Current'),
+                         (20, 'Gone'),
+                         (30, 'Renamed'),
+                         (40, 'TwoLive');
+                     INSERT INTO recommendations (anilist_id, recommended_id, rank) VALUES
+                         (10, 20, 1),
+                         (10, 30, 2),
+                         (10, 40, 3);
+                     INSERT INTO series (id, source_id, kind, path, folder_name, missing_since, added_at, anilist_id) VALUES
+                         (1, 1, 'show', '/tv/Current', 'Current', NULL, 0, 10),
+                         (2, 1, 'show', '/tv/Gone', 'Gone', 1000, 0, 20),
+                         (3, 1, 'show', '/tv/Renamed-old', 'Renamed-old', 1000, 0, 30),
+                         (4, 1, 'show', '/tv/Renamed-new', 'Renamed-new', NULL, 0, 30),
+                         (5, 1, 'show', '/tv/TwoLive-empty', 'TwoLive-empty', NULL, 0, 40),
+                         (6, 1, 'show', '/tv/TwoLive-full', 'TwoLive-full', NULL, 0, 40);
+                     INSERT INTO files (id, series_id, path, size, mtime, kind, number, label, episode_key, seen_at) VALUES
+                         (1, 6, '/tv/TwoLive-full/ep01.mkv', 100, 0, 'episode', 1, 'ep01', '1', 0);
+                     INSERT INTO local_entries (series_id, status, updated_at) VALUES
+                         (2, 'completed', 0),
+                         (3, 'dropped', 0),
+                         (4, 'watching', 0);",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let recs = store
+            .read(|c| {
+                let snap = Snapshot::load_for(
+                    c,
+                    anibeam_foundation::trust::OWNER,
+                    Path::new("/images"),
+                    std::time::SystemTime::now(),
+                    Some(&[1]),
+                )?;
+                Ok(snap.detail(c, 1)?.unwrap().recommendations)
+            })
+            .unwrap();
+        let summary: Vec<(u64, Option<u64>, Option<ListStatus>)> = recs
+            .iter()
+            .map(|r| (r.anilist_id, r.owned, r.list_status))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                (20, None, Some(ListStatus::Completed)),
+                (30, Some(4), Some(ListStatus::Watching)),
+                (40, Some(6), None),
+            ]
         );
     }
 }
