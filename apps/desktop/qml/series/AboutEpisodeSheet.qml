@@ -16,6 +16,8 @@ Item {
     property string rowTitle: ""
     property var file: ({})
     property bool extra: false
+    // The page is a film's: film words, and no season or episode rows
+    property bool film: false
     readonly property real pad: theme.space(6)
     readonly property string path: String(file.path || "")
     readonly property string folder: path.replace(/[\\/][^\\/]*$/, "")
@@ -24,12 +26,13 @@ Item {
     // panel's Flickable must not take it as a flick
     property Item pressedValue: null
 
-    // `ep` is the row's record: an episode's, or an extra's with its code
-    function openFor(ep, title, isExtra) {
+    // `ep` is the row's record: an episode's, or an extra's with its label
+    function openFor(ep, title, isExtra, isFilm) {
         root.file = ep || {}
         root.rowTitle = title || ""
         root.extra = !!isExtra
-        root.heading = words.t(isExtra ? "frame-about-file" : "frame-about-episode")
+        root.film = !isExtra && !!isFilm
+        root.heading = words.t(isExtra ? "frame-about-file" : root.film ? "frame-about-film" : "frame-about-episode")
         root.prevFocus = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
         root.visible = true
         frame.escapeStack.push("sheet", root)
@@ -58,12 +61,16 @@ Item {
     readonly property var facts: {
         var f = root.file, out = []
         if (!root.path) return out
+        // An episode with a title of its own is named by it; the rows below number it
+        if (!root.extra && !root.film && f.title && root.rowTitle)
+            out.push({ key: "title", label: words.t("about-episode-title"), value: root.rowTitle })
         out.push({ key: "name", label: words.t("about-episode-file-name"), value: Fmt.baseName(root.path) })
         out.push({ key: "folder", label: words.t("about-episode-folder"), value: root.folder })
         if (f.size > 0) out.push({ key: "size", label: words.t("about-episode-size"), value: words.bytes(f.size) })
-        if (root.extra && f.kind !== undefined) {
-            out.push({ key: "extra", label: words.t("about-episode-extra"), value: String(f.code || "") })
-        } else if (f.number !== undefined && f.number !== null) {
+        if (root.extra) {
+            // The extra as the page names it (Opening 1), not the core's code
+            if (root.rowTitle) out.push({ key: "extra", label: words.t("about-episode-extra"), value: root.rowTitle })
+        } else if (!root.film && f.number !== undefined && f.number !== null) {
             out.push({ key: "season", label: words.t("about-episode-season"),
                        value: f.season !== undefined && f.season !== null ? String(f.season) : words.t("about-episode-no-season") })
             out.push({ key: "episode", label: words.t("about-episode-episode"), value: String(words.episodeNumber(f.number)) })
@@ -115,13 +122,7 @@ Item {
                     Column {
                         id: head
                         width: parent.width - closeButton.width - theme.space(4)
-                        Label { text: root.heading; role: "title" }
-                        Label {
-                            width: parent.width
-                            visible: text !== ""
-                            text: root.rowTitle
-                            role: "ui"; color: theme.textDim; elide: Text.ElideRight
-                        }
+                        Label { width: parent.width; text: root.heading; role: "title"; elide: Text.ElideRight }
                     }
                     Button {
                         id: closeButton

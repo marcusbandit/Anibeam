@@ -647,6 +647,7 @@ FocusScope {
         UpdateNotice {
             id: updateNotice
             covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible || onboarding.visible || scanSummary.visible
+                     || aboutSheet.visible || moveListsSheet.visible
             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
             anchors.bottom: parent.bottom; anchors.bottomMargin: rail.footHeight + theme.space(4)
         }
@@ -1114,8 +1115,9 @@ FocusScope {
     function aboutEpisodeItems(row) {
         if (!row || !row.episode || !row.episode.path) return []
         var ep = row.episode, title = row.title, isExtra = ep.kind !== undefined
-        return [{ text: words.t(isExtra ? "frame-about-file" : "frame-about-episode"), icon: "info",
-                  action: function() { aboutSheet.openFor(ep, title, isExtra) } }]
+        var isFilm = !isExtra && !!page.item && page.item.isMovie === true
+        return [{ text: words.t(isExtra ? "frame-about-file" : isFilm ? "frame-about-film" : "frame-about-episode"), icon: "info",
+                  action: function() { aboutSheet.openFor(ep, title, isExtra, isFilm) } }]
     }
     // A card's own rows, above the delete ones: open it, its folder, its title, its page
     function seriesCardItems() {

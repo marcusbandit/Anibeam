@@ -1369,7 +1369,7 @@ Item {
                                             required property var modelData
                                             // The file's own facts ride along for the right-click menu and About (#1562)
                                             episode: ({ code: modelData.code, title: modelData.label, resume: modelData.resume, watched: false, next_up: false,
-                                                        path: modelData.path, size: modelData.size, torrent: modelData.torrent, kind: modelData.kind, index: modelData.index })
+                                                        file: modelData.file, path: modelData.path, size: modelData.size, torrent: modelData.torrent, kind: modelData.kind, index: modelData.index })
                                             title: modelData.label
                                             versions: page.deleting ? [] : (modelData.versions || [])
                                             onPlay: page.openFile(modelData.file)
