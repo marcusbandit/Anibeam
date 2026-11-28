@@ -139,7 +139,12 @@
         el.addEventListener("pointerleave", leave);
       }
     }
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !note.hidden) { show(false); btn.focus(); } });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || note.hidden) return;
+      const inside = btn === document.activeElement || note.contains(document.activeElement);
+      show(false);
+      if (inside) btn.focus();
+    });
     document.addEventListener("click", (e) => { if (!note.hidden && !e.target.closest(".art-note-wrap")) show(false); });
   }
 })();
