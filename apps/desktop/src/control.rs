@@ -47,6 +47,7 @@ nothing needs installing. --root <dir> picks the window started with that root.
   wait <js> [--timeout ms]        until the JS is truthy
   run <script.json | ->           a --drive script, against this window (10 minutes
                                   unless --timeout says otherwise)
+  reload                          clear the QML component cache and reload the UI in place
   quit                            close the window
 
 A target is x,y in window pixels, an objectName, or words on screen. Words match whole
@@ -399,6 +400,14 @@ fn plan(cmd: &str, args: &[String], o: &Opts, now_ms: u128) -> Result<Plan, Stri
                 print: Print::Log,
                 budget: o.timeout.unwrap_or(600_000),
             }
+        }
+        "reload" => {
+            let mut steps = vec![
+                json!({"eval": "window.reloadQml()"}),
+                json!({"until": "!window.reloadingQml && (frame.item !== null || window.reloadError !== '')", "timeout": timeout}),
+            ];
+            steps.extend(settled(timeout));
+            moves(Value::Array(steps))
         }
         "quit" => one(json!([{"eval": "Qt.callLater(Qt.quit)"}])),
         other => {

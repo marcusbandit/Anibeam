@@ -21,6 +21,7 @@
 #include <QtCore/QFileInfo>
 #include <QtCore/QMutex>
 #include <QtCore/QMutexLocker>
+#include <QtCore/QPointer>
 #include <QtCore/QSet>
 #include <QtQml/QQmlAbstractUrlInterceptor>
 #include <QtQml/QQmlApplicationEngine>
@@ -227,6 +228,9 @@ bool open_url(const QString &url)
 }
 
 namespace {
+// Held weakly so a live-reload call after the engine drops is a safe no-op.
+QPointer<QQmlEngine> g_qml_engine;
+
 // The module's QML files sit at qrc:/qt/qml/com/marcusrosado/Anibeam/qml/<name>.qml; the
 // same name under the dev directory replaces one that exists there.
 class QmlDirInterceptor : public QQmlAbstractUrlInterceptor
@@ -236,7 +240,7 @@ public:
     QUrl intercept(const QUrl &url, DataType type) override
     {
         static const QString prefix = QStringLiteral("/qt/qml/com/marcusrosado/Anibeam/qml/");
-        if (type != QmlFile || url.scheme() != QLatin1String("qrc") || !url.path().startsWith(prefix))
+        if ((type != QmlFile && type != JavaScriptFile) || url.scheme() != QLatin1String("qrc") || !url.path().startsWith(prefix))
             return url;
         const QString name = url.path().mid(prefix.size());
         const QString file = m_dir + QLatin1Char('/') + name;
@@ -261,7 +265,16 @@ private:
 
 void install_qml_dir(QQmlApplicationEngine &engine, const QString &dir)
 {
+    g_qml_engine = &engine;
     engine.addUrlInterceptor(new QmlDirInterceptor(QFileInfo(dir).absoluteFilePath()));
+}
+
+void clear_qml_cache()
+{
+    if (!g_qml_engine)
+        return;
+    g_qml_engine->collectGarbage();
+    g_qml_engine->clearComponentCache();
 }
 
 void set_default_locale(const QString &tag)

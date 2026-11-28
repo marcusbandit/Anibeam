@@ -22,6 +22,7 @@ mod old_name;
 mod paths;
 mod player_config;
 mod problem;
+mod qml_watch;
 mod read_cache;
 mod runtime;
 mod scan_summary;
@@ -56,6 +57,7 @@ fn install_dev_qml_dir(
         return engine;
     }
     eprintln!("anibeam: loading QML from {}", dir.display());
+    qml_watch::install_dir(dir.to_path_buf());
     bridge::helpers::ffi::install_qml_dir(engine.as_mut(), &QString::from(&*dir.to_string_lossy()));
     engine
 }
