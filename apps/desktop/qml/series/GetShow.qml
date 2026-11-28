@@ -184,6 +184,65 @@ Item {
         var t = titleWords(title)
         return ownWords.some(function(ws) { return ws.every(function(w) { return t.indexOf(" " + w) >= 0 }) })
     }
+    // A sequel's roman numeral as a word of its own, upper case (Clevatess II), else null. A
+    // lone I, V or X is as often a word and never counts. grid.rs `numeral` is the same
+    function numeral(word) {
+        var map = { II: 2, III: 3, IV: 4, VI: 6, VII: 7, VIII: 8, IX: 9, XI: 11, XII: 12 }
+        return Object.prototype.hasOwnProperty.call(map, word) ? map[word] : null
+    }
+    function rawWords(name) { return String(name || "").split(/[^A-Za-z0-9]+/).filter(function(w) { return w.length > 0 }) }
+    // The season a name's numeral states (Clevatess II: Majuu no Ou to ... is the second) and
+    // the words before it, which name the show itself; a name with none gives all its words
+    function numeralOf(name) {
+        var ws = rawWords(name)
+        for (var i = 1; i < ws.length; i++) if (numeral(ws[i]) !== null) return { words: ws.slice(0, i), season: numeral(ws[i]) }
+        return { words: ws, season: null }
+    }
+    // The season the show's own names state, in words or by a numeral
+    readonly property var ownSeason: {
+        if (statedSeason !== null) return statedSeason
+        for (var i = 0; i < ownNames.length; i++) { var s = numeralOf(ownNames[i]).season; if (s !== null) return s }
+        return null
+    }
+    // The names a sequel's numeral may follow, as words: each own name cut before its
+    // numeral (Clevatess from "Clevatess II: Majuu no Ou to ..."), and each cut before its
+    // subtitle (Mushoku Tensei from "Mushoku Tensei: Isekai Ittara Honki Dasu")
+    readonly property var numeralNames: {
+        var out = [], seen = {}
+        for (var i = 0; i < ownNames.length; i++) {
+            var name = String(ownNames[i] || "")
+            var m = /^(.*?)(?::\s+|\s-\s+)\S/.exec(name)
+            var cuts = m ? [name, m[1]] : [name]
+            for (var j = 0; j < cuts.length; j++) {
+                var ws = numeralOf(cuts[j]).words, k = ws.join(" ").toLowerCase()
+                if (ws.length && !seen[k]) { seen[k] = true; out.push(ws) }
+            }
+        }
+        return out
+    }
+    // The season a release states by a numeral right after one of those names, outside its
+    // leading [group]: "[Grp] Clevatess II - 01" is the second season of the show named
+    // Clevatess. Only the name's first place counts, so a pack of both seasons (Clevatess +
+    // Clevatess II) states none
+    function releaseNumeral(title) {
+        var ws = rawWords(String(title || "").replace(/^\s*\[[^\]]*\]/, ""))
+        for (var i = 0; i < numeralNames.length; i++) {
+            var name = numeralNames[i]
+            for (var at = 0; at + name.length <= ws.length; at++) {
+                var same = true
+                for (var k = 0; k < name.length && same; k++) same = ws[at + k].toLowerCase() === name[k].toLowerCase()
+                if (same) { var n = at + name.length < ws.length ? numeral(ws[at + name.length]) : null; if (n !== null) return n; break }
+            }
+        }
+        return null
+    }
+    // A numeral right after the show's name is AniList's own way of naming a sequel, which
+    // keeps it an entry of its own: the first season, naming none, is season 1
+    function numberedOther(title) {
+        if (!show || !(show.anilistId > 0)) return false
+        var n = releaseNumeral(title)
+        return n !== null && n !== (ownSeason !== null ? ownSeason : 1)
+    }
     function namesShow(title) {
         if (!showWords.length) return true
         var t = titleWords(title)
@@ -195,7 +254,7 @@ Item {
     function ofShow(r) {
         if (!r || !r.items) return r
         var items = [], facts = []
-        for (var i = 0; i < r.items.length; i++) if (namesShow(r.items[i].title) && !anotherSeason(r.items[i].title, r.facts[i])) { items.push(r.items[i]); facts.push(r.facts[i]) }
+        for (var i = 0; i < r.items.length; i++) if (namesShow(r.items[i].title) && !numberedOther(r.items[i].title) && !anotherSeason(r.items[i].title, r.facts[i])) { items.push(r.items[i]); facts.push(r.facts[i]) }
         if (items.length === r.items.length) return r
         var out = {}
         for (var k in r) out[k] = r[k]

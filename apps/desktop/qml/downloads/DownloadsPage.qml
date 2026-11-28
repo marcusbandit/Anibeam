@@ -397,10 +397,17 @@ Item {
     }
     function nameOfHit(h, typed) { return page.typedName(page.namesOfHit(h), typed) || page.preferredOfHit(h) }
     function nameOfCard(c, typed) { return page.typedName(page.namesOfCard(c), typed) || c.title }
-    // The release queries, best first: the romaji, then whatever else it is called
+    // The release queries, best first: the romaji, then whatever else it is called, then
+    // each name cut before a subtitle that follows a numeral (Clevatess II from "Clevatess
+    // II: Majuu no Ou to ..."), as release groups write a sequel. grid.rs `search_names`
     function queriesOf(names, first) {
         var out = [], seen = {}
-        ;[first].concat(names).forEach(function(n) { var k = page.norm(n); if (n && k && !seen[k]) { seen[k] = true; out.push(String(n)) } })
+        function add(n) { var k = page.norm(n); if (n && k && !seen[k]) { seen[k] = true; out.push(String(n)) } }
+        ;[first].concat(names).forEach(add)
+        out.slice().forEach(function(n) {
+            var m = /^(.*?\S\s(?:II|III|IV|VI|VII|VIII|IX|XI|XII))(?::\s|\s-\s)/.exec(n)
+            if (m) add(m[1].trim())
+        })
         return out
     }
 

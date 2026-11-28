@@ -181,6 +181,106 @@ fn season_hint(name: &str) -> bool {
         || SEASON_SCRIPT_RE.is_match(name)
 }
 
+/// A sequel's roman numeral as a word of its own, upper case: `Clevatess II`. A lone `I`,
+/// `V` or `X` is as often a word, and never counts here.
+fn numeral(word: &str) -> Option<u32> {
+    match word {
+        "II" => Some(2),
+        "III" => Some(3),
+        "IV" => Some(4),
+        "VI" => Some(6),
+        "VII" => Some(7),
+        "VIII" => Some(8),
+        "IX" => Some(9),
+        "XI" => Some(11),
+        "XII" => Some(12),
+        _ => None,
+    }
+}
+
+/// A name's words as written, letters and digits only.
+fn raw_words(name: &str) -> Vec<&str> {
+    name.split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
+/// The season a name's numeral states (`Clevatess II: Majuu no Ou to ...` is the second),
+/// and the words before it, which name the show itself. A name with none gives all its
+/// words and no season.
+fn numeral_of(name: &str) -> (Vec<&str>, Option<u32>) {
+    let words = raw_words(name);
+    match words.iter().skip(1).position(|w| numeral(w).is_some()) {
+        Some(i) => (words[..=i].to_vec(), numeral(words[i + 1])),
+        None => (words, None),
+    }
+}
+
+/// The season the show's own names state, in words (`stated_season`) or by a numeral
+/// (`numeral_of`).
+fn own_season(show: &Show) -> Option<u32> {
+    stated_season(show).or_else(|| own_names(show).into_iter().find_map(|n| numeral_of(n).1))
+}
+
+/// The names a sequel's numeral may follow, as words: each of the show's own names cut
+/// before its numeral (`Clevatess` from `Clevatess II: Majuu no Ou to ...`), and each cut
+/// before its subtitle (`Mushoku Tensei` from `Mushoku Tensei: Isekai Ittara Honki Dasu`),
+/// for a show whose names all carry one.
+fn numeral_names(show: &Show) -> Vec<Vec<&str>> {
+    let mut out: Vec<Vec<&str>> = Vec::new();
+    for name in own_names(show) {
+        let cut = SUBTITLE_RE
+            .captures(name)
+            .and_then(|c| c.get(1))
+            .map(|sub| &name[..sub.start()]);
+        for n in [Some(name), cut].into_iter().flatten() {
+            let (words, _) = numeral_of(n);
+            if !words.is_empty() && !out.contains(&words) {
+                out.push(words);
+            }
+        }
+    }
+    out
+}
+
+/// The season a release states by a numeral right after one of the show's names
+/// (`numeral_names`), outside its leading `[group]`: `[Grp] Clevatess II - 01` is the
+/// second season of the show named `Clevatess`. Only the name's first place counts, so a
+/// pack of both seasons (`Clevatess + Clevatess II`) states none.
+fn release_numeral(names: &[Vec<&str>], title: &str) -> Option<u32> {
+    let body = match title.trim_start().strip_prefix('[') {
+        Some(rest) => rest.split_once(']').map_or(title, |(_, r)| r),
+        None => title,
+    };
+    let words = raw_words(body);
+    names.iter().find_map(|name| {
+        let at = words
+            .windows(name.len())
+            .position(|w| w.iter().zip(name).all(|(a, b)| a.eq_ignore_ascii_case(b)))?;
+        words.get(at + name.len()).and_then(|w| numeral(w))
+    })
+}
+
+/// The names to search a show by: its queries, then each name cut before a subtitle that
+/// follows a numeral (`Clevatess II` from `Clevatess II: Majuu no Ou to ...`), as release
+/// groups write a sequel. `DownloadsPage.qml` `queriesOf` adds the same.
+pub fn search_names(queries: Vec<String>) -> Vec<String> {
+    static CUT: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^(.*?\S\s(?:II|III|IV|VI|VII|VIII|IX|XI|XII))(?::\s|\s-\s)")
+            .expect("cut compiles")
+    });
+    let mut out = queries.clone();
+    for q in &queries {
+        if let Some(c) = CUT.captures(q) {
+            let short = c[1].trim().to_string();
+            if !out.iter().any(|o| o.eq_ignore_ascii_case(&short)) {
+                out.push(short);
+            }
+        }
+    }
+    out
+}
+
 /// Whether the release `title`, whose facts read season `theirs`, is another season of the
 /// show; `in_words` when the title writes that season out (`facts::season_in_words`).
 ///
@@ -262,12 +362,19 @@ pub fn of_show(
 ) -> (Vec<Release>, Vec<ReleaseFacts>, usize) {
     let mut out_items = Vec::new();
     let mut out_facts = Vec::new();
+    let names = numeral_names(show);
+    let ours = own_season(show).unwrap_or(1);
     for (i, item) in items.iter().enumerate() {
         let season = facts
             .get(i)
             .and_then(|f| f.season)
             .or_else(|| facts::season_word(&item.title));
+        // A numeral right after the show's name is AniList's own way of naming a sequel,
+        // which keeps it an entry of its own: the first season, naming none, is season 1
+        let numbered =
+            show.anilist && release_numeral(&names, &item.title).is_some_and(|n| n != ours);
         if names_show(show, &item.title)
+            && !numbered
             && !season.is_some_and(|s| {
                 another_season(show, &item.title, s, facts::season_in_words(&item.title))
             })
@@ -1000,6 +1107,89 @@ mod tests {
             &kny,
             "[Grp] Kimetsu no Yaiba Complete Season 2 [1080p]"
         ));
+    }
+
+    /// Clevatess's two seasons, by the names AniList gives them.
+    fn clevatess() -> (Show, Show) {
+        let first = entry(
+            "Clevatess: Majuu no Ou to Akago to Kabane no Yuusha",
+            &[
+                "Clevatess: Majuu no Ou to Akago to Kabane no Yuusha",
+                "Clevatess",
+                "Clevatess: The King of Devil Beasts",
+            ],
+            12,
+        );
+        let second = entry(
+            "Clevatess II: Majuu no Ou to Itsuwari no Yuusha Denshou",
+            &[
+                "Clevatess II: Majuu no Ou to Itsuwari no Yuusha Denshou",
+                "Clevatess Season 2",
+            ],
+            12,
+        );
+        (first, second)
+    }
+
+    #[test]
+    fn a_numeral_after_the_name_is_a_sequel() {
+        let (first, second) = clevatess();
+        let sequel = "[Grp] Clevatess II - 01 [1080p CR WEBRip HEVC AAC][MultiSub][8AF4D055]";
+        let own = "[Grp] Clevatess - 01 [1080p CR WEBRip HEVC AAC][MultiSub][0A1B2C3D]";
+        assert!(!keeps(&first, sequel));
+        assert!(keeps(&first, own));
+        assert!(keeps(&second, sequel));
+        assert!(!keeps(&second, "[Grp] Clevatess III - 01 [1080p]"));
+        // A numeral the show's own name carries is the show
+        let mob = entry("Mob Psycho 100 II", &["Mob Psycho 100 II"], 13);
+        assert!(keeps(&mob, "[Grp] Mob Psycho 100 II - 05 [1080p]"));
+        assert!(!keeps(&mob, "[Grp] Mob Psycho 100 III - 05 [1080p]"));
+        // A lone I or V is a word, a lower case numeral too, and a TVmaze show keeps all
+        let slime = entry(
+            "That Time I Got Reincarnated as a Slime",
+            &["That Time I Got Reincarnated as a Slime"],
+            24,
+        );
+        assert!(keeps(
+            &slime,
+            "[Grp] That Time I Got Reincarnated as a Slime - 05 [1080p]"
+        ));
+        let tv = Show {
+            anilist: false,
+            ..entry("Clevatess", &["Clevatess"], 12)
+        };
+        assert!(keeps(&tv, sequel));
+        // A group named like the show is no sequel's name
+        assert!(release_numeral(&numeral_names(&first), "[Clevatess II] Clevatess - 01").is_none());
+        // A pack of both seasons holds the first's episodes too
+        assert!(keeps(&first, "[Grp] Clevatess + Clevatess II [Batch]"));
+        // A show whose names all carry a subtitle reads the numeral after the part before it
+        let mushoku = entry(
+            "Mushoku Tensei: Isekai Ittara Honki Dasu",
+            &[
+                "Mushoku Tensei: Isekai Ittara Honki Dasu",
+                "Mushoku Tensei: Jobless Reincarnation",
+            ],
+            11,
+        );
+        assert!(!keeps(&mushoku, "[Grp] Mushoku Tensei II - 01 [1080p]"));
+        assert!(keeps(&mushoku, "[Grp] Mushoku Tensei - 01 [1080p]"));
+    }
+
+    #[test]
+    fn a_sequel_is_searched_by_its_name_before_the_subtitle() {
+        let (_, second) = clevatess();
+        assert_eq!(
+            search_names(second.queries.clone()),
+            vec![
+                "Clevatess II: Majuu no Ou to Itsuwari no Yuusha Denshou".to_string(),
+                "Clevatess Season 2".to_string(),
+                "Clevatess II".to_string(),
+            ]
+        );
+        // A subtitle with no numeral before it cuts nothing: an arc's name is the show's
+        let arc = vec!["Kimetsu no Yaiba: Yuukaku-hen".to_string()];
+        assert_eq!(search_names(arc.clone()), arc);
     }
 
     /// The batch `[Judas] <name> (Season <n>) [1080p][Batch]`.
