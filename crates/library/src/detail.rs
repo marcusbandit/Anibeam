@@ -196,7 +196,12 @@ impl Snapshot {
             .unwrap_or_default();
         let versions = episode_versions(&episodes);
         let zip = self.anizip_of(conn, row)?;
-        let torrents = torrents_of(conn, files)?;
+        // The torrent's name is a nicety: a read that fails leaves it out
+        // rather than failing the page.
+        let torrents = torrents_of(conn, files).unwrap_or_else(|e| {
+            tracing::debug!("series {id}: file origins not read: {e}");
+            HashMap::new()
+        });
         let torrent = |f: &FileRow| torrents.get(&f.path).cloned();
         let episode = |f: &FileRow| {
             let air = self.episode_airing(row, f);
