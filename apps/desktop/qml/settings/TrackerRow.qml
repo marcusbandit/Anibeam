@@ -22,6 +22,8 @@ Item {
 
     readonly property string name: frame.trackerName(tracker)
     readonly property string brandIcon: tracker === "Anilist" ? "anilist" : "myanimelist" // i18n: none
+    readonly property color brandBg: tracker === "Anilist" ? "#0B1622" : "#2E51A2"
+    readonly property color brandFg: tracker === "Anilist" ? "#02A9FF" : "#FFFFFF"
     readonly property bool connected: account.connected === true
     // A confirm left up must not greet the next connection: any way the row stops being
     // connected (the confirm's own Disconnect, a revoked token) puts the question away
@@ -54,18 +56,18 @@ Item {
             id: avatar
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            width: theme.space(10)
-            height: theme.space(10)
+            width: theme.space(11)
+            height: theme.space(11)
             radius: theme.radiusTile
             smoothing: theme.cornerSmoothing
-            color: root.connected ? theme.accentSoft : theme.tileSunken
-            borderColor: root.connected ? theme.accentEdge : theme.line
-            borderWidth: 1
+            color: root.brandBg
+            borderColor: root.connected ? theme.accent : Qt.rgba(1, 1, 1, 0.1)
+            borderWidth: root.connected ? 1.5 : 1
             Icon {
                 anchors.centerIn: parent
                 glyph: root.brandIcon
-                size: theme.space(5.5)
-                color: root.connected ? theme.accent : theme.text
+                size: root.tracker === "Anilist" ? theme.space(6.5) : theme.space(7.5)
+                color: root.brandFg
             }
         }
         Column {
