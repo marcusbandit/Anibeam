@@ -1250,7 +1250,7 @@ Item {
             { key: "nofeed", title: words.t("downloads-sub-nofeed"), dot: theme.red, line: words.t("downloads-sub-nofeed-line") },
             { key: "complete", title: words.t("downloads-sub-complete"), dot: theme.red, line: words.t("downloads-sub-complete-line") },
             { key: "airing", title: words.t("downloads-sub-airing"), dot: theme.accent, line: words.t("downloads-sub-airing-line") },
-            { key: "incomplete", title: words.t("downloads-sub-incomplete"), dot: theme.orange, line: words.t("downloads-sub-incomplete-line") },
+            { key: "incomplete", title: words.t("downloads-sub-incomplete"), dot: theme.yellow, line: words.t("downloads-sub-incomplete-line") },
             { key: "missing", title: words.t("downloads-sub-missing"), dot: theme.textFaint, line: words.t("downloads-sub-missing-line") }
         ]
         var by = {}
@@ -1308,8 +1308,8 @@ Item {
         return words.t("downloads-torrents", { count: g.torrents.length }) + ", " + words.bytes(g.size)
     }
     function stateDot(key) {
-        return key === "complete" || key === "broken" || key === "nofeed" ? theme.red : key === "airing" || key === "downloading" ? theme.accent
-             : key === "incomplete" ? theme.orange : key === "seeding" ? theme.green : theme.textFaint
+        return key === "complete" || key === "broken" || key === "nofeed" ? theme.red : key === "downloading" ? theme.purple : key === "airing" ? theme.accent
+             : key === "incomplete" ? theme.yellow : key === "seeding" ? theme.green : theme.textFaint
     }
     function groupWord(key) { return words.t(key === "downloading" ? "downloads-group-downloading" : key === "seeding" ? "downloads-group-seeding" : key === "done" ? "downloads-group-done" : key === "broken" ? "downloads-group-broken" : "downloads-group-stopped") }
 

@@ -37,10 +37,12 @@ Item {
     // codes come from the core (library::cards::cubes), plus the client states the Downloads
     // page lays over them (t, e). A new state is one entry here and one code there; `order`
     // is the legend's order. The hues are the theme's own, so every theme keeps a palette
-    // that holds together: green and cyan sit side by side because both mean watched.
+    // The hues are the theme's own, so every theme keeps a palette that holds together:
+    // watched + tracked is solid green; watched locally is a hollow green ring so both
+    // share one "watched" hue while keeping tracker sync visually distinct.
     readonly property var cubeStates: ({
         w: { id: "tokens-cube-watched-tracked", label: words.t("tokens-cube-watched-tracked"), fill: green, edge: "transparent", order: 0 },
-        l: { id: "tokens-cube-watched-here", label: words.t("tokens-cube-watched-here"), fill: cyan, edge: "transparent", order: 1 },
+        l: { id: "tokens-cube-watched-here", label: words.t("tokens-cube-watched-here"), fill: Qt.rgba(green.r, green.g, green.b, dark ? 0.2 : 0.16), edge: green, order: 1 },
         d: { id: "tokens-cube-on-disk", label: words.t("tokens-cube-on-disk"), fill: dark ? "#ffffff" : text, edge: "transparent", order: 2 },
         t: { id: "tokens-cube-downloading", label: words.t("tokens-cube-downloading"), fill: purple, edge: "transparent", order: 3 },
         m: { id: "tokens-cube-missing", label: words.t("tokens-cube-missing"), fill: yellow, edge: "transparent", order: 4 },

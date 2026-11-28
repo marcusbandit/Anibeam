@@ -136,7 +136,7 @@ SettingsTab {
                             Label { width: tab.col(8); role: "ledger"; text: tab.ms(modelData.settled); color: tab.tone(modelData.settled) }
                             Label { width: tab.col(12); role: "ledger"; text: modelData.calls.n + ", " + tab.rec.kb(modelData.calls.bytes); color: theme.textDim }
                             Label { width: tab.col(18); role: "ledger"; text: modelData.decodes.n + ", " + tab.ms(modelData.decodes.ms) + ", " + tab.rec.mb(modelData.decodes.bytes); color: theme.textDim }
-                            Label { width: tab.col(8); role: "ledger"; text: tab.n(modelData.scene.items); color: modelData.scene.items > 3000 ? theme.orange : theme.textDim }
+                            Label { width: tab.col(8); role: "ledger"; text: tab.n(modelData.scene.items); color: modelData.scene.items > 3000 ? theme.yellow : theme.textDim }
                             Label { width: tab.col(12); role: "ledger"; text: words.t("settings-developer-offscreen-of", { offscreen: modelData.scene.images.offscreen, total: modelData.scene.images.total }); color: theme.textDim }
                             Label { width: tab.col(10); role: "ledger"; text: tab.mb(modelData.memAfter.VmRSS || 0, true); color: theme.textDim }
                         }
@@ -272,7 +272,7 @@ SettingsTab {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: theme.space(2)
                         Label { width: theme.space(14); role: "ledger"; color: theme.textFaint; text: words.t("settings-developer-seconds", { seconds: (modelData.at / 1000).toFixed(1) }) }
-                        Label { width: theme.space(10); role: "ledger"; text: String(modelData.level); color: modelData.level === "Error" ? theme.red : modelData.level === "Warn" ? theme.orange : modelData.level === "Debug" ? theme.textFaint : theme.textDim }
+                        Label { width: theme.space(10); role: "ledger"; text: String(modelData.level); color: modelData.level === "Error" ? theme.red : modelData.level === "Warn" ? theme.yellow : modelData.level === "Debug" ? theme.textFaint : theme.textDim }
                         Label { width: theme.space(22); role: "ledger"; color: theme.textDim; text: String(modelData.kind); elide: Text.ElideRight }
                         Label { width: theme.space(12); role: "ledger"; color: theme.textFaint; text: tab.rec.kb(modelData.bytes) }
                         Label { width: list.width - theme.space(66); role: "ledger"; elide: Text.ElideRight; color: theme.text

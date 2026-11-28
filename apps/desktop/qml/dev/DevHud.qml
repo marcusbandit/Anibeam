@@ -28,7 +28,7 @@ Rectangle {
         Row {
             spacing: theme.space(2)
             Label { role: "ledger"; text: root.load ? root.load.label : "No page timed yet"; color: theme.text; font.weight: Font.DemiBold }
-            Label { role: "ledger"; visible: !!root.load && !root.load.images; text: "images off"; color: theme.orange }
+            Label { role: "ledger"; visible: !!root.load && !root.load.images; text: "images off"; color: theme.yellow }
             Label { role: "ledger"; visible: !!root.recorder && !!root.recorder.tourState; text: "tour " + (root.recorder && root.recorder.tourState ? root.recorder.tourState.at + " of " + root.recorder.tourState.steps.length : ""); color: theme.accent }
         }
         Row {

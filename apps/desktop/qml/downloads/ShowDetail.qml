@@ -108,8 +108,8 @@ Column {
             return { word: words.t("show-detail-downloading", { percent: Math.round((t.progress || 0) * 100) }), ink: theme.accent, torrent: t }
         }
         if (!root.ruleView) return { word: "", ink: theme.textDim, torrent: null }
-        if (root.matchingKeys[root.key(e.title)]) return { word: root.watching ? words.t("show-detail-taken-adding") : words.t("show-detail-taken"), ink: theme.orange, torrent: null }
-        return { word: words.t("show-detail-left-out"), ink: theme.textFaint, torrent: null }
+        if (root.matchingKeys[root.key(e.title)]) return { word: root.watching ? words.t("show-detail-taken-adding") : words.t("show-detail-taken"), ink: theme.green, torrent: null, taken: true }
+        return { word: words.t("show-detail-left-out"), ink: theme.textFaint, torrent: null, taken: false }
     }
     // What the rule takes of the feed as it reads now (qBittorrent can still hold articles
     // an earlier version of the feed found; those are not counted)
@@ -231,8 +231,8 @@ Column {
                 width: Math.min(parent.width, theme.space(200))
                 height: emptyBody.implicitHeight + theme.space(4) * 2
                 radius: theme.radiusSm
-                color: Qt.rgba(theme.orange.r, theme.orange.g, theme.orange.b, 0.08)
-                border.color: Qt.rgba(theme.orange.r, theme.orange.g, theme.orange.b, 0.45)
+                color: Qt.rgba(theme.yellow.r, theme.yellow.g, theme.yellow.b, 0.08)
+                border.color: Qt.rgba(theme.yellow.r, theme.yellow.g, theme.yellow.b, 0.45)
                 border.width: 1
                 Column {
                     id: emptyBody
@@ -444,7 +444,7 @@ Column {
                         width: stateWord.implicitWidth + (getButton.visible ? getButton.implicitWidth + theme.space(2) : 0)
                         height: theme.controlHeight
                         Label { id: stateWord; visible: entryRow.st.word !== ""; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: entryRow.st.word; role: "ledger"; color: entryRow.st.ink }
-                        Button { id: getButton; anchors.rightMargin: stateWord.visible ? stateWord.implicitWidth + theme.space(2) : 0; visible: !entryRow.st.torrent && entryRow.st.ink !== theme.orange && !!entryRow.modelData.link; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; msg: "show-detail-download"; icon: "download"; flat: true; small: true; onClicked: root.downloadEntry(entryRow.modelData) }
+                        Button { id: getButton; anchors.rightMargin: stateWord.visible ? stateWord.implicitWidth + theme.space(2) : 0; visible: !entryRow.st.torrent && !entryRow.st.taken && !!entryRow.modelData.link; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; msg: "show-detail-download"; icon: "download"; flat: true; small: true; onClicked: root.downloadEntry(entryRow.modelData) }
                     }
                     Rectangle { anchors.bottom: parent.bottom; x: theme.space(2); width: parent.width - theme.space(4); height: 1; color: theme.line; opacity: 0.5 }
                 }

@@ -208,7 +208,7 @@ Item {
                         spacing: theme.space(1.25)
                         Tag { visible: row.fact.on_disk === true; text: words.t("release-table-on-disk"); dot: theme.accent }
                         Tag { visible: row.fact.other_on_disk === true; text: words.t("release-table-other-on-disk"); dot: theme.textFaint }
-                        Tag { visible: row.fact.batch === true; text: row.fact.season ? words.t("release-table-season-batch", { season: row.fact.season }) : words.t("release-table-batch"); dot: theme.orange }
+                        Tag { visible: row.fact.batch === true; text: row.fact.season ? words.t("release-table-season-batch", { season: row.fact.season }) : words.t("release-table-batch") }
                         Tag { visible: !!row.item.infomkv; text: row.item.infomkv || "" }
                         Label {
                             visible: !!row.item.source

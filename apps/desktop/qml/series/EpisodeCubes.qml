@@ -124,6 +124,7 @@ Item {
     // text's own greys on the glass ones
     function numberColor(code, part) {
         if (code === "n" || code === "o" || code === "f") return theme.textFaint
+        if (code === "l") return theme.green
         if (part) return theme.text
         var c = Qt.lighter(theme.cubeState(code).fill, 1.0)
         if (c.a < 0.5) return theme.textDim

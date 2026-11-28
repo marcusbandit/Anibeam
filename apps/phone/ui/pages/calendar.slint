@@ -19,7 +19,7 @@ component StateDot inherits Rectangle {
     width: 2 * Theme.unit;
     height: self.width;
     border-radius: self.width / 2;
-    background: root.state == 1 ? Theme.cube-here : root.state == 2 ? Theme.cube-missing : Theme.dim;
+    background: root.state == 1 ? Theme.cyan : root.state == 2 ? Theme.cube-missing : Theme.dim;
 }
 
 // One episode in a day's list: the time as a figure, the poster, the show, the episode and
@@ -98,7 +98,7 @@ export component CalRow inherits Rectangle {
                     horizontal-stretch: 1;
                     overflow: elide;
                     text: root.item.when;
-                    color: root.item.state == 0 ? Theme.accent : root.item.state == 1 ? Theme.cube-here : Theme.cube-missing;
+                    color: root.item.state == 0 ? Theme.accent : root.item.state == 1 ? Theme.cyan : Theme.cube-missing;
                     font-size: Theme.small;
                     vertical-alignment: center;
                 }
@@ -343,7 +343,7 @@ component BoardCard inherits Rectangle {
                 Text {
                     horizontal-stretch: 1;
                     text: root.item.state == 0 ? root.item.episode : root.item.when;
-                    color: root.item.state == 0 ? Theme.dim : root.item.state == 1 ? Theme.cube-here : Theme.cube-missing;
+                    color: root.item.state == 0 ? Theme.dim : root.item.state == 1 ? Theme.cyan : Theme.cube-missing;
                     font-size: Theme.small - 0.5px;
                     overflow: elide;
                 }
